@@ -1,5 +1,5 @@
 {
-  "name": "tft-discord-bot",
+  "name": "riftrecap",
   "version": "1.0.0",
   "description": "",
   "type": "module",
@@ -10,15 +10,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dhruvna/TFT-Discord-Bot.git"
+    "url": "git+https://github.com/dhruvna/RiftRecap.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/dhruvna/TFT-Discord-Bot/issues"
+    "url": "https://github.com/dhruvna/RiftRecap/issues"
   },
-  "homepage": "https://github.com/dhruvna/TFT-Discord-Bot#readme",
+  "homepage": "https://github.com/dhruvna/RiftRecap#readme",
   "dependencies": {
     "@napi-rs/canvas": "^0.1.91",
     "discord.js": "^14.25.1",
