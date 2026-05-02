@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import url from 'node:url';
 
@@ -23,8 +23,8 @@ function isValidCommand(command) {
 
 export async function loadCommands({ onInvalid } = {}) {
     // Collect command JSON payloads by reading the commands directory.
-    const commandFiles = fs
-        .readdirSync(commandsPath)
+    const commandFiles = await fs
+        .readdir(commandsPath)
         .filter((file) => file.endsWith('.js') && file !== 'loadCommands.js')
         .sort((a, b) => a.localeCompare(b));
     
