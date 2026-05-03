@@ -85,7 +85,7 @@ async function mutateDb(mutator) {
 async function mutateGuild(guildId, mutator) {
     assertValidGuildId(guildId, 'mutateGuild');
     return mutateDb(async (db) => {
-        const guild = ensureGuild(db, guildId);
+        const guild = ensureGuildMutable(db, guildId);
         return mutator({ db, guild });
     });
 }
@@ -104,7 +104,7 @@ function assertValidGuildId(guildId, context = 'storage') {
 
 // === Guild normalization ===
 // Ensure a guild object exists and has the minimum required shape.
-function ensureGuild(db, guildId) {
+function ensureGuildMutable(db, guildId) {
     if (!db[guildId]) db[guildId] = {};
     if (!Array.isArray(db[guildId].accounts)) db[guildId].accounts = [];
     db[guildId].accounts = db[guildId].accounts.map((account) => normalizeAccountTracking(account));
@@ -138,6 +138,35 @@ function ensureGuild(db, guildId) {
     // Backward compatibility view for legacy callers during transition.
     db[guildId].recap = db[guildId].recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
     return db[guildId];
+}
+
+function normalizeGuildView(guild) {
+    const source = guild && typeof guild === 'object' ? guild : {};
+    const accounts = Array.isArray(source.accounts)
+        ? source.accounts.map((account) => normalizeAccountTracking(account))
+        : [];
+    const tftSource = source.tft && typeof source.tft === 'object' ? source.tft : {};
+    const numericCutoff = Number(tftSource.seasonCutoffMs ?? 0);
+    const recapConfigs = Array.isArray(source.recapConfigs)
+        ? source.recapConfigs.map((cfg, idx) =>
+            normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
+        )
+        : [normalizeRecapConfig(source.recap, DEFAULT_RECAP_CONFIG_ID)];
+
+    return {
+        ...source,
+        accounts,
+        channelId: 'channelId' in source ? source.channelId : null,
+        announceQueues: Array.isArray(source.announceQueues)
+            ? source.announceQueues
+            : [...DEFAULT_ANNOUNCE_QUEUES],
+        tft: {
+            ...tftSource,
+            seasonCutoffMs: Number.isFinite(numericCutoff) && numericCutoff > 0 ? numericCutoff : null,
+        },
+        recapConfigs,
+        recap: recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID),
+    };
 }
 
 export function getTrackedGameIdentity(account, gameKey) {
@@ -174,12 +203,12 @@ export function makeAccountKey({ gameName, tagLine, platform }) {
 // === Account Creation, Read, Update, Deletion ===
 export async function listGuildAccounts(guildId) {
     const db = await loadDb();
-    const guild = ensureGuild(db, guildId);
+    const guild = normalizeGuildView(db?.[guildId]);
     return guild?.accounts ?? [];
 }
 
 async function upsertGuildAccount(db, guildId, account) {
-    const guild = ensureGuild(db, guildId);
+    const guild = ensureGuildMutable(db, guildId);
 
     const idx = guild.accounts.findIndex((a) => a.key === account.key);
     const existed = idx >= 0;
@@ -209,28 +238,28 @@ export async function removeGuildAccountByKey(guildId, key) {
 
 // === Guild-level settings ===
 async function setGuildChannel(db, guildId, channelId) {
-    const g = ensureGuild(db, guildId);
+    const g = ensureGuildMutable(db, guildId);
     g.channelId = channelId;
     return { channelId };
 }
 
 export function getGuildRecapConfig(db, guildId) {
-    const g = ensureGuild(db, guildId);
+    const g = normalizeGuildView(db?.[guildId]);
     return g.recapConfigs[0];
 }
 
 export function getGuildRecapConfigs(db, guildId) {
-    const g = ensureGuild(db, guildId);
+    const g = normalizeGuildView(db?.[guildId]);
     return g.recapConfigs;
 }
 
 export function getGuildTftConfig(db, guildId) {
-    const g = ensureGuild(db, guildId);
+    const g = normalizeGuildView(db?.[guildId]);
     return g.tft;
 }
 
 export function setGuildRecapConfig(db, guildId, patch) {
-    const g = ensureGuild(db, guildId);
+    const g = ensureGuildMutable(db, guildId);
     const current = g.recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
     g.recapConfigs[0] = normalizeRecapConfig({ ...current, ...patch }, current.id);
     g.recap = g.recapConfigs[0];
@@ -302,7 +331,7 @@ export async function setGuildTftConfigInStore(guildId, patch) {
 }
 
 async function setGuildQueueConfig(db, guildId, queues) {
-    const g = ensureGuild(db, guildId);
+    const g = ensureGuildMutable(db, guildId);
     g.announceQueues = queues;
     return g.announceQueues;
 }
@@ -337,7 +366,7 @@ export function pruneExpiredRecapEventsInDb(db, nowMs = Date.now()) {
     let touchedAccounts = 0;
 
     for (const guildId of getKnownGuildIds(db)) {
-        const guild = ensureGuild(db, guildId);
+        const guild = ensureGuildMutable(db, guildId);
         for (const account of guild.accounts) {
             const tftTracking = getTftTracking(account);
             const lolTracking = getLolTracking(account);

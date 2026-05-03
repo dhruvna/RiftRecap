@@ -41,6 +41,9 @@ for (const command of commands) {
 
 // === Startup hook ===
 // Once the client is connected, we log diagnostics and spin up background services.
+/**
+ * Bootstraps startup diagnostics and long-running services after Discord signals readiness.
+ */
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}`);
 
@@ -75,17 +78,20 @@ client.once('clientReady', async () => {
     // - match poller: periodic rank/match updates
     // - recap autoposter: scheduled recap messages
     startMatchPoller(client).catch((error) => {
-        console.error("Error in match poller:", error);
+        console.error('[startup] match poller failed:', error);
     });
 
     startRecapAutoposter(client).catch((error) => {
-        console.error("Error in recap autoposter:", error);
+        console.error('[startup] recap autoposter failed:', error);
     });
 });
 
 // === Interaction routing ===
 // All Discord interactions funnel through here. We separate autocomplete from
 // chat commands, then dispatch to the appropriate command handler.
+/**
+ * Routes Discord interactions to autocomplete or slash-command handlers.
+ */
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isAutocomplete()) {
         const command = client.commands.get(interaction.commandName);

@@ -54,7 +54,9 @@ function requireString(name) {
     return value;
 }
 
-// Parse integers while enforcing optional bounds.
+/**
+ * Parses an integer env var with defaults and inclusive bounds so runtime knobs fail fast.
+ */
 function readInt(name, { defaultValue, min = -Infinity, max = Infinity }) {
     const raw = readEnv(name);
     if (raw === undefined || raw === '') {
@@ -72,8 +74,9 @@ function readInt(name, { defaultValue, min = -Infinity, max = Infinity }) {
     return parsed;
 }
 
-
-// Parse DEFAULT_REGION with normalization + explicit validation.
+/**
+ * Normalizes DEFAULT_REGION and rejects unsupported values to keep downstream API routing predictable.
+ */
 function readRegion() {
     const raw = readEnv('DEFAULT_REGION') ?? DEFAULT_REGION;
     const normalized = String(raw).toUpperCase();

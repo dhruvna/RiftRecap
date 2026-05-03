@@ -61,7 +61,7 @@ async function postRecapForConfig({
         lastSentYmd,
     });
 
-    console.log(
+    console.debug(
         `[recap-autopost] evaluate guild=${guildId} config=${configId} mode=${mode} game=${game} queue=${queue} now=${now.toISOString()} scheduledTime=${scheduledTime.toISOString()} lastSentYmd=${lastSentYmd ?? 'null'} shouldFire=${shouldFire}`
     );
 
@@ -103,7 +103,7 @@ export async function startRecapAutoposter(client, { fireHour, fireMinute, pollI
             lastSentYmd: null,
         });
 
-        console.log(
+        console.debug(
             `[recap-autopost] tick today=${today} now=${now.toISOString()} scheduledTime=${scheduledTime.toISOString()} lastSentYmd=<per-guild> guilds=${guildIds.length}`
         );
 

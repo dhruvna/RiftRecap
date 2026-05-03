@@ -1,71 +1,132 @@
-# TFT Int Log Tracker:
+# Rift Recap
 
 A Discord bot built with **Node.js**, **discord.js**, and the **Riot Games API** that lets each server register Riot IDs, view rank data, and post automated match results.
 
-> **Game scope (current):**
-> - **TFT:** Full feature set (registration, rank, leaderboard, recap, autopost tracking).
-> - **LoL:** Partial support (registration + rank snapshots + automated match-result posts).
-> - **Not yet parity with TFT:** LoL leaderboard/recap and LoL-specific recap automation.
+## Current game-scope parity (TFT vs LoL)
+
+### Shared (TFT + LoL)
+- Account registration and server-scoped storage (`/register`, `/unregister`, `/list`)
+- Rank snapshot display via `/rank` (with game filter support)
+- Automated match-result posting from the polling service
+
+### TFT-only today
+- `/leaderboard`
+- `/recap`
+- `/recapconfig`
+- Full recap-oriented helper pipeline and constants
+
+### LoL boundaries today
+- LoL data is supported for `/rank` and automated match-result posts.
+- LoL does **not** yet have parity for leaderboard/recap command output.
 
 ## Features
 
 ### Riot ID Registration (Per Server)
-- Register one or more Riot IDs to a Discord server
-- Data is isolated per server using the Discord `guildId`
-
-### List Registered Accounts
-- `/list` displays all Riot IDs registered in the current server
-- Format: `gameName#tagLine (Region)`
+- Register one or more Riot IDs to a Discord server.
+- Data is isolated per server using Discord `guildId`.
 
 ### Rank Lookup
-- `/rank` shows stored ranked snapshots for registered accounts
-- Supports **TFT**, **LoL**, or **both** via the `game` option
-- TFT entries link to LeagueOfGraphs; LoL entries link to the player profile page
+- `/rank` shows stored ranked snapshots for registered accounts.
+- Supports **TFT**, **LoL**, or **both** via the `game` option.
 
 ### Persistent Storage
-- Local JSON database:
-  - `./user_data/registrations.json`
-- Automatically:
-  - Creates the `user_data/` directory if missing
-  - Creates `registrations.json` if missing
-- Atomic writes (temp file + rename)
+- Local JSON database at `./user_data/registrations.json`.
+- Automatically creates `user_data/` and `registrations.json` if missing.
+- Uses atomic writes (temp file + rename).
 
-### Riot API Wrapper
-- Centralized Riot API logic in `riot.js`
-- Handles:
-  - Riot ID → PUUID
-  - Platform routing (e.g. `na1`) → regional routing (e.g. `americas`)
+### Automated Match Tracking
+- Polls each registered account's most recent TFT/LoL match ID.
+- Detects new games via stored match cursors.
+- Fetches match details + latest ranked snapshot.
+- Computes LP deltas and posts game-specific embed summaries.
 
-## Automated Match Tracking (TFT + LoL)
-
-The bot automatically posts a match result embed after a registered player finishes a tracked game.
-
-Current behavior:
-- Periodically polls each registered account's most recent match ID (TFT + LoL)
-- Detects newly completed matches by comparing against stored `lastMatchId`
-- Fetches match details and current ranked snapshot
-- Computes LP delta from the previously saved snapshot
-- Posts a styled embed with game-specific fields (for example, TFT placement or LoL K/D/A), LP change, and rank context when available
-
-## Seasonal Reset Support
+### Seasonal Reset Support
 - `/resetranks confirm:true` clears TFT rank snapshots + recap history for the server.
-- `/resetranks confirm:true before_date:YYYY-MM-DD` clears only accounts whose latest tracked TFT match happened **before** that UTC date and stores the season cutoff in `registrations.json` for ongoing polling.
-- By default reset keeps `lastMatchId` / `lastMatchAt` so old games are not replayed; use `clear_match_cursor:true` only if you intentionally want a full cursor wipe.
+- `/resetranks confirm:true before_date:YYYY-MM-DD` clears only accounts whose latest tracked TFT match occurred before that UTC date, then stores the cutoff for ongoing polling.
+- `clear_match_cursor:true` can be used when you intentionally want a full cursor wipe.
 
+## Backlog and status
+### Near-term backlog
+- Add optional per-game channel routing/filter presets (finer TFT vs LoL control).
+- Add `/lastmatch` command for quick latest-match lookup.
+- Add optional match-history browsing command flow.
+
+### Known limitations
+- Bot hosting/runtime operations are environment-dependent (24/7 hosting not bundled in this repo).
+- No formal patch-notes/release changelog workflow is currently documented.
+- `resetranks` edge-case behavior still needs explicit verification coverage (see verification tasks).
+
+### Nice-to-have ideas
+- Expanded release operations docs (deploy/update playbook).
+- Broader historical analytics views beyond current recap output.
+
+### Verification tasks
+- Validate `/resetranks` behavior across:
+  - server-wide reset,
+  - date-scoped reset,
+  - cursor-clear mode (`clear_match_cursor:true`),
+  - mixed TFT+LoL registrations.
+
+## Project structure
+```text
+src/
+├── index.js
+├── register-commands.js
+├── config.js
+├── riot.js
+├── storage.js
+├── commands/
+│   ├── leaderboard.js
+│   ├── list.js
+│   ├── loadCommands.js
+│   ├── rank.js
+│   ├── recap.js
+│   ├── recapconfig.js
+│   ├── register.js
+│   ├── resetRanks.js
+│   ├── setchannel.js
+│   └── unregister.js
+├── constants/
+│   ├── queues.js
+│   ├── recap.js
+│   └── regions.js
+├── riot/
+│   ├── api.js
+│   ├── ddragon.js
+│   └── ddragonIndexes.js
+├── services/
+│   ├── matchPoller.js
+│   └── recapAutoPoster.js
+├── storage/
+│   └── normalize.js
+└── utils/
+    ├── autocomplete.js
+    ├── lol.js
+    ├── presentation.js
+    ├── rankSnapshot.js
+    ├── rateLimiter.js
+    ├── recap.js
+    ├── tft.js
+    ├── unitStrip.js
+    └── utils.js
+```
+
+## Configuration
+Required environment variables:
+- `DISCORD_BOT_TOKEN` — Discord bot token
+- `RIOT_TFT_API_KEY` — Riot Games API key (TFT endpoints)
+- `RIOT_LOL_API_KEY` — Riot Games API key (LoL endpoints)
+Optional:
+
+- `MATCH_POLL_INTERVAL_SECONDS` (default: 60)
+- `MATCH_POLL_PER_ACCOUNT_DELAY_MS` (default: 250)
+- `RECAP_AUTOPOST_HOUR` (default: 9)
+- `RECAP_AUTOPOST_MINUTE` (default: 0)
 # TODO
-### Parity / Feature Gaps
 - Optional per-game channel routing/filter presets (finer TFT vs LoL control)
-
-Testing:
-- Leaderboard, rank, recap, register, unregister, list work well
 - LOOK INTO RESETRANKS IN MORE DEPTH*
-
-
-### Platform / Operations
 - Host bot 24/7
 - Patch notes / release changelog
-
-### Match History / Detail Commands
 - `/lastmatch` command
 - Optional match history browsing
 
@@ -138,60 +199,3 @@ Live Match Tracking
 
 **2/7/2026 - 2/12/2026**
 - 
-
-
-# Project Structure
-
-```text
-.
-├── index.js                # Bot entry point
-├── register-commands.js    # Registers slash commands
-├── commands/
-│   ├── register.js         # /register
-│   ├── unregister.js       # /unregister
-│   ├── list.js             # /list
-│   └── rank.js             # /rank
-│   ├── rank.js             # /rank
-│   ├── leaderboard.js      # /leaderboard
-│   ├── recap.js            # /recap
-│   ├── recapconfig.js      # /recapconfig
-│   └── setchannel.js       # /setchannel
-
-├── riot.js                 # Riot Games API wrapper
-├── storage.js              # JSON persistence layer
-├── utils/
-│   ├── recap.js            # Recap helpers
-│   ├── rateLimiter.js      # Riot API rate limiting helpers
-│   ├── tft.js              # TFT-specific helpers
-│   └── utils.js            # Utilities for other files
-├── user_data/
-│   └── registrations.json  # Auto-created DB
-└── README.md
-```
-
-## Configuration
-
-The bot requires the following environment variables:
-
-- `DISCORD_BOT_TOKEN`  
-  Discord bot token
-
-- `RIOT_TFT_API_KEY`  
-  Riot Games API key (TFT endpoints)
-
-- `RIOT_LOL_API_KEY`  
-  Riot Games API key (LoL endpoints)
-
-Optional:
-- `MATCH_POLL_INTERVAL_SECONDS` (default: 60)  
-  How often to poll for new matches
-
-- `MATCH_POLL_PER_ACCOUNT_DELAY_MS` (default: 250)  
-  Delay between polling each account to avoid rate limits
-
-- `RECAP_AUTOPOST_HOUR` (default: 9)  
-  Local server hour (0-23) for daily recap autopost
-
-- `RECAP_AUTOPOST_MINUTE` (default: 0)  
-  Local server minute (0-59) for daily recap autopost
-

@@ -312,13 +312,16 @@ export async function startMatchPoller(client) {
     // One polling iteration. Split out to make the setInterval handler simple.
     const tick = async () => {
         if (isTickRunning) {
-            console.warn('[match-poller] skipping tick because previous tick is still running');
+            console.debug('[match-poller] skipping tick because previous tick is still running');
             return;
         }
 
         isTickRunning = true;
         try {
+            const tickStartedAt = Date.now();
             const channelCache = new Map(); // channelId -> channel (cache per tick)
+            const pendingUpsertsByGuild = new Map();
+            let writeCount = 0;
 
             const db = await loadDb();
             const guildIds = getKnownGuildIds(db);
@@ -333,12 +336,17 @@ export async function startMatchPoller(client) {
             const spreadDelayMs = totalAccounts > 0 ? Math.ceil(intervalMs / totalAccounts) : 0;
             const perAccountDelayMs = Math.max(basePerAccountDelayMs, spreadDelayMs);
             
-            console.log(
+            console.debug(
                 `[match-poller] tick guilds=${guildIds.length} interval=${intervalSeconds}s totalAccounts=${totalAccounts} perAccountDelay=${perAccountDelayMs}ms`
             );
 
             for (const guildId of guildIds) {
-                const guild = db[guildId];
+                const guild = Object.freeze({
+                    ...(db[guildId] ?? {}),
+                    accounts: Array.isArray(db[guildId]?.accounts)
+                        ? db[guildId].accounts.map((account) => normalizeAccountTracking(account))
+                        : [],
+                });
                 const accounts = guild?.accounts ?? [];
                 const channelIdForGuild = guild?.channelId ;
                 const guildTftConfig = getGuildTftConfig(db, guildId);
@@ -361,8 +369,7 @@ export async function startMatchPoller(client) {
                     }
                 }
 
-                for (let account of accounts) {
-                    account = normalizeAccountTracking(account);
+                for (const account of accounts) {
                     const lolIdentity = getLolIdentity(account);
                     const tftIdentity = getTftIdentity(account);
                     const lolTracking = getLolTracking(account);
@@ -385,7 +392,9 @@ export async function startMatchPoller(client) {
                                 const refreshedLol = await refreshLolRankSnapshot({ riotLimiter, account });
                                 refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = refreshedLol;
 
-                                await upsertGuildAccountInStore(guildId, {
+                                pendingUpsertsByGuild.set(
+                                    `${guildId}:${account.key}`,
+                                    {
                                     ...account,
                                     trackedGames: {
                                         ...(account.trackedGames ?? {}),
@@ -394,7 +403,8 @@ export async function startMatchPoller(client) {
                                             lastRankByQueue: refreshedLol,
                                         },
                                     },
-                                });
+                                    }
+                                );
                                 lolTracking.lastRankByQueue = refreshedLol;
                             } catch (err) {
                                 console.error(
@@ -409,7 +419,9 @@ export async function startMatchPoller(client) {
                                 const refreshed = await refreshRankSnapshot({ riotLimiter, account });
                                 refreshedRankSnapshotsByGame[GAME_TYPES.TFT] = refreshed;
 
-                                await upsertGuildAccountInStore(guildId, {
+                                pendingUpsertsByGuild.set(
+                                    `${guildId}:${account.key}`,
+                                    {
                                     ...account,
                                     trackedGames: {
                                         ...(account.trackedGames ?? {}),
@@ -418,7 +430,8 @@ export async function startMatchPoller(client) {
                                             lastRankByQueue: refreshed,
                                         },
                                     },
-                                });
+                                }
+                            );
                                 tftTracking.lastRankByQueue = refreshed;
                             } catch (err) {
                                 console.error(
@@ -550,7 +563,7 @@ export async function startMatchPoller(client) {
                                 lastProcessedLolMatchAt = gameMs;
                             }
 
-                            await upsertGuildAccountInStore(guildId, {
+                            pendingUpsertsByGuild.set(`${guildId}:${account.key}`, {
                                 ...account,
                                 trackedGames: {
                                     ...(account.trackedGames ?? {}),
@@ -721,7 +734,7 @@ export async function startMatchPoller(client) {
                         lastProcessedMatchAt = gameMs;
                     }
 
-                    await upsertGuildAccountInStore(guildId, {
+                    pendingUpsertsByGuild.set(`${guildId}:${account.key}`, {
                         ...account,
                         trackedGames: {
                             ...(account.trackedGames ?? {}),
@@ -743,7 +756,17 @@ export async function startMatchPoller(client) {
             }
             await sleep(perAccountDelayMs);
             }
-        }
+            }
+            for (const [compoundKey, nextAccount] of pendingUpsertsByGuild.entries()) {
+                const [guildId] = compoundKey.split(':');
+                await upsertGuildAccountInStore(guildId, nextAccount);
+                writeCount += 1;
+            }
+            const cycleDurationMs = Date.now() - tickStartedAt;
+            console.debug(
+                `[match-poller] tick summary durationMs=${cycleDurationMs} writes=${writeCount} guilds=${guildIds.length} accounts=${totalAccounts}`
+            );
+
         } finally {
             isTickRunning = false;
         }        

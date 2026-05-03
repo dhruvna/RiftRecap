@@ -89,7 +89,7 @@ export default {
     }
 
     await interaction.deferReply();
-
+    const rawQueueType = interaction.options.getString("queue");
     const validQueueTypes = new Set(ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => choice.value));
     if (rawQueueType && !validQueueTypes.has(rawQueueType)) {
       const validQueues = ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(", ");
