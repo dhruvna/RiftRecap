@@ -4,15 +4,15 @@ import { listGuildAccounts } from "../storage.js";
 import {
   buildRecapEmbed,
   computeRecapRows,
-  hoursForMode,
 } from "../utils/recap.js";
 import {
   GAME_TYPES,
   ALL_RECAP_QUEUE_CHOICES,
   defaultRankedQueueForGame,
   gameFromQueue,
+  VALID_RECAP_QUEUES,
 } from "../constants/queues.js";
-import { RECAP_MODE_CHOICES } from "../constants/recap.js";
+import { RECAP_MODE_CHOICES, hoursForMode } from "../constants/recap.js";
 
 /* -------------------- Command -------------------- */
 export default {
@@ -42,8 +42,7 @@ export default {
 
         const mode = interaction.options.getString("mode") ?? "DAILY";
         const rawQueue = interaction.options.getString("queue");
-        const validQueueTypes = new Set(ALL_RECAP_QUEUE_CHOICES.map((choice) => choice.value));
-        if (rawQueue && !validQueueTypes.has(rawQueue)) {
+        if (rawQueue && !VALID_RECAP_QUEUES.has(rawQueue)) {
             const validQueues = ALL_RECAP_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(", ");
             await interaction.editReply(
                 `Invalid queue \`${rawQueue}\`. Choose one of: ${validQueues}.`

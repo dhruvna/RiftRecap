@@ -5,8 +5,14 @@ export const RECAP_MODE_CHOICES = [
   { name: "Weekly (last 7d)", value: "WEEKLY" },
 ];
 
+export const VALID_RECAP_MODES = new Set(RECAP_MODE_CHOICES.map((choice) => choice.value));
+
 export function modeLabel(mode) {
   return mode === "WEEKLY" ? "Weekly" : "Daily";
+}
+
+export function hoursForMode(mode) {
+  return mode === "WEEKLY" ? 24 * 7 : 24;
 }
 
 // Format recap schedule time in a consistent human-readable 12-hour clock.

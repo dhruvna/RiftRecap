@@ -311,10 +311,7 @@ export async function startMatchPoller(client) {
 
     // One polling iteration. Split out to make the setInterval handler simple.
     const tick = async () => {
-        if (isTickRunning) {
-            console.debug('[match-poller] skipping tick because previous tick is still running');
-            return;
-        }
+        if (isTickRunning) return;
 
         isTickRunning = true;
         try {
@@ -335,10 +332,6 @@ export async function startMatchPoller(client) {
             const intervalMs = intervalSeconds * 1000;
             const spreadDelayMs = totalAccounts > 0 ? Math.ceil(intervalMs / totalAccounts) : 0;
             const perAccountDelayMs = Math.max(basePerAccountDelayMs, spreadDelayMs);
-            
-            console.debug(
-                `[match-poller] tick guilds=${guildIds.length} interval=${intervalSeconds}s totalAccounts=${totalAccounts} perAccountDelay=${perAccountDelayMs}ms`
-            );
 
             for (const guildId of guildIds) {
                 const guild = Object.freeze({
@@ -763,10 +756,6 @@ export async function startMatchPoller(client) {
                 writeCount += 1;
             }
             const cycleDurationMs = Date.now() - tickStartedAt;
-            console.debug(
-                `[match-poller] tick summary durationMs=${cycleDurationMs} writes=${writeCount} guilds=${guildIds.length} accounts=${totalAccounts}`
-            );
-
         } finally {
             isTickRunning = false;
         }        

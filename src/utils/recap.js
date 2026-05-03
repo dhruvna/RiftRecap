@@ -3,18 +3,9 @@
 
 import { EmbedBuilder } from "discord.js";
 import { GAME_TYPES, queueLabel } from "../constants/queues.js";
+import { modeLabel } from "../constants/recap.js";
 import { medalForIndex } from "./presentation.js";
 import { getLolTracking, getTftTracking } from "../storage.js";
-
-// === Mode helpers ===
-// These keep the mode -> hours/label mapping consistent everywhere.
-export function hoursForMode(mode) {
-    return mode === "WEEKLY" ? 24 * 7 : 24;
-}
-
-export function modeLabel(mode) {
-    return mode === "WEEKLY" ? "Weekly" : "Daily";
-}
 
 // === Formatting helpers ===
 // Normalize LP deltas into a human-readable string.

@@ -2,7 +2,8 @@
 // The recap autoposter builds recap embeds and sends them on a schedule.
 import { getKnownGuildIds, loadDb, setGuildRecapLastSentYmdByIdInStore } from '../storage.js';
 import { GAME_TYPES, defaultRankedQueueForGame } from '../constants/queues.js';
-import { buildRecapEmbed, computeRecapRows, hoursForMode } from '../utils/recap.js';
+import { hoursForMode } from '../constants/recap.js';
+import { buildRecapEmbed, computeRecapRows } from '../utils/recap.js';
 import config from "../config.js";
 
 // === Date helpers ===
@@ -61,10 +62,6 @@ async function postRecapForConfig({
         lastSentYmd,
     });
 
-    console.debug(
-        `[recap-autopost] evaluate guild=${guildId} config=${configId} mode=${mode} game=${game} queue=${queue} now=${now.toISOString()} scheduledTime=${scheduledTime.toISOString()} lastSentYmd=${lastSentYmd ?? 'null'} shouldFire=${shouldFire}`
-    );
-
     if (!shouldFire) return;
 
     console.log(
@@ -102,10 +99,6 @@ export async function startRecapAutoposter(client, { fireHour, fireMinute, pollI
             fireMinute: FIRE_MINUTE,
             lastSentYmd: null,
         });
-
-        console.debug(
-            `[recap-autopost] tick today=${today} now=${now.toISOString()} scheduledTime=${scheduledTime.toISOString()} lastSentYmd=<per-guild> guilds=${guildIds.length}`
-        );
 
         for (const guildId of guildIds) {
             const guild = db[guildId];

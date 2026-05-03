@@ -9,7 +9,7 @@ import {
   queueChoicesForRecap,
   queueLabel,
 } from "../constants/queues.js";
-import { RECAP_MODE_CHOICES, formatRecapScheduleTime, modeLabel } from "../constants/recap.js";
+import { RECAP_MODE_CHOICES, VALID_RECAP_MODES, formatRecapScheduleTime, modeLabel } from "../constants/recap.js";
 import config from "../config.js";
 
 function normalizeId(raw) {
@@ -64,10 +64,9 @@ export default {
     }
 
     if (mode !== null) {
-      const validModes = new Set(RECAP_MODE_CHOICES.map((choice) => choice.value));
-      if (!validModes.has(mode)) {
+      if (!VALID_RECAP_MODES.has(mode)) {
         await interaction.reply({
-          content: `Invalid mode. Allowed values: ${[...validModes].join(", ")}.`,
+          content: `Invalid mode. Allowed values: ${[...VALID_RECAP_MODES].join(", ")}.`,
           ephemeral: true,
         });
         return;

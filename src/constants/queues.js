@@ -92,6 +92,8 @@ export const ALL_RECAP_QUEUE_CHOICES = Object.freeze([
     ...LOL_RECAP_QUEUE_CHOICES,
 ]);
 
+export const VALID_RECAP_QUEUES = new Set(ALL_RECAP_QUEUE_CHOICES.map((choice) => choice.value));
+
 export const ALL_LEADERBOARD_QUEUE_CHOICES = Object.freeze([
     ...TFT_LEADERBOARD_QUEUE_CHOICES,
     ...LOL_LEADERBOARD_QUEUE_CHOICES,
