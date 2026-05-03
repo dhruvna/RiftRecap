@@ -9,7 +9,14 @@ import {
   queueChoicesForRecap,
   queueLabel,
 } from "../constants/queues.js";
-import { RECAP_MODE_CHOICES, VALID_RECAP_MODES, formatRecapScheduleTime, modeLabel } from "../constants/recap.js";
+import {
+  RECAP_MODE_CHOICES,
+  formatRecapScheduleTime,
+  invalidRecapModeMessage,
+  modeLabel,
+  parseRecapMode,
+} from "../constants/recap.js";
+
 import config from "../config.js";
 
 function normalizeId(raw) {
@@ -46,7 +53,8 @@ export default {
     const remove = interaction.options.getBoolean("remove") ?? false;
     const enabled = interaction.options.getBoolean("enabled");
     const game = interaction.options.getString("game");
-    const mode = interaction.options.getString("mode") ?? null;
+    const rawMode = interaction.options.getString("mode");
+    const mode = rawMode === null ? null : parseRecapMode(rawMode);
     const rawQueue = interaction.options.getString("queue");
 
     const db = await loadDb();
@@ -63,14 +71,13 @@ export default {
       });
     }
 
-    if (mode !== null) {
-      if (!VALID_RECAP_MODES.has(mode)) {
-        await interaction.reply({
-          content: `Invalid mode. Allowed values: ${[...VALID_RECAP_MODES].join(", ")}.`,
-          ephemeral: true,
-        });
-        return;
-      }
+    const normalizedRawMode = rawMode === null ? null : String(rawMode).trim().toUpperCase();
+    if (rawMode !== null && mode !== normalizedRawMode) {
+      await interaction.reply({
+        content: invalidRecapModeMessage(rawMode),
+        ephemeral: true,
+      });
+      return;
     }
 
     const targetIdxBySlot = Number.isInteger(slot) ? slot - 1 : -1;

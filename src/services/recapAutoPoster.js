@@ -93,12 +93,13 @@ export async function startRecapAutoposter(client, { fireHour, fireMinute, pollI
         if (guildIds.length === 0) return;
 
         const now = new Date();
-        const { today, scheduledTime } = shouldFireRecapAutopost({
-            now,
-            fireHour: FIRE_HOUR,
-            fireMinute: FIRE_MINUTE,
-            lastSentYmd: null,
-        });
+        const today =  getLocalYmd(now);
+        // const { today, scheduledTime } = shouldFireRecapAutopost({
+        //     now,
+        //     fireHour: FIRE_HOUR,
+        //     fireMinute: FIRE_MINUTE,
+        //     lastSentYmd: null,
+        // });
 
         for (const guildId of guildIds) {
             const guild = db[guildId];

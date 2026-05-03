@@ -12,7 +12,7 @@ import {
   gameFromQueue,
   VALID_RECAP_QUEUES,
 } from "../constants/queues.js";
-import { RECAP_MODE_CHOICES, hoursForMode } from "../constants/recap.js";
+import { RECAP_MODE_CHOICES, hoursForMode, invalidRecapModeMessage, parseRecapMode } from "../constants/recap.js";
 
 /* -------------------- Command -------------------- */
 export default {
@@ -40,7 +40,13 @@ export default {
         /* ---------- POST RECAP ---------- */
         await interaction.deferReply();
 
-        const mode = interaction.options.getString("mode") ?? "DAILY";
+        const rawMode = interaction.options.getString("mode");
+        const mode = parseRecapMode(rawMode);
+        const normalizedRawMode = rawMode === null ? null : String(rawMode).trim().toUpperCase();
+        if (rawMode !== null && mode !== normalizedRawMode) {
+            await interaction.editReply(invalidRecapModeMessage(rawMode));
+            return;
+        }
         const rawQueue = interaction.options.getString("queue");
         if (rawQueue && !VALID_RECAP_QUEUES.has(rawQueue)) {
             const validQueues = ALL_RECAP_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(", ");

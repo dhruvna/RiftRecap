@@ -35,6 +35,7 @@ export function computeRecapRows(accounts, cutoffMs, wantedQueue, game = GAME_TY
       account,
       games: filtered.length,
       delta: filtered.reduce((s, e) => s + Number(e.delta ?? 0), 0),
+      _nameKey: accountName(account).toLowerCase(), // for consistent sorting
     };
   });
 }
@@ -46,9 +47,7 @@ function sortByGains(rows) {
     .sort((a, b) => {
       if (b.delta !== a.delta) return b.delta - a.delta;
       if (b.games !== a.games) return b.games - a.games;
-      return accountName(a.account)
-        .toLowerCase()
-        .localeCompare(accountName(b.account).toLowerCase());
+      return a._nameKey.localeCompare(b._nameKey);
     });
 }
 
@@ -59,9 +58,7 @@ function sortByLosses(rows) {
     .sort((a, b) => {
       if (a.delta !== b.delta) return a.delta - b.delta;
       if (b.games !== a.games) return b.games - a.games;
-      return accountName(a.account)
-        .toLowerCase()
-        .localeCompare(accountName(b.account).toLowerCase());
+      return a._nameKey.localeCompare(b._nameKey);
     });
 }
 

@@ -6,13 +6,25 @@ export const RECAP_MODE_CHOICES = [
 ];
 
 export const VALID_RECAP_MODES = new Set(RECAP_MODE_CHOICES.map((choice) => choice.value));
+export const DEFAULT_RECAP_MODE = "DAILY";
+
+export function invalidRecapModeMessage(rawMode) {
+  const shown = rawMode == null ? "null" : String(rawMode);
+  return `Invalid mode \`${shown}\`. Allowed values: ${[...VALID_RECAP_MODES].join(", ")}.`;
+}
+
+export function parseRecapMode(rawMode) {
+  if (rawMode == null) return DEFAULT_RECAP_MODE;
+  const normalized = String(rawMode).trim().toUpperCase();
+  return VALID_RECAP_MODES.has(normalized) ? normalized : DEFAULT_RECAP_MODE;
+}
 
 export function modeLabel(mode) {
-  return mode === "WEEKLY" ? "Weekly" : "Daily";
+  return parseRecapMode(mode) === "WEEKLY" ? "Weekly" : "Daily";
 }
 
 export function hoursForMode(mode) {
-  return mode === "WEEKLY" ? 24 * 7 : 24;
+  return parseRecapMode(mode) === "WEEKLY" ? 24 * 7 : 24;
 }
 
 // Format recap schedule time in a consistent human-readable 12-hour clock.
