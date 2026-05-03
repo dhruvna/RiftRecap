@@ -38,6 +38,10 @@ export function normalizeRecapConfig(config, fallbackId = DEFAULT_RECAP_CONFIG_I
         game: safe.game ?? 'TFT',
         queue: safe.queue ?? 'RANKED_TFT',
         lastSentYmd: safe.lastSentYmd ?? null,
+        lastSentYmdByMode:
+            safe.lastSentYmdByMode && typeof safe.lastSentYmdByMode === 'object'
+                ? safe.lastSentYmdByMode
+                : {},
     };
 }
 

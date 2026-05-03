@@ -3,10 +3,8 @@ import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import { loadDb, getGuildRecapConfigs, setGuildRecapConfigsInStore } from "../storage.js";
 import {
   GAME_TYPES,
-  GAME_TYPE_CHOICES,
   ALL_RECAP_QUEUE_CHOICES,
-  defaultRankedQueueForGame,
-  queueChoicesForRecap,
+  gameFromQueue,
   queueLabel,
 } from "../constants/queues.js";
 import {
@@ -19,28 +17,15 @@ import {
 
 import config from "../config.js";
 
-function normalizeId(raw) {
-  return (raw ?? "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 32);
-}
-
-function formatAllowedQueueChoices(game) {
-  return queueChoicesForRecap(game)
-    .map((choice) => `\`${choice.value}\` (${choice.name})`)
-    .join(", ");
-}
 
 export default {
   data: new SlashCommandBuilder()
     .setName("recapconfig")
     .setDescription("Manage recap autopost configs or use `status:true` to view all configs.")
     .addBooleanOption((opt) => opt.setName("status").setDescription("Show current recap configs.").setRequired(false))
-    .addStringOption((opt) => opt.setName("id").setDescription("Config id to edit/remove.").setRequired(false))
-    .addIntegerOption((opt) => opt.setName("slot").setDescription("1-based config slot to edit/remove.").setRequired(false).setMinValue(1))
-    .addBooleanOption((opt) => opt.setName("remove").setDescription("Remove selected config.").setRequired(false))
-    .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable/disable selected config.").setRequired(false))
-    .addStringOption((opt) => opt.setName("game").setDescription("Game for recap autopost").setRequired(false).addChoices(...GAME_TYPE_CHOICES))
-    .addStringOption((opt) => opt.setName("mode").setDescription("Daily or weekly recap content").setRequired(false).addChoices(...RECAP_MODE_CHOICES))
+    .addStringOption((opt) => opt.setName("mode").setDescription("Daily, weekly, or both recap content").setRequired(false).addChoices(...RECAP_MODE_CHOICES))
     .addStringOption((opt) => opt.setName("queue").setDescription("Which queue to post").setRequired(false).addChoices(...ALL_RECAP_QUEUE_CHOICES))
+    .addBooleanOption((opt) => opt.setName("enabled").setDescription("Enable/disable recap autopost for queue+mode.").setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
@@ -48,11 +33,7 @@ export default {
     if (!guildId) return interaction.reply({ content: "This command can only be used inside a server.", ephemeral: true });
 
     const wantsStatus = interaction.options.getBoolean("status") ?? false;
-    const requestedId = normalizeId(interaction.options.getString("id"));
-    const slot = interaction.options.getInteger("slot");
-    const remove = interaction.options.getBoolean("remove") ?? false;
     const enabled = interaction.options.getBoolean("enabled");
-    const game = interaction.options.getString("game");
     const rawMode = interaction.options.getString("mode");
     const mode = rawMode === null ? null : parseRecapMode(rawMode);
     const rawQueue = interaction.options.getString("queue");
@@ -62,9 +43,19 @@ export default {
 
     if (wantsStatus) {
       const scheduleText = formatRecapScheduleTime(config.recapAutopostHour, config.recapAutopostMinute);
-      const lines = recapConfigs.map((cfg, index) =>
-        `**${index + 1}. ${cfg.id}** • ${cfg.enabled ? "Enabled" : "Disabled"} • ${cfg.game === GAME_TYPES.LOL ? "LoL" : "TFT"} • ${queueLabel(cfg.game ?? GAME_TYPES.TFT, cfg.queue)} • ${modeLabel(cfg.mode)} • lastSent: ${cfg.lastSentYmd ?? "—"}`
-      );
+      
+      const lines = recapConfigs.map((cfg, index) => {
+        const sentByMode = cfg?.lastSentYmdByMode && typeof cfg.lastSentYmdByMode === "object" ? cfg.lastSentYmdByMode : {};
+        const sentText = cfg.mode === "BOTH"
+          ? `daily ${sentByMode.DAILY ?? "—"}, weekly ${sentByMode.WEEKLY ?? "—"}`
+          : (sentByMode[cfg.mode] ?? cfg.lastSentYmd ?? "—");
+        return `**${index + 1}. ${cfg.id}** • ${cfg.enabled ? "Enabled" : "Disabled"} • ${cfg.game === GAME_TYPES.LOL ? "LoL" : "TFT"} • ${queueLabel(cfg.game ?? GAME_TYPES.TFT, cfg.queue)} • ${modeLabel(cfg.mode)} • lastSent: ${sentText}`;
+      });
+
+      // const lines = recapConfigs.map((cfg, index) =>
+      //   `**${index + 1}.** ${cfg.enabled ? "Enabled" : "Disabled"} • ${cfg.game === GAME_TYPES.LOL ? "LoL" : "TFT"} • ${queueLabel(cfg.game ?? GAME_TYPES.TFT, cfg.queue)} • ${modeLabel(cfg.mode)} • lastSent: ${cfg.lastSentYmd ?? "—"}`
+      // );
+      
       return interaction.reply({
         content: `**Recap autopost status**\n• Time: **${scheduleText}**\n${lines.length ? lines.join("\n") : "No configs set."}`,
         ephemeral: true,
@@ -80,60 +71,39 @@ export default {
       return;
     }
 
-    const targetIdxBySlot = Number.isInteger(slot) ? slot - 1 : -1;
-    const targetIdxById = requestedId ? recapConfigs.findIndex((cfg) => cfg.id === requestedId) : -1;
-    let targetIdx = targetIdxById >= 0 ? targetIdxById : targetIdxBySlot;
-
-    const hasPatchField = enabled !== null || Boolean(game) || Boolean(mode) || Boolean(rawQueue);
-    if (remove && targetIdx < 0) {
-      return interaction.reply({ content: "Select a valid `id` or `slot` to remove a config.", ephemeral: true });
-    }
-
-    if (remove) {
-      const [deleted] = recapConfigs.splice(targetIdx, 1);
-      await setGuildRecapConfigsInStore(guildId, recapConfigs);
-      return interaction.reply({ content: `🗑️ Removed recap config **${deleted.id}**.`, ephemeral: true });
-    }
-
-    if (!hasPatchField && targetIdx < 0) {
-      return interaction.reply({ content: "Provide fields to update (`enabled/game/mode/queue`) and optional `id`/`slot` selector.", ephemeral: true });
-    }
-
-    if (targetIdx < 0) {
-      const newId = requestedId || `cfg-${recapConfigs.length + 1}`;
-      recapConfigs.push({ id: newId, enabled: false, game: GAME_TYPES.TFT, mode: "DAILY", queue: defaultRankedQueueForGame(GAME_TYPES.TFT), lastSentYmd: null });
-      targetIdx = recapConfigs.length - 1;
-    }
-
-    const current = recapConfigs[targetIdx];
-    const nextGame = game ?? current.game ?? GAME_TYPES.TFT;
-    const validQueueTypes = new Set(queueChoicesForRecap(nextGame).map((choice) => choice.value));
-    
-    if (rawQueue && !validQueueTypes.has(rawQueue)) {
+    if (!rawQueue || mode === null || enabled === null) {
       return interaction.reply({
-        content: `Invalid queue for ${nextGame === GAME_TYPES.LOL ? "LoL" : "TFT"}. Allowed values: ${formatAllowedQueueChoices(nextGame)}.`,
+        content: "When `status` is false, you must provide `queue`, `mode`, and `enabled`.",
         ephemeral: true,
       });
     }
 
-    const nextQueue = rawQueue ?? current.queue ?? defaultRankedQueueForGame(nextGame);
+    const targetGame = gameFromQueue(rawQueue);
+    const targetIdx = recapConfigs.findIndex((cfg) => cfg?.queue === rawQueue && cfg?.mode === mode);
+    const existing = targetIdx >= 0 ? recapConfigs[targetIdx] : null;
 
-    recapConfigs[targetIdx] = {
-      ...current,
-      ...(requestedId ? { id: requestedId } : {}),
-      ...(enabled !== null ? { enabled } : {}),
-      ...(game ? { game } : {}),
-      ...(mode ? { mode } : {}),
-      ...(nextQueue ? { queue: nextQueue } : {}),
-      ...(enabled === true ? { lastSentYmd: null } : {}),
+    const nextConfig = {
+      ...(existing ?? {}),
+      id: existing?.id ?? `recap-${mode.toLowerCase()}-${rawQueue.toLowerCase()}`,
+      enabled,
+      game: targetGame,
+      mode,
+      queue: rawQueue,
+      ...(enabled ? { lastSentYmd: null } : { lastSentYmd: existing?.lastSentYmd ?? null }),
     };
 
+    if (targetIdx >= 0) {
+      recapConfigs[targetIdx] = nextConfig;
+    } else {
+      recapConfigs.push(nextConfig);
+    }
+
     recapConfigs = await setGuildRecapConfigsInStore(guildId, recapConfigs);
-    const updated = recapConfigs[targetIdx];
+    const updated = recapConfigs.find((cfg) => cfg?.queue === rawQueue && cfg?.mode === mode) ?? nextConfig;
     const scheduleText = formatRecapScheduleTime(config.recapAutopostHour, config.recapAutopostMinute);
 
     return interaction.reply({
-      content: `✅ Saved recap config **${updated.id}**: ${updated.enabled ? "Enabled" : "Disabled"} • ${updated.game === GAME_TYPES.LOL ? "LoL" : "TFT"} / ${queueLabel(updated.game ?? GAME_TYPES.TFT, updated.queue)} • ${modeLabel(updated.mode)} • posts at **${scheduleText}**`,
+      content: `✅ Saved recap config: ${updated.enabled ? "Enabled" : "Disabled"} • ${updated.game === GAME_TYPES.LOL ? "LoL" : "TFT"} / ${queueLabel(updated.game ?? GAME_TYPES.TFT, updated.queue)} • ${modeLabel(updated.mode)} • posts at **${scheduleText}**`,
       ephemeral: true,
     });
   },

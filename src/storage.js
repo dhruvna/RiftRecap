@@ -296,14 +296,31 @@ export async function setGuildRecapLastSentYmdInStore(guildId, lastSentYmd) {
     }).then((result) => result?.updated ?? false);
 }
 
-export async function setGuildRecapLastSentYmdByIdInStore(guildId, configId, lastSentYmd) {
+export async function setGuildRecapLastSentYmdByIdInStore(guildId, configId, lastSentYmd, mode = null) {
     return mutateGuild(guildId, ({ guild }) => {
         const recapConfigs = Array.isArray(guild?.recapConfigs) ? guild.recapConfigs : [];
         const idx = recapConfigs.findIndex((cfg) => cfg?.id === configId);
         if (idx < 0) return { didChange: false, updated: false };
         const current = recapConfigs[idx]?.lastSentYmd ?? null;
-        if (current === lastSentYmd) return { didChange: false, updated: false };
-        recapConfigs[idx].lastSentYmd = lastSentYmd;
+        // if (current === lastSentYmd) return { didChange: false, updated: false };
+        // recapConfigs[idx].lastSentYmd = lastSentYmd;
+        const normalizedMode = typeof mode === 'string' ? mode.trim().toUpperCase() : null;
+        if (!normalizedMode) {
+            if (current === lastSentYmd) return { didChange: false, updated: false };
+            recapConfigs[idx].lastSentYmd = lastSentYmd;
+            guild.recap = recapConfigs[0] ?? guild.recap;
+            return { didChange: true, updated: true };
+        }
+
+        const currentByMode = recapConfigs[idx]?.lastSentYmdByMode && typeof recapConfigs[idx].lastSentYmdByMode === 'object'
+            ? recapConfigs[idx].lastSentYmdByMode
+            : {};
+        if (currentByMode[normalizedMode] === lastSentYmd) return { didChange: false, updated: false };
+
+        recapConfigs[idx].lastSentYmdByMode = {
+            ...currentByMode,
+            [normalizedMode]: lastSentYmd,
+        };
         guild.recap = recapConfigs[0] ?? guild.recap;
         return { didChange: true, updated: true };
     }).then((result) => result?.updated ?? false);

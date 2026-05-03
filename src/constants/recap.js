@@ -3,6 +3,7 @@
 export const RECAP_MODE_CHOICES = [
   { name: "Daily (last 24h)", value: "DAILY" },
   { name: "Weekly (last 7d)", value: "WEEKLY" },
+  { name: "Daily + Weekly", value: "BOTH" },
 ];
 
 export const VALID_RECAP_MODES = new Set(RECAP_MODE_CHOICES.map((choice) => choice.value));
@@ -20,7 +21,12 @@ export function parseRecapMode(rawMode) {
 }
 
 export function modeLabel(mode) {
-  return parseRecapMode(mode) === "WEEKLY" ? "Weekly" : "Daily";
+  // return parseRecapMode(mode) === "WEEKLY" ? "Weekly" : "Daily";
+  const normalized = parseRecapMode(mode);
+  if (normalized === "WEEKLY") return "Weekly";
+  if (normalized === "BOTH") return "Daily + Weekly";
+  return "Daily";
+
 }
 
 export function hoursForMode(mode) {
