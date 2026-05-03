@@ -63,10 +63,28 @@ export async function loadDb() {
     await ensureDataFile();
     try {
         const raw = await fs.readFile(DATA_PATH, 'utf-8');
-        return JSON.parse(raw);
+        return JSON.parse(raw);const parsed = JSON.parse(raw);
+        const migrated = migrateLegacyGuildRecapShape(parsed);
+        if (migrated.didChange) {
+            await writeDbAtomically(migrated.db);
+        }
+        return migrated.db;
     } catch {
         return {};
     }
+}
+
+function migrateLegacyGuildRecapShape(db) {
+    const safeDb = db && typeof db === 'object' ? db : {};
+    let didChange = false;
+    for (const guildId of Object.keys(safeDb)) {
+        const guild = ensureGuildMutable(safeDb, guildId);
+        if ('recap' in guild) {
+            delete guild.recap;
+            didChange = true;
+        }
+    }
+    return { db: safeDb, didChange };
 }
 
 // Queue-backed read-modify-write transaction.
@@ -135,8 +153,6 @@ function ensureGuildMutable(db, guildId) {
             normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
         );
     }
-    // Backward compatibility view for legacy callers during transition.
-    db[guildId].recap = db[guildId].recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
     return db[guildId];
 }
 
@@ -262,7 +278,6 @@ export function setGuildRecapConfig(db, guildId, patch) {
     const g = ensureGuildMutable(db, guildId);
     const current = g.recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
     g.recapConfigs[0] = normalizeRecapConfig({ ...current, ...patch }, current.id);
-    g.recap = g.recapConfigs[0];
     return g.recapConfigs[0];
 }
 
@@ -272,7 +287,6 @@ export function setGuildRecapConfigsInStore(guildId, recapConfigs) {
         guild.recapConfigs = incoming.map((cfg, idx) =>
             normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
         );
-        guild.recap = guild.recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
         return { didChange: true, recapConfigs: guild.recapConfigs };
     }).then((result) => result?.recapConfigs ?? []);
 }
@@ -287,11 +301,14 @@ export async function setGuildRecapConfigInStore(guildId, patch) {
 
 export async function setGuildRecapLastSentYmdInStore(guildId, lastSentYmd) {
     return mutateGuild(guildId, ({ guild }) => {
-        const current = guild?.recap?.lastSentYmd ?? null;
+        const current = guild?.recapConfigs?.[0]?.lastSentYmd ?? null;
         if (current === lastSentYmd) {
             return { didChange: false, updated: false };
         }
-        guild.recap.lastSentYmd = lastSentYmd;
+        if (!guild?.recapConfigs?.[0]) {
+            guild.recapConfigs = [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
+        }
+        guild.recapConfigs[0].lastSentYmd = lastSentYmd;
         return { didChange: true, updated: true };
     }).then((result) => result?.updated ?? false);
 }
@@ -308,7 +325,6 @@ export async function setGuildRecapLastSentYmdByIdInStore(guildId, configId, las
         if (!normalizedMode) {
             if (current === lastSentYmd) return { didChange: false, updated: false };
             recapConfigs[idx].lastSentYmd = lastSentYmd;
-            guild.recap = recapConfigs[0] ?? guild.recap;
             return { didChange: true, updated: true };
         }
 
@@ -321,7 +337,6 @@ export async function setGuildRecapLastSentYmdByIdInStore(guildId, configId, las
             ...currentByMode,
             [normalizedMode]: lastSentYmd,
         };
-        guild.recap = recapConfigs[0] ?? guild.recap;
         return { didChange: true, updated: true };
     }).then((result) => result?.updated ?? false);
 }

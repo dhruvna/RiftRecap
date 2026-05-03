@@ -135,7 +135,7 @@ export async function startRecapAutoposter(client, { fireHour, fireMinute, pollI
 
         for (const guildId of guildIds) {
             const guild = db[guildId];
-            const recapConfigs = Array.isArray(guild?.recapConfigs) ? guild.recapConfigs : (guild?.recap ? [guild.recap] : []);
+            const recapConfigs = Array.isArray(guild?.recapConfigs) ? guild.recapConfigs : [];
             const enabledConfigs = recapConfigs.filter((cfg) => cfg?.enabled);
             if (enabledConfigs.length === 0) continue;
 

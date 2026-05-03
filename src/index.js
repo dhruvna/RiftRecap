@@ -65,8 +65,8 @@ client.once('clientReady', async () => {
             const rankedSnapshots = accounts.filter((account) =>
                 getRankSnapshotForQueue(account, TFT_QUEUE_TYPES.RANKED)?.tier).length;
             console.log(
-                `[startup] guild=${gid} channelId=${g?.channelId ?? "null"} accounts=${accounts.length} rankedSnapshots=${rankedSnapshots} recap=${JSON.stringify(
-                        g?.recap ?? null
+                `[startup] guild=${gid} channelId=${g?.channelId ?? "null"} accounts=${accounts.length} rankedSnapshots=${rankedSnapshots} recapConfigs=${JSON.stringify(
+                        g?.recapConfigs ?? []
                     )} tft=${JSON.stringify(g?.tft ?? null)}`
                 );
         }
