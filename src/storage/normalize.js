@@ -9,8 +9,7 @@ export const TRACKED_GAMES = {
 export const DEFAULT_RECAP_CONFIG_ID = 'default';
 
 export function normalizeIdentityNamespace(identityNamespace) {
-    const safeNamespace =
-        identityNamespace && typeof identityNamespace === 'object' ? identityNamespace : {};
+    const safeNamespace = identityNamespace && typeof identityNamespace === 'object' ? identityNamespace : {};
     return {
         ...safeNamespace,
         puuid: safeNamespace.puuid ?? null,
@@ -49,10 +48,7 @@ function normalizeTrackedGameNamespace(
 ) {
     const safeGameState = gameState && typeof gameState === 'object' ? gameState : {};
     const numericLastMatchAt = Number(safeGameState.lastMatchAt ?? 0);
-    const enabled =
-        typeof safeGameState.enabled === 'boolean'
-            ? safeGameState.enabled
-            : true;
+    const enabled = typeof safeGameState.enabled === 'boolean' ? safeGameState.enabled : true;
     return {
         ...safeGameState,
         enabled,
@@ -74,9 +70,7 @@ export function normalizeAccountTracking(account) {
         identity: normalizeAccountIdentity(account),
     };
 
-    const trackedGames = account.trackedGames && typeof account.trackedGames === 'object'
-        ? account.trackedGames
-        : {};
+    const trackedGames = account.trackedGames && typeof account.trackedGames === 'object' ? account.trackedGames : {};
 
     const tftTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.TFT]);
     const lolTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.LOL]);

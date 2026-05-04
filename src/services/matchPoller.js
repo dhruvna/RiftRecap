@@ -49,6 +49,7 @@ import {
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import { sleep } from '../utils/utils.js';
 import config from '../config.js';
+import { isRankedQueueForGame, mapRiotLolQueueType, RANKED_QUEUES_BY_GAME } from '../domain/queues.js';
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
@@ -189,21 +190,8 @@ async function refreshLolRankSnapshot({ riotLimiter, account }) {
     });
 
     return toRankSnapshot(normalizedEntries, {
-        rankedQueues: new Set([
-            LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
-            LOL_QUEUE_TYPES.RANKED_FLEX,
-        ]),
+        rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL]),
     });
-}
-
-function mapRiotLolQueueType(queueType) {
-    if (queueType === "RANKED_SOLO_5x5") {
-        return LOL_QUEUE_TYPES.RANKED_SOLO_DUO;
-    }
-    if (queueType === "RANKED_FLEX_SR") {
-        return LOL_QUEUE_TYPES.RANKED_FLEX;
-    }
-    return null;
 }
 
 // === Recap event buffer ===
@@ -468,7 +456,7 @@ export async function startMatchPoller(client) {
                                 const meta = detectLolQueueMetaFromMatch(match);
                                 const rawQueueType = meta.queueType || LOL_QUEUE_TYPES.UNKNOWN;
                                 const queueType = mapRiotLolQueueType(rawQueueType) ?? rawQueueType;
-                                const isRanked = isRankedQueue(GAME_TYPES.LOL, queueType);
+                                const isRanked = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
                                 const gameMs = Number(match?.info?.gameEndTimestamp ?? 0)
                                     || Number(match?.info?.gameCreation ?? 0)
                                     || Date.now();
@@ -612,7 +600,7 @@ export async function startMatchPoller(client) {
                         
                         const meta = detectQueueMetaFromMatch(match);
                         const queueType = meta.queueType || TFT_QUEUE_TYPES.RANKED;
-                        const isRanked = isRankedQueue(GAME_TYPES.TFT, queueType);
+                        const isRanked = isRankedQueueForGame(GAME_TYPES.TFT, queueType);
                         const normPlacement = normalizePlacement({ placement, queueType }); 
                         const gameMs = Number(match?.info?.game_datetime ?? 0) || Date.now();
 

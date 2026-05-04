@@ -3,13 +3,15 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { listGuildAccounts } from '../storage.js';
 
+import { GAME_TYPES } from "../constants/queues.js";
 import {
-  GAME_TYPES,
-  ALL_LEADERBOARD_QUEUE_CHOICES,
-  defaultRankedQueueForGame,
-  gameFromQueue,
-  queueLabel,
-} from "../constants/queues.js";
+  allLeaderboardQueueChoices,
+  defaultRankedQueueByGame,
+  queueLabelForGame,
+  resolveGameFromQueue,
+} from "../domain/queues.js";
+
+const ALL_LEADERBOARD_QUEUE_CHOICES = allLeaderboardQueueChoices();
 import { getRankSnapshotForQueue } from "../utils/rankSnapshot.js";
 import { formatRankWithLp, formatWinrate, medalForIndex } from "../utils/presentation.js";
 
@@ -97,8 +99,8 @@ export default {
       return;
     }
     
-    const queueType = rawQueueType ?? defaultRankedQueueForGame(GAME_TYPES.TFT);
-    const game = gameFromQueue(queueType);
+    const queueType = rawQueueType ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
+    const game = resolveGameFromQueue(queueType);
     const limit = interaction.options.getInteger("limit") ?? 15;
 
     const accounts = await listGuildAccounts(guildId);
@@ -128,7 +130,7 @@ export default {
     // Limit output so the embed stays readable.
     const shown = ranked.slice(0, limit);
     
-    const queueLabelText = queueLabel(game, queueType);
+    const queueLabelForGameText = queueLabelForGame(game, queueType);
 
     // Build the human-readable lines shown in the embed.
     const lines = shown.map((r, i) => {
@@ -147,7 +149,7 @@ export default {
 
     // Build and send the embed.
     const embed = new EmbedBuilder()
-        .setTitle(`${game === GAME_TYPES.LOL ? "LoL" : "TFT"} Leaderboard — ${queueLabelText}`)
+        .setTitle(`${game === GAME_TYPES.LOL ? "LoL" : "TFT"} Leaderboard — ${queueLabelForGameText}`)
         .setDescription(lines.join("\n"))
         .setFooter({ text: `Showing top ${shown.length} of ${ranked.length} ranked account(s)` });
         

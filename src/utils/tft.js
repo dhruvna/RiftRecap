@@ -10,9 +10,12 @@ import { buildUnitStripImage } from "./unitStrip.js";
 import {
   GAME_TYPES,
   TFT_QUEUE_TYPES,
-  isRankedQueue,
-  queueLabel,
 } from "../constants/queues.js";
+import {
+  isRankedQueueForGame,
+  queueLabelForGame,
+  queueTypeFromQueueId,
+} from "../domain/queues.js";
 import { formatRankWithLp } from "./presentation.js";
 
 // === Queue helpers ===
@@ -26,26 +29,9 @@ export function getQueueIdFromMatch(match) {
 // Convert queue id into human-friendly metadata.
 export function detectQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromMatch(match);
-    if (queueId === 1100) {
-        return { queueId, 
-            mode: "RANKED", 
-            queueType: TFT_QUEUE_TYPES.RANKED, 
-            label: queueLabel(GAME_TYPES.TFT, TFT_QUEUE_TYPES.RANKED) 
-        };
-    }
-    if (queueId === 1160) {
-        return { queueId, 
-            mode: "DOUBLE UP", 
-            queueType: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP, 
-            label: queueLabel(GAME_TYPES.TFT, TFT_QUEUE_TYPES.RANKED_DOUBLE_UP) 
-        };
-    }
-    return {
-        queueId,
-        mode: "UNKNOWN",
-        queueType: TFT_QUEUE_TYPES.UNKNOWN,
-        label: queueLabel(GAME_TYPES.TFT, TFT_QUEUE_TYPES.UNKNOWN),
-    };
+    const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
+    const mode = queueType === TFT_QUEUE_TYPES.RANKED ? "RANKED" : (queueType === TFT_QUEUE_TYPES.RANKED_DOUBLE_UP ? "DOUBLE UP" : "UNKNOWN");
+    return { queueId, mode, queueType, label: queueLabelForGame(GAME_TYPES.TFT, queueType) };
 }
 
 // Normalize placement for queue-specific differences (like Double Up).
@@ -78,7 +64,7 @@ export function placementToOrdinal(placement) {
 
 // Wrap queue label helper for semantic clarity at call sites.
 export function labelForQueueType(queueType) {
-    return queueLabel(GAME_TYPES.TFT, queueType);
+    return queueLabelForGame(GAME_TYPES.TFT, queueType);
 }
 
 // === Embed construction ===
@@ -99,7 +85,7 @@ export async function buildMatchResultEmbed({
     const p = typeof placement === "number" ? placement : null;
     const d = typeof delta === "number" ? delta : 0;
 
-    const isRanked = isRankedQueue(GAME_TYPES.TFT, queueType);
+    const isRanked = isRankedQueueForGame(GAME_TYPES.TFT, queueType);
     
     const isWin = p !== null && p <= 4;
     const isLoss = p !== null && p >= 5;

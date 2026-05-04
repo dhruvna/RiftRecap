@@ -5,13 +5,16 @@ import {
   buildRecapEmbed,
   computeRecapRows,
 } from "../utils/recap.js";
+import { GAME_TYPES } from "../constants/queues.js";
 import {
-  GAME_TYPES,
-  ALL_RECAP_QUEUE_CHOICES,
-  defaultRankedQueueForGame,
-  gameFromQueue,
-  VALID_RECAP_QUEUES,
-} from "../constants/queues.js";
+  allRecapQueueChoices,
+  defaultRankedQueueByGame,
+  resolveGameFromQueue,
+  validRecapQueuesSet,
+} from "../domain/queues.js";
+
+const ALL_RECAP_QUEUE_CHOICES = allRecapQueueChoices();
+const VALID_RECAP_QUEUES = validRecapQueuesSet();
 import { RECAP_MODE_CHOICES, hoursForMode, invalidRecapModeMessage, parseRecapMode } from "../constants/recap.js";
 
 /* -------------------- Command -------------------- */
@@ -56,8 +59,8 @@ export default {
             return;
         }
 
-        const queue = rawQueue ?? defaultRankedQueueForGame(GAME_TYPES.TFT);
-        const game = gameFromQueue(queue);        
+        const queue = rawQueue ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
+        const game = resolveGameFromQueue(queue);
         const hours = hoursForMode(mode);
         const cutoff = Date.now() - hours * 60 * 60 * 1000;
 

@@ -29,9 +29,6 @@ export const GAME_TYPE_CHOICES = Object.freeze([
     { name: "LoL", value: GAME_TYPES.LOL },
 ]);
 
-// Backward compatibility alias; prefer TFT_QUEUE_TYPES in new code.
-export const QUEUE_TYPES = TFT_QUEUE_TYPES;
-
 const QUEUE_LABELS_BY_GAME = Object.freeze({
     [GAME_TYPES.TFT]: Object.freeze({
         [TFT_QUEUE_TYPES.RANKED]: "Ranked TFT",
@@ -55,9 +52,6 @@ const RANKED_QUEUES_BY_GAME = Object.freeze({
         LOL_QUEUE_TYPES.RANKED_FLEX,
     ]),
 });
-
-// Backward compatibility set used by existing rank snapshot/register flows.
-export const RANKED_QUEUES = RANKED_QUEUES_BY_GAME[GAME_TYPES.TFT];
 
 // Default queues to announce when a user has not customized their settings.
 export const DEFAULT_ANNOUNCE_QUEUES = [

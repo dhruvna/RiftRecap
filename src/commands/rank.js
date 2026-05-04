@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { getTftRegaliaThumbnailUrl, getLeagueOfGraphsUrl, getLolProfileUrl } from "../riot.js";
-import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES, TRACKING_GAME_CHOICES, queueLabel } from "../constants/queues.js"
+import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES, TRACKING_GAME_CHOICES } from "../constants/queues.js"
+import { queueLabelForGame, rankedQueueChoicesByGame } from "../domain/queues.js"
 import { getLolTracking, getTftTracking, loadDb, normalizeAccountTracking } from "../storage.js";
 import { respondWithAccountChoices } from "../utils/autocomplete.js";
 import { formatRankLine, formatWinrate } from "../utils/presentation.js";
@@ -38,10 +39,8 @@ function buildQueueEntry(lastRankByQueue, queueType, gameType) {
 }
 
 const QUEUE_DEFINITIONS = [
-    { gameType: GAME_TYPES.TFT, queueType: TFT_QUEUE_TYPES.RANKED, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "TFT" },
-    { gameType: GAME_TYPES.TFT, queueType: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "TFT" },
-    { gameType: GAME_TYPES.LOL, queueType: LOL_QUEUE_TYPES.RANKED_SOLO_DUO, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "LOL" },
-    { gameType: GAME_TYPES.LOL, queueType: LOL_QUEUE_TYPES.RANKED_FLEX, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "LOL" },
+    ...rankedQueueChoicesByGame(GAME_TYPES.TFT).map((choice) => ({ gameType: GAME_TYPES.TFT, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "TFT" })),
+    ...rankedQueueChoicesByGame(GAME_TYPES.LOL).map((choice) => ({ gameType: GAME_TYPES.LOL, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "LOL" })),
 ];
 
 async function buildQueueEmbed({account, label, entry}) {
@@ -132,12 +131,12 @@ export default {
             embeds.push(
                 await buildQueueEmbed({
                     account: stored,
-                    label: queueLabel(definition.gameType, definition.queueType),
+                    label: queueLabelForGame(definition.gameType, definition.queueType),
                     entry,
                 })
             );
         }
-        // 7. If no ranked entries, show unranked message
+        // 6. If no ranked entries, show unranked message
         if (embeds.length === 0) {
             const gameSuffix = selectedGame === "BOTH" ? "" : ` ${selectedGame === "LOL" ? "LoL" : "TFT"}`;
             embeds.push(
@@ -147,7 +146,7 @@ export default {
             )
         }
         
-        //8. Send reply with embeds (one main reply + up to 9 follow-ups if multiple queues)
+        //7. Send reply with embeds (one main reply + up to 9 follow-ups if multiple queues)
         await interaction.editReply({ embeds: [embeds[0]] });
         for (let i = 1; i < embeds.length && i < 10; i++) {
                 await interaction.followUp({ embeds: [embeds[i]], ephemeral: true});

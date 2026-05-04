@@ -6,12 +6,12 @@ import {
     getLatestDDragonVersion,
     getLolMatchUrl,
 } from "../riot.js";
+import { GAME_TYPES } from "../constants/queues.js";
 import {
-  GAME_TYPES,
-  LOL_QUEUE_TYPES,
-  isRankedQueue,
-  queueLabel,
-} from "../constants/queues.js";
+  isRankedQueueForGame,
+  queueLabelForGame,
+  queueTypeFromQueueId,
+} from "../domain/queues.js";
 import { formatRankWithLp } from "./presentation.js";
 
 function formatDelta(delta) {
@@ -31,9 +31,7 @@ function formatDurationFromSeconds(seconds) {
 }
 
 function buildLolQueueLabel(queueType) {
-    if (queueType === LOL_QUEUE_TYPES.RANKED_SOLO_DUO) return "Ranked Solo/Duo";
-    if (queueType === LOL_QUEUE_TYPES.RANKED_FLEX) return "Ranked Flex";
-    return queueLabel(GAME_TYPES.LOL, queueType);
+    return queueLabelForGame(GAME_TYPES.LOL, queueType);
 }
 
 function buildChampionIconUrl(participant, version) {
@@ -58,26 +56,8 @@ export function getQueueIdFromLolMatch(match) {
 // Convert queue id into human-friendly metadata.
 export function detectLolQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromLolMatch(match);
-    if (queueId === 420) {
-        return {
-            queueId,
-            queueType: LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
-            label: queueLabel(GAME_TYPES.LOL, LOL_QUEUE_TYPES.RANKED_SOLO_DUO),
-        };
-    }
-    if (queueId === 440) {
-        return {
-            queueId,
-            queueType: LOL_QUEUE_TYPES.RANKED_FLEX,
-            label: queueLabel(GAME_TYPES.LOL, LOL_QUEUE_TYPES.RANKED_FLEX),
-        };
-    }
-
-    return {
-        queueId,
-        queueType: LOL_QUEUE_TYPES.UNKNOWN,
-        label: queueLabel(GAME_TYPES.LOL, LOL_QUEUE_TYPES.UNKNOWN),
-    };
+    const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
+    return { queueId, queueType, label: queueLabelForGame(GAME_TYPES.LOL, queueType) };
 }
 
 // === Embed construction ===
@@ -100,7 +80,7 @@ export async function buildLolMatchResultEmbed({
     const assists = Number(participant?.assists ?? 0);
     const kda = `${kills}/${deaths}/${assists}`;
     const didWin = participant?.win === true;
-    const isRankedMatch = isRankedQueue(GAME_TYPES.LOL, queueType);
+    const isRankedMatch = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
 
     const embed = new EmbedBuilder()
         .setURL(matchUrl)

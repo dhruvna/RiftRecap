@@ -34,6 +34,10 @@ A Discord bot built with **Node.js**, **discord.js**, and the **Riot Games API**
 - Automatically creates `user_data/` and `registrations.json` if missing.
 - Uses atomic writes (temp file + rename).
 
+### Schema migration status
+- Migration to canonical current storage schema completed on **May 4, 2026**.
+- Legacy compatibility coercion paths were intentionally removed from runtime normalization.
+
 ### Automated Match Tracking
 - Polls each registered account's most recent TFT/LoL match ID.
 - Detects new games via stored match cursors.

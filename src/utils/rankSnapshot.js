@@ -1,6 +1,6 @@
 // === Imports ===
 // Ranked queue constants ensure we only snapshot relevant queues.
-import { GAME_TYPES, RANKED_QUEUES } from "../constants/queues.js";
+import { GAME_TYPES, TFT_QUEUE_TYPES } from "../constants/queues.js";
 import { getLolTracking, getTftTracking } from "../storage.js";
 
 // === Rank normalization constants ===
@@ -51,7 +51,16 @@ export function standardizeRankLp(rank) {
 
 // === Snapshot conversion ===
 // Convert raw Riot entries into our internal snapshot structure.
-export function toRankSnapshot(entries, { now = Date.now(), rankedQueues = RANKED_QUEUES } = {}) {
+export function toRankSnapshot(entries,
+    {
+        now = Date.now(),
+        rankedQueues = new Set([
+            TFT_QUEUE_TYPES.RANKED,
+            TFT_QUEUE_TYPES.RANKED_DOUBLE_UP,
+        ]),
+    } = {},
+) {
+
     const rows = Array.isArray(entries) ? entries : [];
     const normalizedRows = rows.map((entry) => {
         if (!entry || typeof entry !== "object") return entry;

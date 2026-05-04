@@ -17,7 +17,7 @@ import {
     makeAccountKey,
     upsertGuildAccountInStore,
 } from '../storage.js';
-import { LOL_QUEUE_TYPES, RANKED_QUEUES } from "../constants/queues.js";
+import { LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from "../constants/queues.js";
 import { toRankSnapshot } from "../utils/rankSnapshot.js";
 
 export default {
@@ -90,7 +90,13 @@ export default {
         let tftLastRankByQueue = {};
         try {
             const entries = await getTFTRankByPuuid({ platform, puuid: tftAccount.puuid });
-            tftLastRankByQueue = toRankSnapshot(entries, { rankedQueues: RANKED_QUEUES });
+            tftLastRankByQueue = toRankSnapshot(entries, {
+                rankedQueues: new Set([
+                    TFT_QUEUE_TYPES.RANKED,
+                    TFT_QUEUE_TYPES.RANKED_DOUBLE_UP,
+                ]),
+            });
+
        } catch (err) {
             const status = err?.status;
             console.error(
