@@ -8,12 +8,12 @@ export const TRACKED_GAMES = {
 
 export const DEFAULT_RECAP_CONFIG_ID = 'default';
 
-export function normalizeIdentityNamespace(identityNamespace, fallbackPuuid = null) {
+export function normalizeIdentityNamespace(identityNamespace) {
     const safeNamespace =
         identityNamespace && typeof identityNamespace === 'object' ? identityNamespace : {};
     return {
         ...safeNamespace,
-        puuid: safeNamespace.puuid ?? fallbackPuuid ?? null,
+        puuid: safeNamespace.puuid ?? null,
     };
 }
 
@@ -21,11 +21,10 @@ export function normalizeAccountIdentity(account) {
     const safeIdentity = account?.identity && typeof account.identity === 'object'
         ? account.identity
         : {};
-    const legacyPuuid = account?.puuid ?? null;
     return {
         ...safeIdentity,
-        [TRACKED_GAMES.TFT]: normalizeIdentityNamespace(safeIdentity[TRACKED_GAMES.TFT], legacyPuuid),
-        [TRACKED_GAMES.LOL]: normalizeIdentityNamespace(safeIdentity[TRACKED_GAMES.LOL], null),
+        [TRACKED_GAMES.TFT]: normalizeIdentityNamespace(safeIdentity[TRACKED_GAMES.TFT]),
+        [TRACKED_GAMES.LOL]: normalizeIdentityNamespace(safeIdentity[TRACKED_GAMES.LOL]),
     };
 }
 
@@ -43,20 +42,6 @@ export function normalizeRecapConfig(config, fallbackId = DEFAULT_RECAP_CONFIG_I
                 ? safe.lastSentYmdByMode
                 : {},
     };
-}
-
-function readLegacyRankByQueue(account) {
-    return account?.lastRankByQueue && typeof account.lastRankByQueue === 'object'
-        ? account.lastRankByQueue
-        : {};
-}
-
-function readLegacyRecapEvents(account) {
-    return Array.isArray(account?.recapEvents) ? account.recapEvents : [];
-}
-
-function readLegacyLastMatchId(account) {
-    return account?.lastMatchId ?? null;
 }
 
 function normalizeTrackedGameNamespace(
@@ -102,10 +87,10 @@ export function normalizeAccountTracking(account) {
 
     const tftTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.TFT], {
         fallbackEnabled: true,
-        fallbackLastMatchId: readLegacyLastMatchId(account),
+        fallbackLastMatchId: null,
         fallbackLastMatchAt: null,
-        fallbackLastRankByQueue: readLegacyRankByQueue(account),
-        fallbackRecapEvents: readLegacyRecapEvents(account),
+        fallbackLastRankByQueue: null,
+        fallbackRecapEvents: null,
     });
 
     const lolTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.LOL], {

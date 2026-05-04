@@ -50,34 +50,9 @@ async function postRecapForConfig({
     fireMinute,
 }) {
     const game = recapConfig.game ?? GAME_TYPES.TFT;
-    // const mode = recapConfig.mode ?? 'DAILY';
     const mode = parseRecapMode(recapConfig.mode);
     const queue = recapConfig.queue ?? defaultRankedQueueForGame(game);
-    // const lastSentYmd = recapConfig.lastSentYmd ?? null;
     const configId = recapConfig.id ?? 'default';
-
-    // const { shouldFire, scheduledTime } = shouldFireRecapAutopost({
-    //     now,
-    //     fireHour,
-    //     fireMinute,
-    //     lastSentYmd,
-    // });
-
-    // if (!shouldFire) return;
-
-    // console.log(
-    //     `[recap-autopost] firing guild=${guildId} config=${configId} mode=${mode} game=${game} queue=${queue}`
-    // );
-
-    // const hours = hoursForMode(mode);
-    // const cutoff = getRecapCutoffTimestamp({ now, hours });
-    // const accounts = guild?.accounts ?? [];
-    // const rows = computeRecapRows(accounts, cutoff, queue, game);
-    // const embed = buildRecapEmbed({ rows, mode, game, queue, hours });
-
-    // await channel.send({ embeds: [embed] });
-    // const updated = await setGuildRecapLastSentYmdByIdInStore(guildId, configId, today);
-    // console.log(`[recap-autopost] sent guild=${guildId} config=${configId} mode=${mode} game=${game} queue=${queue} today=${today} stored=${updated}`);
     const lastSentYmdByMode = recapConfig.lastSentYmdByMode && typeof recapConfig.lastSentYmdByMode === 'object'
         ? recapConfig.lastSentYmdByMode
         : {};

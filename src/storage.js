@@ -63,28 +63,10 @@ export async function loadDb() {
     await ensureDataFile();
     try {
         const raw = await fs.readFile(DATA_PATH, 'utf-8');
-        return JSON.parse(raw);const parsed = JSON.parse(raw);
-        const migrated = migrateLegacyGuildRecapShape(parsed);
-        if (migrated.didChange) {
-            await writeDbAtomically(migrated.db);
-        }
-        return migrated.db;
+        return JSON.parse(raw);
     } catch {
         return {};
     }
-}
-
-function migrateLegacyGuildRecapShape(db) {
-    const safeDb = db && typeof db === 'object' ? db : {};
-    let didChange = false;
-    for (const guildId of Object.keys(safeDb)) {
-        const guild = ensureGuildMutable(safeDb, guildId);
-        if ('recap' in guild) {
-            delete guild.recap;
-            didChange = true;
-        }
-    }
-    return { db: safeDb, didChange };
 }
 
 // Queue-backed read-modify-write transaction.
@@ -102,7 +84,7 @@ async function mutateDb(mutator) {
 
 async function mutateGuild(guildId, mutator) {
     assertValidGuildId(guildId, 'mutateGuild');
-    return mutateDb(async (db) => {
+    return mutateDb((db) => {
         const guild = ensureGuildMutable(db, guildId);
         return mutator({ db, guild });
     });
@@ -121,42 +103,8 @@ function assertValidGuildId(guildId, context = 'storage') {
 }
 
 // === Guild normalization ===
-// Ensure a guild object exists and has the minimum required shape.
-function ensureGuildMutable(db, guildId) {
-    if (!db[guildId]) db[guildId] = {};
-    if (!Array.isArray(db[guildId].accounts)) db[guildId].accounts = [];
-    db[guildId].accounts = db[guildId].accounts.map((account) => normalizeAccountTracking(account));
-    if (!('channelId' in db[guildId])) db[guildId].channelId = null;    
-
-    if (!('announceQueues' in db[guildId])) {
-        db[guildId].announceQueues = [...DEFAULT_ANNOUNCE_QUEUES];
-    }
-
-    if (!('tft' in db[guildId]) || typeof db[guildId].tft !== 'object' || db[guildId].tft === null) {
-        db[guildId].tft = {
-            seasonCutoffMs: null,
-        };
-    } else {
-        const numericCutoff = Number(db[guildId].tft.seasonCutoffMs ?? 0);
-        db[guildId].tft.seasonCutoffMs =
-            Number.isFinite(numericCutoff) && numericCutoff > 0 ? numericCutoff : null;
-    }
-
-    if (!Array.isArray(db[guildId].recapConfigs)) {
-        const legacyRecap = 
-            db[guildId].recap && typeof db[guildId].recap === 'object'
-            ? db[guildId].recap
-            : null;
-        db[guildId].recapConfigs = [normalizeRecapConfig(legacyRecap, DEFAULT_RECAP_CONFIG_ID)];
-    } else {
-        db[guildId].recapConfigs = db[guildId].recapConfigs.map((cfg, idx) =>
-            normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
-        );
-    }
-    return db[guildId];
-}
-
-function normalizeGuildView(guild) {
+// Shared schema normalization with one set of defaults.
+function normalizeGuildShape(guild, { mutating = false } = {}) {
     const source = guild && typeof guild === 'object' ? guild : {};
     const accounts = Array.isArray(source.accounts)
         ? source.accounts.map((account) => normalizeAccountTracking(account))
@@ -167,9 +115,9 @@ function normalizeGuildView(guild) {
         ? source.recapConfigs.map((cfg, idx) =>
             normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
         )
-        : [normalizeRecapConfig(source.recap, DEFAULT_RECAP_CONFIG_ID)];
+        : [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
 
-    return {
+    const normalized = {
         ...source,
         accounts,
         channelId: 'channelId' in source ? source.channelId : null,
@@ -181,8 +129,24 @@ function normalizeGuildView(guild) {
             seasonCutoffMs: Number.isFinite(numericCutoff) && numericCutoff > 0 ? numericCutoff : null,
         },
         recapConfigs,
-        recap: recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID),
     };
+    if (!mutating) {
+        return normalized;
+    }
+
+    Object.assign(guild, normalized);
+    return guild;
+}
+
+// Mutable storage normalization ensures persisted objects are updated in-place.
+// Read model normalization returns a normalized view without mutating caller-owned objects.
+function ensureGuildMutable(db, guildId) {
+    if (!db[guildId]) db[guildId] = {};
+    return normalizeGuildShape(db[guildId], { mutating: true });
+}
+
+function normalizeGuildView(guild) {
+    return normalizeGuildShape(guild, { mutating: false });
 }
 
 export function getTrackedGameIdentity(account, gameKey) {
@@ -243,7 +207,7 @@ export async function upsertGuildAccountInStore(guildId, account) {
 }
 
 export async function removeGuildAccountByKey(guildId, key) {
-    return mutateGuild(guildId, async ({ guild }) => {
+    return mutateGuild(guildId, ({ guild }) => {
         if (!guild?.accounts?.length) return { removed: null, didChange: false };
         const idx = guild.accounts.findIndex((a) => a.key === key);
         if (idx === -1) return { removed: null, didChange: false };
@@ -253,7 +217,7 @@ export async function removeGuildAccountByKey(guildId, key) {
 }
 
 // === Guild-level settings ===
-async function setGuildChannel(db, guildId, channelId) {
+function setGuildChannel(db, guildId, channelId) {
     const g = ensureGuildMutable(db, guildId);
     g.channelId = channelId;
     return { channelId };
@@ -341,6 +305,13 @@ export async function setGuildRecapLastSentYmdByIdInStore(guildId, configId, las
     }).then((result) => result?.updated ?? false);
 }
 
+function isSameTftConfig(a, b) {
+    const left = a && typeof a === 'object' ? a : {};
+    const right = b && typeof b === 'object' ? b : {};
+
+    return (left.seasonCutoffMs ?? null) === (right.seasonCutoffMs ?? null);
+}
+
 export async function setGuildTftConfigInStore(guildId, patch) {
     return mutateGuild(guildId, ({ guild }) => {
         const current = guild?.tft && typeof guild.tft === 'object'
@@ -353,7 +324,7 @@ export async function setGuildTftConfigInStore(guildId, patch) {
         };
         const next = { ...current, ...normalizedPatch };
 
-        if (JSON.stringify(next) === JSON.stringify(current)) {
+        if (isSameTftConfig(next, current)) {
             return { didChange: false, tft: current };
         }
 
@@ -362,16 +333,16 @@ export async function setGuildTftConfigInStore(guildId, patch) {
     }).then((result) => result?.tft ?? null);
 }
 
-async function setGuildQueueConfig(db, guildId, queues) {
+function setGuildQueueConfig(db, guildId, queues) {
     const g = ensureGuildMutable(db, guildId);
     g.announceQueues = queues;
     return g.announceQueues;
 }
 
 export async function setGuildChannelAndQueueConfigInStore(guildId, { channelId, queues }) {
-    return mutateGuild(guildId, async ({ db }) => {
-        await setGuildChannel(db, guildId, channelId);
-        const announceQueues = await setGuildQueueConfig(db, guildId, queues);
+    return mutateGuild(guildId, ({ db }) => {
+        setGuildChannel(db, guildId, channelId);
+        const announceQueues = setGuildQueueConfig(db, guildId, queues);
         return { didChange: true, channelId, announceQueues };
     });
 }

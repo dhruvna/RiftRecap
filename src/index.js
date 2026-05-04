@@ -40,7 +40,8 @@ for (const command of commands) {
 }
 
 // === Startup hook ===
-// Once the client is connected, we log diagnostics and spin up background services.
+// Once the client is connected, we log concise diagnostics and spin up background services.
+const debugEnabled = (config.debug ?? String(process.env.LOG_LEVEL ?? '').toLowerCase() === 'debug');
 /**
  * Bootstraps startup diagnostics and long-running services after Discord signals readiness.
  */
@@ -56,20 +57,32 @@ client.once('clientReady', async () => {
         console.error('[startup] failed pruning recap events:', e);
     }
 
-    // Load the database and log some info about each guild for debugging.
-    // This gives visibility into accounts, snapshot coverage, and recap config.
+    // Load the database and log concise startup summary.
+    // Detailed guild payloads remain available behind debug logging.
     try {
         const db = await loadDb();
-        for (const [gid, g] of Object.entries(db)) {
+        const guildEntries = Object.entries(db);
+        let totalAccounts = 0;
+        let totalRankedSnapshots = 0;
+
+        for (const [gid, g] of guildEntries) {
             const accounts = g?.accounts ?? [];
             const rankedSnapshots = accounts.filter((account) =>
                 getRankSnapshotForQueue(account, TFT_QUEUE_TYPES.RANKED)?.tier).length;
-            console.log(
-                `[startup] guild=${gid} channelId=${g?.channelId ?? "null"} accounts=${accounts.length} rankedSnapshots=${rankedSnapshots} recapConfigs=${JSON.stringify(
+            totalAccounts += accounts.length;
+            totalRankedSnapshots += rankedSnapshots;
+
+            if (debugEnabled) {
+                console.log(
+                    `[startup][debug] guild=${gid} channelId=${g?.channelId ?? "null"} accounts=${accounts.length} rankedSnapshots=${rankedSnapshots} recapConfigs=${JSON.stringify(
                         g?.recapConfigs ?? []
                     )} tft=${JSON.stringify(g?.tft ?? null)}`
                 );
+            }
         }
+        console.log(
+            `[startup] guilds=${guildEntries.length} totalAccounts=${totalAccounts} rankedSnapshots=${totalRankedSnapshots}`
+        );
     } catch (e) {
         console.error("[startup] failed reading db:", e);
     }
