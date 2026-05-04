@@ -46,30 +46,23 @@ export function normalizeRecapConfig(config, fallbackId = DEFAULT_RECAP_CONFIG_I
 
 function normalizeTrackedGameNamespace(
     gameState,
-    {
-        fallbackEnabled = true,
-        fallbackLastMatchId = null,
-        fallbackLastMatchAt = null,
-        fallbackLastRankByQueue = {},
-        fallbackRecapEvents = [],
-    } = {}
 ) {
     const safeGameState = gameState && typeof gameState === 'object' ? gameState : {};
-    const numericLastMatchAt = Number(safeGameState.lastMatchAt ?? fallbackLastMatchAt ?? 0);
+    const numericLastMatchAt = Number(safeGameState.lastMatchAt ?? 0);
     const enabled =
         typeof safeGameState.enabled === 'boolean'
             ? safeGameState.enabled
-            : Boolean(fallbackEnabled);
+            : true;
     return {
         ...safeGameState,
         enabled,
-        lastMatchId: safeGameState.lastMatchId ?? fallbackLastMatchId,
+        lastMatchId: safeGameState.lastMatchId ?? null,
         lastMatchAt: Number.isFinite(numericLastMatchAt) && numericLastMatchAt > 0 ? numericLastMatchAt : null,
         lastRankByQueue:
             safeGameState.lastRankByQueue && typeof safeGameState.lastRankByQueue === 'object'
                 ? safeGameState.lastRankByQueue
-                : fallbackLastRankByQueue,
-        recapEvents: Array.isArray(safeGameState.recapEvents) ? safeGameState.recapEvents : fallbackRecapEvents,
+                : {},
+        recapEvents: Array.isArray(safeGameState.recapEvents) ? safeGameState.recapEvents : [],
     };
 }
 
@@ -85,32 +78,13 @@ export function normalizeAccountTracking(account) {
         ? account.trackedGames
         : {};
 
-    const tftTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.TFT], {
-        fallbackEnabled: true,
-        fallbackLastMatchId: null,
-        fallbackLastMatchAt: null,
-        fallbackLastRankByQueue: null,
-        fallbackRecapEvents: null,
-    });
-
-    const lolTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.LOL], {
-        fallbackEnabled: true,
-        fallbackLastMatchId: null,
-        fallbackLastMatchAt: null,
-        fallbackLastRankByQueue: {},
-        fallbackRecapEvents: [],
-    });
+    const tftTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.TFT]);
+    const lolTracked = normalizeTrackedGameNamespace(trackedGames[TRACKED_GAMES.LOL]);
 
     normalizedAccount.trackedGames = {
         ...trackedGames,
         [TRACKED_GAMES.TFT]: tftTracked,
         [TRACKED_GAMES.LOL]: lolTracked,
     };
-
-    if ('lastMatchId' in normalizedAccount) delete normalizedAccount.lastMatchId;
-    if ('lastRankByQueue' in normalizedAccount) delete normalizedAccount.lastRankByQueue;
-    if ('recapEvents' in normalizedAccount) delete normalizedAccount.recapEvents;
-    if ('puuid' in normalizedAccount) delete normalizedAccount.puuid;
-
     return normalizedAccount;
 }

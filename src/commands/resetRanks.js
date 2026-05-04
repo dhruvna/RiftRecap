@@ -4,7 +4,7 @@ import {
     TRACKED_GAMES,
     resetGuildAccountProgressBeforeInStore,
     resetGuildAccountProgressInStore,
-    setGuildTftConfigInStore,
+    updateGuildTftConfigInStore,
 } from "../storage.js";
 
 function parseCutoffDateOrNull(input) {
@@ -88,7 +88,7 @@ export default {
                 : await resetGuildAccountProgressInStore(guildId, { gameScope });
 
         if (beforeDate) {
-            await setGuildTftConfigInStore(guildId, { seasonCutoffMs: cutoffMs });
+            await updateGuildTftConfigInStore(guildId, { seasonCutoffMs: cutoffMs });
         }
 
         if ((result?.totalAccounts ?? 0) === 0) {

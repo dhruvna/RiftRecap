@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType } from "discord.js";
-import { setGuildChannelAndQueueConfigInStore } from "../storage.js";
+import { updateGuildChannelAndQueueConfigInStore } from "../storage.js";
 import { DEFAULT_ANNOUNCE_QUEUES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from "../constants/queues.js";
 
 const ANNOUNCE_QUEUE_PRESETS = Object.freeze({
@@ -68,7 +68,7 @@ export default {
                         ? "Ranked LoL only"
                         : "Ranked TFT + Ranked LoL";
 
-        await setGuildChannelAndQueueConfigInStore(guildId, {
+        await updateGuildChannelAndQueueConfigInStore(guildId, {
             channelId: channel.id,
             queues: selectedQueues,
         });

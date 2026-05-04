@@ -19,6 +19,13 @@ const DATA_PATH = process.env.DATA_PATH
     ? path.resolve(process.env.DATA_PATH)
     : path.join(process.env.DATA_DIR ?? path.dirname(DEFAULT_DATA_PATH), 'registrations.json');
 
+/**
+ * Storage module contract for guild data:
+ * - Read helpers (`get*`, `list*`) return normalized views and do not mutate caller-owned objects.
+ * - Update helpers (`update*InStore`) enqueue read-modify-write transactions and persist to disk.
+ *
+ * Guild operations cover accounts, channel/queue settings, recap configs, and TFT config.
+ */
 // I/O + mutation orchestration layer: file access, queueing, and store-level state transitions.
 // Keep pure shape-normalization logic in ./storage/normalize.js.
 // Serialize write operations so RMW cycles don't collide.
@@ -104,7 +111,7 @@ function assertValidGuildId(guildId, context = 'storage') {
 
 // === Guild normalization ===
 // Shared schema normalization with one set of defaults.
-function normalizeGuildShape(guild, { mutating = false } = {}) {
+function normalizeGuildShape(guild) {
     const source = guild && typeof guild === 'object' ? guild : {};
     const accounts = Array.isArray(source.accounts)
         ? source.accounts.map((account) => normalizeAccountTracking(account))
@@ -117,7 +124,7 @@ function normalizeGuildShape(guild, { mutating = false } = {}) {
         )
         : [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
 
-    const normalized = {
+    return {
         ...source,
         accounts,
         channelId: 'channelId' in source ? source.channelId : null,
@@ -130,23 +137,12 @@ function normalizeGuildShape(guild, { mutating = false } = {}) {
         },
         recapConfigs,
     };
-    if (!mutating) {
-        return normalized;
-    }
-
-    Object.assign(guild, normalized);
-    return guild;
 }
 
-// Mutable storage normalization ensures persisted objects are updated in-place.
-// Read model normalization returns a normalized view without mutating caller-owned objects.
 function ensureGuildMutable(db, guildId) {
     if (!db[guildId]) db[guildId] = {};
-    return normalizeGuildShape(db[guildId], { mutating: true });
-}
-
-function normalizeGuildView(guild) {
-    return normalizeGuildShape(guild, { mutating: false });
+    db[guildId] = normalizeGuildShape(db[guildId]);
+    return db[guildId];
 }
 
 export function getTrackedGameIdentity(account, gameKey) {
@@ -183,7 +179,7 @@ export function makeAccountKey({ gameName, tagLine, platform }) {
 // === Account Creation, Read, Update, Deletion ===
 export async function listGuildAccounts(guildId) {
     const db = await loadDb();
-    const guild = normalizeGuildView(db?.[guildId]);
+    const guild = normalizeGuildShape(db?.[guildId]);
     return guild?.accounts ?? [];
 }
 
@@ -217,53 +213,44 @@ export async function removeGuildAccountByKey(guildId, key) {
 }
 
 // === Guild-level settings ===
-function setGuildChannel(db, guildId, channelId) {
+function updateGuildChannelInDb(db, guildId, channelId) {
     const g = ensureGuildMutable(db, guildId);
     g.channelId = channelId;
     return { channelId };
 }
 
-export function getGuildRecapConfig(db, guildId) {
-    const g = normalizeGuildView(db?.[guildId]);
-    return g.recapConfigs[0];
-}
-
 export function getGuildRecapConfigs(db, guildId) {
-    const g = normalizeGuildView(db?.[guildId]);
+    const g = normalizeGuildShape(db?.[guildId]);
     return g.recapConfigs;
 }
 
 export function getGuildTftConfig(db, guildId) {
-    const g = normalizeGuildView(db?.[guildId]);
+    const g = normalizeGuildShape(db?.[guildId]);
     return g.tft;
 }
 
-export function setGuildRecapConfig(db, guildId, patch) {
+function updateGuildDefaultRecapConfigInDb(db, guildId, patch) {
     const g = ensureGuildMutable(db, guildId);
     const current = g.recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
     g.recapConfigs[0] = normalizeRecapConfig({ ...current, ...patch }, current.id);
     return g.recapConfigs[0];
 }
 
-export function setGuildRecapConfigsInStore(guildId, recapConfigs) {
-    return mutateGuild(guildId, ({ guild }) => {
-        const incoming = Array.isArray(recapConfigs) ? recapConfigs : [];
-        guild.recapConfigs = incoming.map((cfg, idx) =>
-            normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
-        );
-        return { didChange: true, recapConfigs: guild.recapConfigs };
+export async function updateGuildRecapConfigsInStore(guildId, patch) {
+    return mutateGuild(guildId, ({ db, guild }) => {
+        if (Array.isArray(patch?.recapConfigs)) {
+            guild.recapConfigs = patch.recapConfigs.map((cfg, idx) =>
+                normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
+            );
+            return { didChange: true, recapConfigs: guild.recapConfigs };
+        }
+        const defaultPatch = patch?.defaultRecapPatch ?? patch ?? {};
+        const recap = updateGuildDefaultRecapConfigInDb(db, guildId, defaultPatch);
+        return { didChange: true, recapConfigs: [recap, ...guild.recapConfigs.slice(1)] };
     }).then((result) => result?.recapConfigs ?? []);
 }
 
-
-export async function setGuildRecapConfigInStore(guildId, patch) {
-    return mutateGuild(guildId, ({ db }) => {
-        const recap = setGuildRecapConfig(db, guildId, patch);
-        return { recap, didChange: true };
-    }).then((result) => result?.recap ?? null);
-}
-
-export async function setGuildRecapLastSentYmdInStore(guildId, lastSentYmd) {
+export async function updateGuildRecapLastSentYmdInStore(guildId, lastSentYmd) {
     return mutateGuild(guildId, ({ guild }) => {
         const current = guild?.recapConfigs?.[0]?.lastSentYmd ?? null;
         if (current === lastSentYmd) {
@@ -277,7 +264,7 @@ export async function setGuildRecapLastSentYmdInStore(guildId, lastSentYmd) {
     }).then((result) => result?.updated ?? false);
 }
 
-export async function setGuildRecapLastSentYmdByIdInStore(guildId, configId, lastSentYmd, mode = null) {
+export async function updateGuildRecapLastSentYmdByIdInStore(guildId, configId, lastSentYmd, mode = null) {
     return mutateGuild(guildId, ({ guild }) => {
         const recapConfigs = Array.isArray(guild?.recapConfigs) ? guild.recapConfigs : [];
         const idx = recapConfigs.findIndex((cfg) => cfg?.id === configId);
@@ -312,7 +299,7 @@ function isSameTftConfig(a, b) {
     return (left.seasonCutoffMs ?? null) === (right.seasonCutoffMs ?? null);
 }
 
-export async function setGuildTftConfigInStore(guildId, patch) {
+export async function updateGuildTftConfigInStore(guildId, patch) {
     return mutateGuild(guildId, ({ guild }) => {
         const current = guild?.tft && typeof guild.tft === 'object'
             ? guild.tft
@@ -333,16 +320,16 @@ export async function setGuildTftConfigInStore(guildId, patch) {
     }).then((result) => result?.tft ?? null);
 }
 
-function setGuildQueueConfig(db, guildId, queues) {
+function updateGuildQueueConfigInDb(db, guildId, queues) {
     const g = ensureGuildMutable(db, guildId);
     g.announceQueues = queues;
     return g.announceQueues;
 }
 
-export async function setGuildChannelAndQueueConfigInStore(guildId, { channelId, queues }) {
+export async function updateGuildChannelAndQueueConfigInStore(guildId, { channelId, queues }) {
     return mutateGuild(guildId, ({ db }) => {
-        setGuildChannel(db, guildId, channelId);
-        const announceQueues = setGuildQueueConfig(db, guildId, queues);
+        updateGuildChannelInDb(db, guildId, channelId);
+        const announceQueues = updateGuildQueueConfigInDb(db, guildId, queues);
         return { didChange: true, channelId, announceQueues };
     });
 }

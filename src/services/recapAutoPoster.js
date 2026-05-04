@@ -1,6 +1,6 @@
 // === Imports ===
 // The recap autoposter builds recap embeds and sends them on a schedule.
-import { getKnownGuildIds, loadDb, setGuildRecapLastSentYmdByIdInStore } from '../storage.js';
+import { getKnownGuildIds, loadDb, updateGuildRecapLastSentYmdByIdInStore } from '../storage.js';
 import { GAME_TYPES, defaultRankedQueueForGame } from '../constants/queues.js';
 import { hoursForMode, parseRecapMode } from '../constants/recap.js';
 import { buildRecapEmbed, computeRecapRows } from '../utils/recap.js';
@@ -87,7 +87,7 @@ async function postRecapForConfig({
             ...lastSentYmdByMode,
             [effectiveMode]: today,
         };
-        const updated = await setGuildRecapLastSentYmdByIdInStore(guildId, configId, today, effectiveMode);
+        const updated = await updateGuildRecapLastSentYmdByIdInStore(guildId, configId, today, effectiveMode);
         console.log(`[recap-autopost] sent guild=${guildId} config=${configId} mode=${mode} effectiveMode=${effectiveMode} game=${game} queue=${queue} today=${today} stored=${updated}`);
     }
 }

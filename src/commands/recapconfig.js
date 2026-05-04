@@ -1,6 +1,6 @@
 // src/commands/recapconfig.js
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
-import { loadDb, getGuildRecapConfigs, setGuildRecapConfigsInStore } from "../storage.js";
+import { loadDb, getGuildRecapConfigs, updateGuildRecapConfigsInStore } from "../storage.js";
 import {
   GAME_TYPES,
   ALL_RECAP_QUEUE_CHOICES,
@@ -98,7 +98,7 @@ export default {
       recapConfigs.push(nextConfig);
     }
 
-    recapConfigs = await setGuildRecapConfigsInStore(guildId, recapConfigs);
+    recapConfigs = await updateGuildRecapConfigsInStore(guildId, { recapConfigs });
     const updated = recapConfigs.find((cfg) => cfg?.queue === rawQueue && cfg?.mode === mode) ?? nextConfig;
     const scheduleText = formatRecapScheduleTime(config.recapAutopostHour, config.recapAutopostMinute);
 
