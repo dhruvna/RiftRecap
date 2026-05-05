@@ -11,7 +11,7 @@ import {
   defaultRankedQueueByGame,
   resolveGameFromQueue,
   validRecapQueuesSet,
-} from "../domain/queues.js";
+} from "../constants/queues.js";
 
 const ALL_RECAP_QUEUE_CHOICES = allRecapQueueChoices();
 const VALID_RECAP_QUEUES = validRecapQueuesSet();

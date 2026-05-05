@@ -49,7 +49,7 @@ import {
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import { sleep } from '../utils/utils.js';
 import config from '../config.js';
-import { isRankedQueueForGame, mapRiotLolQueueType, RANKED_QUEUES_BY_GAME } from '../domain/queues.js';
+import { isRankedQueueForGame, mapRiotLolQueueType, RANKED_QUEUES_BY_GAME } from '../constants/queues.js';
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.

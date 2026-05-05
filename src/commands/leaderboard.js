@@ -9,7 +9,7 @@ import {
   defaultRankedQueueByGame,
   queueLabelForGame,
   resolveGameFromQueue,
-} from "../domain/queues.js";
+} from "../constants/queues.js";
 
 const ALL_LEADERBOARD_QUEUE_CHOICES = allLeaderboardQueueChoices();
 import { getRankSnapshotForQueue } from "../utils/rankSnapshot.js";

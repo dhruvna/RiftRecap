@@ -15,7 +15,7 @@ import {
   isRankedQueueForGame,
   queueLabelForGame,
   queueTypeFromQueueId,
-} from "../domain/queues.js";
+} from "../constants/queues.js";
 import { formatRankWithLp } from "./presentation.js";
 
 // === Queue helpers ===

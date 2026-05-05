@@ -2,7 +2,7 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import { loadDb, getGuildRecapConfigs, updateGuildRecapConfigsInStore } from "../storage.js";
 import { GAME_TYPES } from "../constants/queues.js";
-import { allRecapQueueChoices, queueLabelForGame, resolveGameFromQueue } from "../domain/queues.js";
+import { allRecapQueueChoices, queueLabelForGame, resolveGameFromQueue } from "../constants/queues.js";
 
 const ALL_RECAP_QUEUE_CHOICES = allRecapQueueChoices();
 import {

@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { getTftRegaliaThumbnailUrl, getLeagueOfGraphsUrl, getLolProfileUrl } from "../riot.js";
 import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES, TRACKING_GAME_CHOICES } from "../constants/queues.js"
-import { queueLabelForGame, rankedQueueChoicesByGame } from "../domain/queues.js"
+import { queueLabelForGame, rankedQueueChoicesByGame } from "../constants/queues.js"
 import { getLolTracking, getTftTracking, loadDb, normalizeAccountTracking } from "../storage.js";
 import { respondWithAccountChoices } from "../utils/autocomplete.js";
 import { formatRankLine, formatWinrate } from "../utils/presentation.js";
