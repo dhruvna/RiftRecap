@@ -1,0 +1,72 @@
+import { getAccountByRiotId } from '../riot.js';
+import { toRankSnapshot } from '../utils/rankSnapshot.js';
+
+const DEFAULT_SNAPSHOT = {
+    lastRankByQueue: {},
+    lastMatchId: null,
+    lastMatchAt: null,
+};
+
+function logSnapshotError({ stage, gameType, err, context }) {
+    const status = err?.status;
+    console.error(
+        `[register] ${stage} snapshot failed gameType=${gameType} status=${status ?? 'unknown'} endpoint=${err?.endpoint ?? 'unknown'} ${context}`,
+        err?.responseText ? { responseText: err.responseText } : err
+    );
+}
+
+export async function getRegistrationSnapshot({
+    gameType,
+    regional,
+    platform,
+    gameName,
+    tagLine,
+    rankFetcher,
+    matchIdsFetcher,
+    matchFetcher,
+    rankedQueues,
+    getMatchTimestamp,
+}) {
+    const account = await getAccountByRiotId({ regional, gameName, tagLine, gameType });
+
+    let lastRankByQueue = {};
+    try {
+        const entries = await rankFetcher({ platform, puuid: account.puuid });
+        lastRankByQueue = toRankSnapshot(entries, { rankedQueues });
+    } catch (err) {
+        logSnapshotError({
+            stage: 'rank',
+            gameType,
+            err,
+            context: `puuid=${account?.puuid} platform=${platform}`,
+        });
+    }
+
+    let lastMatchId = null;
+    let lastMatchAt = null;
+    try {
+        const ids = await matchIdsFetcher({ regional, puuid: account.puuid, count: 1 });
+        lastMatchId = Array.isArray(ids) && ids.length > 0 ? ids[0] : null;
+
+        if (lastMatchId) {
+            const latestMatch = await matchFetcher({ regional, matchId: lastMatchId });
+            const timestamp = Number(getMatchTimestamp(latestMatch));
+            lastMatchAt = Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
+        }
+    } catch (err) {
+        logSnapshotError({
+            stage: 'latest-match',
+            gameType,
+            err,
+            context: `puuid=${account?.puuid} regional=${regional}`,
+        });
+        return { account, ...DEFAULT_SNAPSHOT };
+    }
+
+    return {
+        account,
+        lastRankByQueue,
+        lastMatchId,
+        lastMatchAt,
+    };
+}

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "register": "node src/register-commands.js",
-    "lint:unused": "eslint \"src/**/*.js\""
+    "unused": "eslint \"src/**/*.js\""
   },
   "repository": {
     "type": "git",
