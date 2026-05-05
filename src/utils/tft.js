@@ -3,7 +3,7 @@
 
 import { EmbedBuilder } from "discord.js";
 import { 
-    getTFTMatchUrl,
+    getMatchUrl,
     getTftRegaliaThumbnailUrl,
 } from "../riot.js";
 import { buildUnitStripImage } from "./unitStrip.js";
@@ -79,7 +79,7 @@ export async function buildMatchResultEmbed({
     participant,
     gameMs,
  }) {
-    const matchUrl = getTFTMatchUrl({ matchId });
+    const matchUrl = getMatchUrl({ game: GAME_TYPES.TFT, matchId });
     const label = labelForQueueType(queueType);
 
     const p = typeof placement === "number" ? placement : null;

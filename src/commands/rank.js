@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import { getTftRegaliaThumbnailUrl, getLeagueOfGraphsUrl, getLolProfileUrl } from "../riot.js";
+import { getTftRegaliaThumbnailUrl, getProfileUrl } from "../riot.js";
 import { GAME_TYPES, TRACKING_GAME_CHOICES } from "../constants/queues.js"
 import { queueLabelForGame, rankedQueueChoicesByGame } from "../constants/queues.js"
 import { getLolTracking, getTftTracking, loadDb } from "../storage.js";
@@ -48,9 +48,12 @@ async function buildQueueEmbed({account, label, entry}) {
     addQueueSection(fields, label, entry);
 
     fields.push({ name: "Last updated", value: formatLastUpdated(entry.lastUpdatedAt), inline: false });
-    const profileUrl = entry.gameType === GAME_TYPES.LOL
-        ? getLolProfileUrl({ region: account.region, gameName: account.gameName, tagLine: account.tagLine })
-        : getLeagueOfGraphsUrl({ region: account.region, gameName: account.gameName, tagLine: account.tagLine });
+    const profileUrl = getProfileUrl({
+        game: entry.gameType,
+        region: account.region,
+        gameName: account.gameName,
+        tagLine: account.tagLine,
+    });
 
     const embed = new EmbedBuilder()
         .setTitle(`${account.gameName}#${account.tagLine} — ${label}`)

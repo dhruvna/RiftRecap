@@ -4,7 +4,7 @@
 import { EmbedBuilder } from "discord.js";
 import { 
     getLatestDDragonVersion,
-    getLolMatchUrl,
+    getMatchUrl,
 } from "../riot.js";
 import { GAME_TYPES } from "../constants/queues.js";
 import {
@@ -71,7 +71,7 @@ export async function buildLolMatchResultEmbed({
     participant,
     gameMs,
  }) {
-    const matchUrl = getLolMatchUrl({ matchId });
+    const matchUrl = getMatchUrl({ game: GAME_TYPES.LOL, matchId });
     const label = buildLolQueueLabel(queueType);
     const riotId = `${account.gameName}#${account.tagLine}`;
 
