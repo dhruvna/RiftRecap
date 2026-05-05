@@ -40,14 +40,16 @@ import {
 import {
     DEFAULT_ANNOUNCE_QUEUES,
     GAME_TYPES,
+    isRankedQueueForGame,
     LOL_QUEUE_TYPES,
+    mapRiotLolQueueType, 
+    RANKED_QUEUES_BY_GAME,
     TFT_QUEUE_TYPES,
 } from '../constants/queues.js';
 
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import { sleep } from '../utils/utils.js';
 import config from '../config.js';
-import { isRankedQueueForGame, mapRiotLolQueueType, RANKED_QUEUES_BY_GAME } from '../constants/queues.js';
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
@@ -68,17 +70,6 @@ function shouldRefreshRank(account, now, maxAgeMs, gameType = GAME_TYPES.TFT) {
 
 // === Riot fetch helpers ===
 // Wrap Riot calls so we always respect the rate limiter.
-async function fetchMatchIds({ riotLimiter, account, count, start = 0 }) {
-    const tftIdentity = getTftIdentity(account);
-    return getTFTMatchIdsByPuuid({
-        regional: account.regional,
-        puuid: tftIdentity.puuid,
-        count,
-        start,
-        limiter: riotLimiter,
-    });
-}
-
 async function fetchMatch({ riotLimiter, account, matchId, game }) {
     if (game === GAME_TYPES.TFT) {
         return getTFTMatch({ 
@@ -97,11 +88,12 @@ async function fetchMatch({ riotLimiter, account, matchId, game }) {
     throw new Error(`[match-poller] Unsupported game type: ${String(game)}`);
 }
 
-async function fetchLolMatchIds({ riotLimiter, account, count, start = 0 }) {
-    const lolIdentity = getLolIdentity(account);
-    return getLolMatchIdsByPuuid({
+async function fetchMatchIds({ riotLimiter, account, count, start = 0, game }) {
+    const identity = game === GAME_TYPES.LOL ? getLolIdentity(account) : getTftIdentity(account);
+    const fetchByGame = game === GAME_TYPES.LOL ? getLolMatchIdsByPuuid : getTFTMatchIdsByPuuid;
+    return fetchByGame({
         regional: account.regional,
-        puuid: lolIdentity.puuid,
+        puuid: identity.puuid,
         count,
         start,
         limiter: riotLimiter,
@@ -420,7 +412,7 @@ export async function startMatchPoller(client) {
                             tracking: lolTracking,
                             matchBackfillLimit: MATCH_BACKFILL_LIMIT,
                             fetchMatchIdsByAccount: ({ count, start }) =>
-                                fetchLolMatchIds({ riotLimiter, account, count, start }),
+                                fetchMatchIds({ riotLimiter, account, count, start, game: GAME_TYPES.LOL }),
                         });
 
                         if (unseenLolMatchIds.length > 0) {
@@ -561,7 +553,7 @@ export async function startMatchPoller(client) {
                         tracking: tftTracking,
                         matchBackfillLimit: MATCH_BACKFILL_LIMIT,
                         fetchMatchIdsByAccount: ({ count, start }) =>
-                            fetchMatchIds({ riotLimiter, account, count, start }),
+                            fetchMatchIds({ riotLimiter, account, count, start, game: GAME_TYPES.TFT }),
                     });
                     
                     if (unseenMatchIds.length === 0) {
