@@ -200,79 +200,25 @@ function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, g
             placement: Number(placement ?? 0),
         },
     ];
-
     return nextEvents.sort((a, b) => b.at - a.at).slice(0, 250);
 }
 
 // === Discord announcement ===
 // Build an embed and post it in the configured channel (if any).
-async function announceMatchToDiscord({
-    channel,
-    account,
-    placement,
-    matchId,
-    queueType,
-    delta,
-    afterRank,
-    participant,
-    gameMs,
-    guildId,
-    channelId,
-}) {
+async function announceGameMatchToDiscord({ buildEmbed, ...context }) {
+    const { channel, guildId, channelId } = context;
     if (!channel) {
         console.log(
             `[match-poller] no channel for guild=${guildId} (channelId=${channelId ?? "null"})`
         );
         return;
     }
-
-    const { embed, files } = await buildMatchResultEmbed({
-        account,
-        placement,
-        matchId,
-        queueType,
-        delta,
-        afterRank,
-        participant,
-        gameMs,
-    });
-    await channel.send({ embeds: [embed], files });
-}
-
-async function announceLolMatchToDiscord({
-    channel,
-    account,
-    matchId,
-    queueType,
-    delta,
-    afterRank,
-    participant,
-    gameMs,
-    guildId,
-    channelId,
-}) {
-    if (!channel) {
-        console.log(
-            `[match-poller] no channel for guild=${guildId} (channelId=${channelId ?? "null"})`
-        );
-        return;
-    }
-
-    const { embed, files } = await buildLolMatchResultEmbed({
-        account,
-        matchId,
-        queueType,
-        delta,
-        afterRank,
-        participant,
-        gameMs,
-    });
+    const { embed, files } = await buildEmbed(context);
     await channel.send({ embeds: [embed], files });
 }
 
 // Should this match be announced based on guild configuration?
 function shouldAnnounceMatch({ announceQueues, queueType }) {
-    // TODO: CAN ADD STUFF HERE IF NEED TO IMPROVE QUEUE SELECTION ALGO
     if (!announceQueues) return true;
     return announceQueues.includes(queueType);
 }
@@ -504,7 +450,8 @@ export async function startMatchPoller(client) {
                                 }
 
                                 if (me) {
-                                    await announceLolMatchToDiscord({
+                                    await announceGameMatchToDiscord({
+                                        buildEmbed: buildLolMatchResultEmbed,
                                         channel,
                                         account,
                                         matchId,
@@ -679,7 +626,8 @@ export async function startMatchPoller(client) {
                             `[match-poller] NEW match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} place=${normPlacement} delta=${delta}`
                         );
 
-                        await announceMatchToDiscord({
+                        await announceGameMatchToDiscord({
+                            buildEmbed: buildMatchResultEmbed,
                             channel,
                             account,
                             placement: normPlacement,
