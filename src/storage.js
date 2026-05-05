@@ -74,6 +74,50 @@ function assertCanonicalGuildShape(guildId, guild) {
     if (!Array.isArray(guild.announceQueues)) throw new Error(`${context} announceQueues must be an array.`);
     if (!guild.tft || typeof guild.tft !== 'object' || Array.isArray(guild.tft)) throw new Error(`${context} tft must be an object.`);
     if (!Array.isArray(guild.recapConfigs) || guild.recapConfigs.length === 0) throw new Error(`${context} recapConfigs must be a non-empty array.`);
+    for (let idx = 0; idx < guild.accounts.length; idx += 1) {
+        assertCanonicalAccountShape(guildId, guild.accounts[idx], idx);
+    }
+}
+
+function assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, namespace) {
+    const context = `[loadDb] Malformed guild record for ${guildId}: accounts[${accountIndex}].trackedGames.${gameKey}`;
+    if (!namespace || typeof namespace !== 'object' || Array.isArray(namespace)) {
+        throw new Error(`${context} must be an object.`);
+    }
+    if (typeof namespace.enabled !== 'boolean') throw new Error(`${context}.enabled must be boolean.`);
+    if (!(namespace.lastMatchId === null || typeof namespace.lastMatchId === 'string')) {
+        throw new Error(`${context}.lastMatchId must be string|null.`);
+    }
+    if (!(namespace.lastMatchAt === null || Number.isFinite(namespace.lastMatchAt))) {
+        throw new Error(`${context}.lastMatchAt must be number|null.`);
+    }
+    if (!namespace.lastRankByQueue || typeof namespace.lastRankByQueue !== 'object' || Array.isArray(namespace.lastRankByQueue)) {
+        throw new Error(`${context}.lastRankByQueue must be an object.`);
+    }
+    if (!Array.isArray(namespace.recapEvents)) throw new Error(`${context}.recapEvents must be an array.`);
+}
+
+function assertCanonicalAccountShape(guildId, account, accountIndex) {
+    const context = `[loadDb] Malformed guild record for ${guildId}: accounts[${accountIndex}]`;
+    if (!account || typeof account !== 'object' || Array.isArray(account)) throw new Error(`${context} must be an object.`);
+    if (typeof account.key !== 'string' || !account.key.trim()) throw new Error(`${context}.key must be a non-empty string.`);
+    if (!account.identity || typeof account.identity !== 'object' || Array.isArray(account.identity)) {
+        throw new Error(`${context}.identity must be an object.`);
+    }
+    if (!account.trackedGames || typeof account.trackedGames !== 'object' || Array.isArray(account.trackedGames)) {
+        throw new Error(`${context}.trackedGames must be an object.`);
+    }
+
+    for (const gameKey of Object.values(TRACKED_GAMES)) {
+        const identityNs = account.identity?.[gameKey];
+        if (!identityNs || typeof identityNs !== 'object' || Array.isArray(identityNs)) {
+            throw new Error(`${context}.identity.${gameKey} must be an object.`);
+        }
+        if (!(identityNs.puuid === null || typeof identityNs.puuid === 'string')) {
+            throw new Error(`${context}.identity.${gameKey}.puuid must be string|null.`);
+        }
+        assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, account.trackedGames?.[gameKey]);
+    }
 }
 
 /**
@@ -200,8 +244,8 @@ async function upsertGuildAccount(db, guildId, account) {
     const idx = guild.accounts.findIndex((a) => a.key === account.key);
     const existed = idx >= 0;
 
-    if (existed) guild.accounts[idx] = normalizeAccountTracking({ ...guild.accounts[idx], ...account });
-    else guild.accounts.push(normalizeAccountTracking(account));
+    if (existed) guild.accounts[idx] = { ...guild.accounts[idx], ...account };
+    else guild.accounts.push(account);
 
     return { account, existed };
 }

@@ -9,7 +9,6 @@ import {
     getTftIdentity,
     getTftTracking,
     loadDb,
-    normalizeAccountTracking,
     upsertGuildAccountInStore,
 } from '../storage.js';
 
@@ -319,12 +318,7 @@ export async function startMatchPoller(client) {
             const perAccountDelayMs = Math.max(basePerAccountDelayMs, spreadDelayMs);
 
             for (const guildId of guildIds) {
-                const guild = Object.freeze({
-                    ...(db[guildId] ?? {}),
-                    accounts: Array.isArray(db[guildId]?.accounts)
-                        ? db[guildId].accounts.map((account) => normalizeAccountTracking(account))
-                        : [],
-                });
+                const guild = Object.freeze(db[guildId] ?? {});
                 const accounts = guild?.accounts ?? [];
                 const channelIdForGuild = guild?.channelId ;
                 const guildTftConfig = getGuildTftConfig(db, guildId);

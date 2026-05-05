@@ -2,7 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { getTftRegaliaThumbnailUrl, getLeagueOfGraphsUrl, getLolProfileUrl } from "../riot.js";
 import { GAME_TYPES, TRACKING_GAME_CHOICES } from "../constants/queues.js"
 import { queueLabelForGame, rankedQueueChoicesByGame } from "../constants/queues.js"
-import { getLolTracking, getTftTracking, loadDb, normalizeAccountTracking } from "../storage.js";
+import { getLolTracking, getTftTracking, loadDb } from "../storage.js";
 import { respondWithAccountChoices } from "../utils/autocomplete.js";
 import { formatRankLine, formatWinrate } from "../utils/presentation.js";
 
@@ -101,8 +101,8 @@ export default {
         const db = await loadDb();
         const guild = db[guildId];
         const accountIdx = guild?.accounts?.findIndex((a) => a.key === key) ?? -1;
-        const stored = accountIdx >= 0 ? normalizeAccountTracking(guild.accounts[accountIdx]) : null;
-
+        const stored = accountIdx >= 0 ? guild.accounts[accountIdx] : null;
+        
         if (!stored) {
             await interaction.editReply("The selected account is not registered in this server. Try registering again.");
             return;
