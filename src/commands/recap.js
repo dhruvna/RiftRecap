@@ -15,7 +15,7 @@ import {
 
 const ALL_RECAP_QUEUE_CHOICES = allRecapQueueChoices();
 const VALID_RECAP_QUEUES = validRecapQueuesSet();
-import { RECAP_MODE_CHOICES, hoursForMode, invalidRecapModeMessage, parseRecapMode } from "../constants/recap.js";
+import { RECAP_MODE_CHOICES, hoursForMode, resolveRecapModeOrError } from "../constants/recap.js";
 
 /* -------------------- Command -------------------- */
 export default {
@@ -44,10 +44,9 @@ export default {
         await interaction.deferReply();
 
         const rawMode = interaction.options.getString("mode");
-        const mode = parseRecapMode(rawMode);
-        const normalizedRawMode = rawMode === null ? null : String(rawMode).trim().toUpperCase();
-        if (rawMode !== null && mode !== normalizedRawMode) {
-            await interaction.editReply(invalidRecapModeMessage(rawMode));
+        const { ok: modeOk, mode, error: modeError } = resolveRecapModeOrError(rawMode, { allowNull: true });
+        if (!modeOk) {
+            await interaction.editReply(modeError);
             return;
         }
         const rawQueue = interaction.options.getString("queue");

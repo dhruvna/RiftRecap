@@ -18,6 +18,12 @@ function parseCutoffDateOrNull(input) {
     return asUtcMidnight;
 }
 
+function normalizeResetGameScope(selectedGame) {
+    if (selectedGame === "BOTH") return [TRACKED_GAMES.TFT, TRACKED_GAMES.LOL];
+    if (selectedGame === GAME_TYPES.LOL) return [TRACKED_GAMES.LOL];
+    return [TRACKED_GAMES.TFT];
+}
+
 export default {
     data: new SlashCommandBuilder()
         .setName("resetranks")
@@ -31,7 +37,7 @@ export default {
         .addStringOption((opt) =>
             opt
                 .setName("game")
-                .setDescription("Game scope to reset (defaults to TFT for compatibility).")
+                .setDescription("Game scope to reset. Defaults to TFT when omitted.")
                 .setRequired(false)
                 .addChoices(...GAME_TYPE_CHOICES, { name: "Both", value: "BOTH" })
         )
@@ -69,7 +75,7 @@ export default {
         }
 
         const selectedGame = interaction.options.getString("game") ?? GAME_TYPES.TFT;
-        const gameScope = selectedGame === "BOTH" ? [TRACKED_GAMES.TFT, TRACKED_GAMES.LOL] : [selectedGame === GAME_TYPES.LOL ? TRACKED_GAMES.LOL : TRACKED_GAMES.TFT];
+        const gameScope = normalizeResetGameScope(selectedGame);
         const beforeDate = interaction.options.getString("before_date");
         const cutoffMs = parseCutoffDateOrNull(beforeDate);
         const clearMatchCursor = interaction.options.getBoolean("clear_match_cursor") ?? false;

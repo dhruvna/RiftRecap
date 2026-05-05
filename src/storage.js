@@ -66,14 +66,50 @@ async function writeDbAtomically(db) {
 
 // === Database IO ===
 // Read the JSON file into an object, falling back to an empty object on error.
+function assertCanonicalGuildShape(guildId, guild) {
+    const context = `[loadDb] Malformed guild record for ${guildId}:`;
+    if (!guild || typeof guild !== 'object' || Array.isArray(guild)) throw new Error(`${context} expected object.`);
+    if (!Array.isArray(guild.accounts)) throw new Error(`${context} accounts must be an array.`);
+    if (!('channelId' in guild)) throw new Error(`${context} channelId is required.`);
+    if (!Array.isArray(guild.announceQueues)) throw new Error(`${context} announceQueues must be an array.`);
+    if (!guild.tft || typeof guild.tft !== 'object' || Array.isArray(guild.tft)) throw new Error(`${context} tft must be an object.`);
+    if (!Array.isArray(guild.recapConfigs) || guild.recapConfigs.length === 0) throw new Error(`${context} recapConfigs must be a non-empty array.`);
+}
+
+/**
+ * Canonical registrations.json schema (steady-state):
+ * {
+ *   [guildId: string]: {
+ *     accounts: AccountTracking[],
+ *     channelId: string | null,
+ *     announceQueues: string[],
+ *     tft: { seasonCutoffMs: number | null, ... },
+ *     recapConfigs: RecapConfig[]
+ *   }
+ * }
+ */
+
 export async function loadDb() {
     await ensureDataFile();
+    let parsed;
     try {
         const raw = await fs.readFile(DATA_PATH, 'utf-8');
-        return JSON.parse(raw);
-    } catch {
-        return {};
+        parsed = JSON.parse(raw);
+    } catch (error) {
+        console.error('[loadDb] Failed reading/parsing registrations.json', error);
+        throw error;
     }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('[loadDb] registrations.json root must be an object keyed by guildId.');
+    }
+
+    for (const guildId of Object.keys(parsed)) {
+        if (!isValidGuildId(guildId)) continue;
+        assertCanonicalGuildShape(guildId, parsed[guildId]);
+    }
+
+    return parsed;
 }
 
 // Queue-backed read-modify-write transaction.
@@ -109,45 +145,21 @@ function assertValidGuildId(guildId, context = 'storage') {
     }
 }
 
-// === Guild normalization ===
-// Shared schema normalization with one set of defaults.
-function normalizeGuildShape(guild) {
-    const source = guild && typeof guild === 'object' ? guild : {};
-    const accounts = Array.isArray(source.accounts)
-        ? source.accounts.map((account) => normalizeAccountTracking(account))
-        : [];
-    const tftSource = source.tft && typeof source.tft === 'object' ? source.tft : {};
-    const numericCutoff = Number(tftSource.seasonCutoffMs ?? 0);
-    const recapConfigs = Array.isArray(source.recapConfigs)
-        ? source.recapConfigs.map((cfg, idx) =>
-            normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
-        )
-        : [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
-
-    return {
-        ...source,
-        accounts,
-        channelId: 'channelId' in source ? source.channelId : null,
-        announceQueues: Array.isArray(source.announceQueues)
-            ? source.announceQueues
-            : [...DEFAULT_ANNOUNCE_QUEUES],
-        tft: {
-            ...tftSource,
-            seasonCutoffMs: Number.isFinite(numericCutoff) && numericCutoff > 0 ? numericCutoff : null,
-        },
-        recapConfigs,
-    };
-}
-
 function ensureGuildMutable(db, guildId) {
-    if (!db[guildId]) db[guildId] = {};
-    db[guildId] = normalizeGuildShape(db[guildId]);
+    if (!db[guildId]) {
+        db[guildId] = {
+            accounts: [],
+            channelId: null,
+            announceQueues: [...DEFAULT_ANNOUNCE_QUEUES],
+            tft: { seasonCutoffMs: null },
+            recapConfigs: [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)],
+        };
+    }
     return db[guildId];
 }
 
 export function getTrackedGameIdentity(account, gameKey) {
-    const normalized = normalizeAccountTracking(account);
-    return normalized?.identity?.[gameKey] ?? {};
+    return account?.identity?.[gameKey] ?? {};
 }
 
 export function getTftIdentity(account) {
@@ -159,8 +171,7 @@ export function getLolIdentity(account) {
 }
 
 export function getTrackedGameState(account, gameKey) {
-    const normalized = normalizeAccountTracking(account);
-    return normalized?.trackedGames?.[gameKey] ?? {};
+    return account?.trackedGames?.[gameKey] ?? {};
 }
 
 export function getTftTracking(account) {
@@ -179,7 +190,7 @@ export function makeAccountKey({ gameName, tagLine, platform }) {
 // === Account Creation, Read, Update, Deletion ===
 export async function listGuildAccounts(guildId) {
     const db = await loadDb();
-    const guild = normalizeGuildShape(db?.[guildId]);
+    const guild = db?.[guildId];
     return guild?.accounts ?? [];
 }
 
@@ -220,13 +231,11 @@ function updateGuildChannelInDb(db, guildId, channelId) {
 }
 
 export function getGuildRecapConfigs(db, guildId) {
-    const g = normalizeGuildShape(db?.[guildId]);
-    return g.recapConfigs;
+    return db[guildId].recapConfigs;
 }
 
 export function getGuildTftConfig(db, guildId) {
-    const g = normalizeGuildShape(db?.[guildId]);
-    return g.tft;
+    return db[guildId].tft;
 }
 
 function updateGuildDefaultRecapConfigInDb(db, guildId, patch) {
@@ -256,9 +265,6 @@ export async function updateGuildRecapLastSentYmdInStore(guildId, lastSentYmd) {
         if (current === lastSentYmd) {
             return { didChange: false, updated: false };
         }
-        if (!guild?.recapConfigs?.[0]) {
-            guild.recapConfigs = [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
-        }
         guild.recapConfigs[0].lastSentYmd = lastSentYmd;
         return { didChange: true, updated: true };
     }).then((result) => result?.updated ?? false);
@@ -270,8 +276,7 @@ export async function updateGuildRecapLastSentYmdByIdInStore(guildId, configId, 
         const idx = recapConfigs.findIndex((cfg) => cfg?.id === configId);
         if (idx < 0) return { didChange: false, updated: false };
         const current = recapConfigs[idx]?.lastSentYmd ?? null;
-        // if (current === lastSentYmd) return { didChange: false, updated: false };
-        // recapConfigs[idx].lastSentYmd = lastSentYmd;
+        // Mode keys are stored uppercased; null/empty mode updates the default lastSentYmd field.
         const normalizedMode = typeof mode === 'string' ? mode.trim().toUpperCase() : null;
         if (!normalizedMode) {
             if (current === lastSentYmd) return { didChange: false, updated: false };
@@ -392,9 +397,10 @@ export async function resetGuildAccountProgressInStore(guildId, options = {}) {
 export async function resetGuildAccountProgressBeforeInStore(guildId, cutoffMs, options = {}) {
     const hasCutoff = Number.isFinite(cutoffMs) && cutoffMs > 0;
     const clearMatchCursor = options?.clearMatchCursor === true;
-    const requestedScope = Array.isArray(options?.gameScope) && options.gameScope.length > 0
-        ? options.gameScope
-        : [TRACKED_GAMES.TFT]; // backward-compatible default
+    const requestedScope = Array.isArray(options?.gameScope) ? options.gameScope : [];
+    if (requestedScope.length === 0) {
+        throw new Error("[resetGuildAccountProgressBeforeInStore] options.gameScope must be a non-empty array of tracked game keys.");
+    }
     return mutateGuild(guildId, ({ guild }) => {
         const accounts = Array.isArray(guild?.accounts) ? guild.accounts : [];
         if (accounts.length === 0) {

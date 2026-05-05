@@ -56,7 +56,6 @@ export default {
         // 5. Riot ID -> Account PUUID
         let tftAccount;
         let lolAccount;
-        // let account;
         try {
             tftAccount = await getAccountByRiotId({ regional, gameName, tagLine, gameType: 'TFT' });
             lolAccount = await getAccountByRiotId({ regional, gameName, tagLine, gameType: 'LOL' });

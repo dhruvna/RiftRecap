@@ -20,6 +20,21 @@ export function parseRecapMode(rawMode) {
   return VALID_RECAP_MODES.has(normalized) ? normalized : DEFAULT_RECAP_MODE;
 }
 
+export function resolveRecapModeOrError(rawMode, { allowNull = false } = {}) {
+  if (rawMode == null) {
+    return allowNull
+      ? { ok: true, mode: null }
+      : { ok: true, mode: DEFAULT_RECAP_MODE };
+  }
+
+  const normalized = String(rawMode).trim().toUpperCase();
+  if (!VALID_RECAP_MODES.has(normalized)) {
+    return { ok: false, error: invalidRecapModeMessage(rawMode) };
+  }
+
+  return { ok: true, mode: normalized };
+}
+
 export function modeLabel(mode) {
   // return parseRecapMode(mode) === "WEEKLY" ? "Weekly" : "Daily";
   const normalized = parseRecapMode(mode);

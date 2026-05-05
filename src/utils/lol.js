@@ -100,8 +100,8 @@ export async function buildLolMatchResultEmbed({
 
     embed.addFields(
         { name: "K/D/A", value: kda, inline: true },
-        { name: "Damage", value: damageDealt.toLocaleString(), inline: true },
-        { name: "CS/min", value: csPerMinLabel, inline: true },        
+        { name: "Damage", value: damageDealt.toLocaleString(), inline: true },  
+        { name: "CS/min", value: csPerMinLabel ?? "—", inline: true }, 
         { name: "Rank", value: rankValue.slice(0, 1024), inline: true },
         { name: didWin ? "LP Win" : "LP Loss", value: lpChangeValue, inline: true },
         { name: "Duration", value: duration, inline: true },
