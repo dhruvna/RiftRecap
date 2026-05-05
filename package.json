@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node src/index.js",
     "register": "node src/register-commands.js",
-    "unused": "eslint \"src/**/*.js\""
+    "unused": "eslint \"src/**/*.js\"",
+    "unused:fix": "eslint \"src/**/*.js\" --fix",
+    "knip": "knip"
   },
   "repository": {
     "type": "git",
@@ -24,8 +26,10 @@
     "@napi-rs/canvas": "^0.1.91",
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3"
-    },
+  },
   "devDependencies": {
-    "eslint": "^9.39.1"
+    "eslint": "^9.39.1",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "knip": "^6.11.0"
   }
 }
