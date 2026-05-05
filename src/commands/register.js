@@ -90,8 +90,6 @@ export default {
                     return Number(match?.info?.gameCreation ?? 0);
                 },
             });
-            tftAccount = await getAccountByRiotId({ regional, gameName, tagLine, gameType: 'TFT' });
-            lolAccount = await getAccountByRiotId({ regional, gameName, tagLine, gameType: 'LOL' });
         } catch (err) {
             const status = err?.status;
             console.error(
