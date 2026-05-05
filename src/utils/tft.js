@@ -16,7 +16,7 @@ import {
   queueLabelForGame,
   queueTypeFromQueueId,
 } from "../constants/queues.js";
-import { formatRankWithLp } from "./presentation.js";
+import { formatDelta, formatRankWithLp } from "./presentation.js";
 
 // === Queue helpers ===
 // Extract the queue id from a match payload while handling API variations.
@@ -43,14 +43,6 @@ export function normalizePlacement({ placement, queueType}) {
     } 
 
     return placement;
-}
-
-// Format LP delta for display.
-export function formatDelta(delta) {
-    if (!Number.isFinite(delta)) return "-";
-    if (delta > 0) return `+${delta}`;
-    if (delta < 0) return `-${Math.abs(delta)}`;
-    return "0";
 }
 
 // Convert a placement number to ordinal text.

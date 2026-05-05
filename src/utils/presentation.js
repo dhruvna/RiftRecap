@@ -26,6 +26,14 @@ export function formatRankWithLp(rank) {
     : `${rank.tier} ${rank.rank} — ${lp} LP`;
 }
 
+// Format LP delta for display.
+export function formatDelta(delta) {
+    if (!Number.isFinite(delta)) return "-";
+    if (delta > 0) return `+${delta}`;
+    if (delta < 0) return `-${Math.abs(delta)}`;
+    return "0";
+}
+
 // Medals add quick visual cues for top placements.
 export function medalForIndex(index) {
   if (index === 0) return "🥇";

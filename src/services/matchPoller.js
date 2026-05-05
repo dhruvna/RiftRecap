@@ -217,10 +217,14 @@ async function announceGameMatchToDiscord({ buildEmbed, ...context }) {
     await channel.send({ embeds: [embed], files });
 }
 
-// Should this match be announced based on guild configuration?
-function shouldAnnounceMatch({ announceQueues, queueType }) {
-    if (!announceQueues) return true;
-    return announceQueues.includes(queueType);
+function findLatestRankedIndex(matches, { shouldInclude = () => true } = {}) {
+    for (let i = matches.length - 1; i >= 0; i -= 1) {
+        const candidate = matches[i];
+        if (candidate?.isRanked && shouldInclude(candidate)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 // === Service entry point ===
@@ -399,13 +403,7 @@ export async function startMatchPoller(client) {
                                 });
                             }
 
-                            let latestLolRankedIndex = -1;
-                            for (let i = preparedLolMatches.length - 1; i >= 0; i -= 1) {
-                                if (preparedLolMatches[i].isRanked) {
-                                    latestLolRankedIndex = i;
-                                    break;
-                                }
-                            }
+                            const latestLolRankedIndex = findLatestRankedIndex(preparedLolMatches);
 
                             for (const [index, prepared] of preparedLolMatches.entries()) {
                                 const { matchId, me, queueType, isRanked, gameMs } = prepared;
@@ -440,7 +438,8 @@ export async function startMatchPoller(client) {
                                     });
                                 }
 
-                                if (!shouldAnnounceMatch({ announceQueues, queueType })) {
+                                const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
+                                if (!shouldAnnounce) {
                                     console.log(
                                         `[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`
                                     );
@@ -545,17 +544,17 @@ export async function startMatchPoller(client) {
                         });
                     }
 
-                    let latestRankedIndex = -1;
-                    for (let i = preparedMatches.length - 1; i >= 0; i -= 1) {
-                        if (preparedMatches[i].isRanked) {
-                            const gameMs = Number(preparedMatches[i].gameMs ?? 0);
-                            if (hasSeasonCutoff && Number.isFinite(gameMs) && gameMs > 0 && gameMs < seasonCutoffMs) {
-                                continue;
-                            }
-                            latestRankedIndex = i;
-                            break;
-                        }
-                    }
+                    const latestRankedIndex = findLatestRankedIndex(preparedMatches, {
+                        shouldInclude: (preparedMatch) => {
+                            const gameMs = Number(preparedMatch?.gameMs ?? 0);
+                            return !(
+                                hasSeasonCutoff &&
+                                Number.isFinite(gameMs) &&
+                                gameMs > 0 &&
+                                gameMs < seasonCutoffMs
+                            );
+                        },
+                    });
 
                     for (const [index, prepared] of preparedMatches.entries()) {
                         const {
@@ -613,7 +612,8 @@ export async function startMatchPoller(client) {
                             });
                         }
 
-                        if (!shouldAnnounceMatch({ announceQueues, queueType })) {
+                        const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
+                        if (!shouldAnnounce) {
                             console.log(
                                 `[match-poller] skipping announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`
                             );

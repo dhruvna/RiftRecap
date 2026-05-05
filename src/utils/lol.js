@@ -12,14 +12,7 @@ import {
   queueLabelForGame,
   queueTypeFromQueueId,
 } from "../constants/queues.js";
-import { formatRankWithLp } from "./presentation.js";
-
-function formatDelta(delta) {
-    if (!Number.isFinite(delta)) return "-";
-    if (delta > 0) return `+${delta}`;
-    if (delta < 0) return `-${Math.abs(delta)}`;
-    return "0";
-}
+import { formatDelta, formatRankWithLp } from "./presentation.js";
 
 function formatDurationFromSeconds(seconds) {
     const totalSeconds = Number(seconds);
@@ -28,10 +21,6 @@ function formatDurationFromSeconds(seconds) {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
-function buildLolQueueLabel(queueType) {
-    return queueLabelForGame(GAME_TYPES.LOL, queueType);
 }
 
 function buildChampionIconUrl(participant, version) {
@@ -72,7 +61,7 @@ export async function buildLolMatchResultEmbed({
     gameMs,
  }) {
     const matchUrl = getMatchUrl({ game: GAME_TYPES.LOL, matchId });
-    const label = buildLolQueueLabel(queueType);
+    const label = queueLabelForGame(GAME_TYPES.LOL, queueType);
     const riotId = `${account.gameName}#${account.tagLine}`;
 
     const kills = Number(participant?.kills ?? 0);
