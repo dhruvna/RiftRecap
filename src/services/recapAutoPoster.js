@@ -20,6 +20,14 @@ export function getRecapCutoffTimestamp({ now, hours}) {
     return now.getTime() - hours * 60 * 60 * 1000;
 }
 
+function ymdToUtcDayNumber(ymd) {
+    if (!ymd || typeof ymd !== 'string') return null;
+    const parts = ymd.split('-').map((part) => Number(part));
+    if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part))) return null;
+    const [year, month, day] = parts;
+    return Math.floor(Date.UTC(year, month - 1, day) / (24 * 60 * 60 * 1000));
+}
+
 // === Scheduling logic ===
 // Decide whether we should fire at the current time, accounting for last send.
 export function shouldFireRecapAutopost({ 
@@ -28,12 +36,19 @@ export function shouldFireRecapAutopost({
     fireMinute,
     lastSentYmd,
     getYmd = getLocalYmd,
+    minDaysBetweenPosts = 1,
 }) {
     const today = getYmd(now);
     const scheduledTime = new Date(now);
     scheduledTime.setHours(fireHour, fireMinute, 0, 0);
+    const todayDayNumber = ymdToUtcDayNumber(today);
+    const lastSentDayNumber = ymdToUtcDayNumber(lastSentYmd);
+    const elapsedDays = Number.isInteger(todayDayNumber) && Number.isInteger(lastSentDayNumber)
+        ? todayDayNumber - lastSentDayNumber
+        : Number.POSITIVE_INFINITY;
+
     return {
-        shouldFire: now >= scheduledTime && lastSentYmd !== today,
+        shouldFire: now >= scheduledTime && elapsedDays >= minDaysBetweenPosts,
         today,
         scheduledTime,
     };
@@ -67,6 +82,7 @@ async function postRecapForConfig({
             fireHour,
             fireMinute,
             lastSentYmd,
+            minDaysBetweenPosts: effectiveMode === 'WEEKLY' ? 7 : 1,
         });
 
         if (!shouldFire) continue;

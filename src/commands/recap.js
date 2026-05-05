@@ -15,7 +15,7 @@ import {
 
 const ALL_RECAP_QUEUE_CHOICES = allRecapQueueChoices();
 const VALID_RECAP_QUEUES = validRecapQueuesSet();
-import { RECAP_MODE_CHOICES, hoursForMode, resolveRecapModeOrError } from "../constants/recap.js";
+import { RECAP_COMMAND_MODE_CHOICES, hoursForMode, resolveRecapModeOrError } from "../constants/recap.js";
 
 /* -------------------- Command -------------------- */
 export default {
@@ -30,7 +30,7 @@ export default {
         .addChoices(...ALL_RECAP_QUEUE_CHOICES)
     )
     .addStringOption((opt) =>
-      opt.setName("mode").setDescription("Daily or weekly recap").setRequired(false).addChoices(...RECAP_MODE_CHOICES)
+      opt.setName("mode").setDescription("Daily or weekly recap").setRequired(false).addChoices(...RECAP_COMMAND_MODE_CHOICES)
     ),
 
     async execute(interaction) {

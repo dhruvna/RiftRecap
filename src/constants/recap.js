@@ -6,6 +6,9 @@ export const RECAP_MODE_CHOICES = [
   { name: "Daily + Weekly", value: "BOTH" },
 ];
 
+// Slash command `/recap` should only allow direct daily/weekly requests.
+export const RECAP_COMMAND_MODE_CHOICES = RECAP_MODE_CHOICES.filter((choice) => choice.value !== "BOTH");
+
 export const VALID_RECAP_MODES = new Set(RECAP_MODE_CHOICES.map((choice) => choice.value));
 export const DEFAULT_RECAP_MODE = "DAILY";
 
