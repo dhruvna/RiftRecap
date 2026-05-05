@@ -43,7 +43,6 @@ import {
     GAME_TYPES,
     LOL_QUEUE_TYPES,
     TFT_QUEUE_TYPES,
-    isRankedQueue,
 } from '../constants/queues.js';
 
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
@@ -303,10 +302,8 @@ export async function startMatchPoller(client) {
 
         isTickRunning = true;
         try {
-            const tickStartedAt = Date.now();
             const channelCache = new Map(); // channelId -> channel (cache per tick)
             const pendingUpsertsByGuild = new Map();
-            let writeCount = 0;
 
             const db = await loadDb();
             const guildIds = getKnownGuildIds(db);
@@ -629,7 +626,6 @@ export async function startMatchPoller(client) {
 
                     for (const [index, prepared] of preparedMatches.entries()) {
                         const {
-                            match,
                             matchId,
                             me,
                             normPlacement,
@@ -741,9 +737,7 @@ export async function startMatchPoller(client) {
             for (const [compoundKey, nextAccount] of pendingUpsertsByGuild.entries()) {
                 const [guildId] = compoundKey.split(':');
                 await upsertGuildAccountInStore(guildId, nextAccount);
-                writeCount += 1;
             }
-            const cycleDurationMs = Date.now() - tickStartedAt;
         } finally {
             isTickRunning = false;
         }        

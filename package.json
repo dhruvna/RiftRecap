@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "register": "node src/register-commands.js"
+    "register": "node src/register-commands.js",
+    "lint:unused": "eslint \"src/**/*.js\""
   },
   "repository": {
     "type": "git",
@@ -23,5 +24,8 @@
     "@napi-rs/canvas": "^0.1.91",
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3"
+    },
+  "devDependencies": {
+    "eslint": "^9.39.1"
   }
 }

@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { listGuildAccounts, normalizeAccountTracking } from '../storage.js';
+import { listGuildAccounts } from '../storage.js';
 
 export default {
     data: new SlashCommandBuilder()

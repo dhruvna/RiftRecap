@@ -47,7 +47,3 @@ export const REGION_TO_ROUTES = {
     TW:  { platform: 'tw2', regional: 'sea' },
     VN:  { platform: 'vn2', regional: 'sea' },
 };
-
-// === Validation helper ===
-// Used to validate DEFAULT_REGION and user input.
-export const ALLOWED_REGIONS = new Set(Object.keys(REGION_TO_ROUTES));
