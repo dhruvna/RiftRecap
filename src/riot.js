@@ -7,6 +7,8 @@ export {
     getLolRankByPuuid,
     getLolMatchIdsByPuuid,
     getLolMatch,
+    getLolActiveGameByPuuid,
+    getTftActiveGameByPuuid,
     getProfileUrl,
     getMatchUrl,
 } from './riot/api.js';

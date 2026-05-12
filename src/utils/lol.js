@@ -84,16 +84,23 @@ export async function buildLolMatchResultEmbed({
     const damageDealt = Number(participant?.totalDamageDealtToChampions ?? 0);
     const totalCs = Number(participant?.totalMinionsKilled ?? 0) + Number(participant?.neutralMinionsKilled ?? 0);
     const duration = formatDurationFromSeconds(participant?.timePlayed ?? 0);
+    const missingPings = Number(participant?.enemyMissingPings ?? 0);
+    const lane = participant?.teamPosition ?? "Unknown";
+    const visionScore = Number(participant?.visionScore ?? 0);
     const csPerMin = duration === "Unknown" ? null : totalCs / (Number(participant?.timePlayed) / 60);
     const csPerMinLabel = Number.isFinite(csPerMin) && csPerMin > 0 ? `${csPerMin.toFixed(1)} CS/min` : null;
 
     embed.addFields(
         { name: "K/D/A", value: kda, inline: true },
         { name: "Damage", value: damageDealt.toLocaleString(), inline: true },  
-        { name: "CS/min", value: csPerMinLabel ?? "—", inline: true }, 
+        // if lane = UTILITY, show vision score instead of CS/min (and corresponding label as well)
+        { name: lane === "UTILITY" ? "Vision Score" : "CS/min", value: lane === "UTILITY" ? visionScore.toString() : (csPerMinLabel ?? "—"), inline: true },
+        // { name: "CS/min", value: csPerMinLabel ?? "—", inline: true }, 
         { name: "Rank", value: rankValue.slice(0, 1024), inline: true },
         { name: didWin ? "LP Win" : "LP Loss", value: lpChangeValue, inline: true },
         { name: "Duration", value: duration, inline: true },
+        // { name: "Missing Pings", value: missingPings.toString(), inline: true },
+        // { name: "Lane", value: lane, inline: true },
     );
 
     try {

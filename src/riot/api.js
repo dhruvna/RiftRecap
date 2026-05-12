@@ -150,3 +150,13 @@ export function getMatchUrl({ game, matchId }) {
     }
     return `https://www.leagueofgraphs.com/tft/match/${shard}/${numericId}`;
 }
+
+export async function getLolActiveGameByPuuid({ platform, puuid, limiter }) {
+    const url = `https://${platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
+    return riotFetchJson(url, 'LOL', limiter);
+}
+
+export async function getTftActiveGameByPuuid({ platform, puuid, limiter }) {
+    const url = `https://${platform}.api.riotgames.com/lol/spectator/tft/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
+    return riotFetchJson(url, 'TFT', limiter);
+}
