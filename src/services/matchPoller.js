@@ -285,10 +285,11 @@ async function announceGameMatchToDiscord({ buildEmbed, ...context }) {
         console.log(
             `[match-poller] no channel for guild=${guildId} (channelId=${channelId ?? "null"})`
         );
-        return;
+        return null;
     }
     const { embed, files } = await buildEmbed(context);
-    await channel.send({ embeds: [embed], files });
+    const sentMessage = await channel.send({ embeds: [embed], files });
+    return sentMessage ?? null;
 }
 
 function findLatestRankedIndex(matches, { shouldInclude = () => true } = {}) {
@@ -385,7 +386,12 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
     const shouldAnnounceLolLiveGame = liveTransitionDecision.shouldAnnounceLive === true;
 
     if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
-        await announceGameMatchToDiscord({
+        const liveAnnouncementGameKey = getLolInGameDedupeKey({
+            activeGameId: lolSpectatorState?.activeGame?.gameId ?? lolSpectatorState?.activeGameId ?? null,
+            activeGameStartTime: lolSpectatorState?.activeGame?.gameStartTime ?? lolSpectatorState?.activeGameStartTime ?? null,
+            activeQueueId: lolSpectatorState?.activeGame?.gameQueueConfigId ?? lolSpectatorState?.activeQueueId ?? null,
+        });
+        const sentMessage = await announceGameMatchToDiscord({
             buildEmbed: buildLolLiveGameEmbed,
             channel,
             guildId,
@@ -393,6 +399,11 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
             account,
             activeGame: lolSpectatorState.activeGame,
         });
+        if (sentMessage) {
+            liveTransitionDecision.nextTrackingPatch.liveAnnouncementMessageId = sentMessage.id ?? null;
+            liveTransitionDecision.nextTrackingPatch.liveAnnouncementChannelId = sentMessage.channelId ?? channelIdForGuild ?? null;
+            liveTransitionDecision.nextTrackingPatch.liveAnnouncementGameKey = liveAnnouncementGameKey ?? null;
+        }
     } else if (liveTransitionDecision.debugReason) {
         console.log(
             `[match-poller] skip live announce guild=${guildId} account=${account.key} reason=${liveTransitionDecision.debugReason}`

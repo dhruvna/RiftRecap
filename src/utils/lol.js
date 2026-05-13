@@ -170,6 +170,7 @@ async function buildLolGameDto({
         championImagesById,
     });
 
+    console.log(`Resolved LOL embed context: ${JSON.stringify(context)}`);
     const teamRostersBySideRole = buildNormalizedTeamRosters(participants);
     for (const side of ["BLUE", "RED"]) {
         for (const role of Object.keys(teamRostersBySideRole[side])) {
@@ -411,6 +412,7 @@ export async function buildLolMatchResultEmbed({
     const trackedParticipant = dto.trackedPlayer.participant;
     const { matchUrl, gameStartTimestamp } = dto.game;
     const { queueLabel } = dto.queue;
+    console.log(queueLabel);
     const { riotId } = dto.trackedPlayer;
     const { championIconUrl } = dto.display;
 
