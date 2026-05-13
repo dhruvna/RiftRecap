@@ -59,6 +59,7 @@ import config from '../config.js';
 const MATCH_BACKFILL_LIMIT = 10;
 
 const SPECTATOR_CHECK_COOLDOWN_MS = 0.5 * 60 * 1000;
+const LIVE_ANNOUNCE_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 
 function getLolInGameDedupeKey(tracking = {}) {
     if (tracking?.activeGameId != null) return `gid:${String(tracking.activeGameId)}`;
@@ -115,6 +116,7 @@ async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
             activeGameId: activeGame?.gameId ?? null,
             activeQueueId: activeGame?.gameQueueConfigId ?? null,
             activeGameStartTime: activeGame?.gameStartTime ?? null,
+            activeGame,
         };
     } catch (err) {
         if (Number(err?.status) === 404) return { inGame: false, lastSpectatorCheckAt: now, activeGameId: null, activeQueueId: null, activeGameStartTime: null };
@@ -450,6 +452,34 @@ export async function startMatchPoller(client) {
                             guildId,
                             accountKey: account.key,
                         });
+
+                        const wasLolInGame = lolTracking?.inGame === true;
+                        const isLolInGame = lolSpectatorState.inGame === true;
+                        const previousAnnouncedGameId = lolTracking?.lastAnnouncedActiveGameId ?? null;
+                        const nextActiveGameId = lolSpectatorState.activeGameId ?? null;
+                        const announcedThisGame = previousAnnouncedGameId != null
+                            && nextActiveGameId != null
+                            && String(previousAnnouncedGameId) === String(nextActiveGameId);
+                        const lastInGameAnnouncementAt = Number(lolTracking?.lastInGameAnnouncementAt ?? 0);
+                        const announcedRecently = Number.isFinite(lastInGameAnnouncementAt)
+                            && lastInGameAnnouncementAt > 0
+                            && (Date.now() - lastInGameAnnouncementAt) < LIVE_ANNOUNCE_DEDUPE_WINDOW_MS;
+                        const shouldAnnounceLolLiveGame = !wasLolInGame
+                            && isLolInGame
+                            && !announcedThisGame
+                            && !announcedRecently;
+
+                        if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
+                            await announceGameMatchToDiscord({
+                                buildEmbed: buildLolLiveGameEmbed,
+                                channel,
+                                guildId,
+                                channelId: channelIdForGuild,
+                                account,
+                                activeGame: lolSpectatorState.activeGame,
+                            });
+                        }
+                        
                         stageTrackingUpsert({
                             guildId,
                             account,

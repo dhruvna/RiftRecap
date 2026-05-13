@@ -6,6 +6,7 @@ import {
     getLatestDDragonVersion,
     getMatchUrl,
 } from "../riot.js";
+import { getLolIdentity } from "../storage.js";
 import { GAME_TYPES } from "../constants/queues.js";
 import {
   isRankedQueueForGame,
@@ -128,14 +129,17 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const elapsedDuration = formatElapsedDuration(gameStartTimeMs);
 
     const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
-    const me = participants.find((p) => p?.puuid === account?.lol?.puuid)
-        || participants.find((p) => p?.summonerId && p.summonerId === account?.lol?.summonerId)
-        || null;
+    const identity = getLolIdentity(account);
+    const myPuuid = identity?.puuid ?? null;
+    const me = myPuuid ? (participants.find((p) => p?.puuid === myPuuid) ?? null) : null;
 
     const championName = me?.championName ?? me?.championId ?? null;
     const spell1 = me?.spell1Id ? `S1: ${me.spell1Id}` : null;
     const spell2 = me?.spell2Id ? `S2: ${me.spell2Id}` : null;
     const spellSummary = [spell1, spell2].filter(Boolean).join(" • ");
+    console.log(
+        `[lol-live] resolvedParticipant account=${account?.key ?? `${account?.gameName}#${account?.tagLine}`} puuidPresent=${Boolean(myPuuid)} participantFound=${Boolean(me)} champion=${championName ?? "none"} spells=${spellSummary || "none"}`
+    );
 
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
