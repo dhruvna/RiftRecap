@@ -49,16 +49,46 @@ async function resolveChampionIcon(participant, version) {
 
      return { resolvedImageKey, championIconUrl };
 }
-// function buildChampionIconUrl(participant, version) {
-//     const championName = participant?.championName;
-//     if (!championName || !version) return null;
 
-//     // Data Dragon champion icon files map to champion key names.
-//     const normalized = String(championName).replace(/[ .'_]/g, '');
-//     if (!normalized) return null;
+async function buildLolEmbedContext({ account, queueId, queueType, participant, gameStartTime, matchId }) {
+    const riotId = `${account?.gameName ?? "Unknown"}#${account?.tagLine ?? ""}`;
+    const resolvedQueueType = queueType ?? queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
+    const queueLabel = queueLabelForGame(GAME_TYPES.LOL, resolvedQueueType);
 
-//     return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
-// }
+    const championDisplay = participant?.championName
+        ? String(participant.championName)
+        : (participant?.championId ? `ID ${participant.championId}` : null);
+
+    const gameStartTimeMs = Number(gameStartTime ?? 0);
+    const gameStartTimestamp = Number.isFinite(gameStartTimeMs) && gameStartTimeMs > 0
+        ? new Date(gameStartTimeMs)
+        : new Date();
+    const gameStartEpochSeconds = Number.isFinite(gameStartTimeMs) && gameStartTimeMs > 0
+        ? Math.floor(gameStartTimeMs / 1000)
+        : null;
+
+    let championIconUrl = null;
+    let resolvedImageKey = null;
+    try {
+        const version = await getLatestDDragonVersion();
+        const resolved = await resolveChampionIcon(participant, version);
+        championIconUrl = resolved?.championIconUrl ?? null;
+        resolvedImageKey = resolved?.resolvedImageKey ?? null;
+    } catch {
+    }
+
+    return {
+        riotId,
+        queueType: resolvedQueueType,
+        queueLabel,
+        championDisplay,
+        championIconUrl,
+        resolvedImageKey,
+        gameStartTimestamp,
+        gameStartEpochSeconds,
+        matchUrl: matchId ? getMatchUrl({ game: GAME_TYPES.LOL, matchId }) : null,
+    };
+}
 
 function normalizeText(value) {
     return String(value ?? "").trim().toLowerCase();
@@ -118,9 +148,15 @@ export async function buildLolMatchResultEmbed({
     participant,
     gameMs,
  }) {
-    const matchUrl = getMatchUrl({ game: GAME_TYPES.LOL, matchId });
-    const label = queueLabelForGame(GAME_TYPES.LOL, queueType);
-    const riotId = `${account.gameName}#${account.tagLine}`;
+    const context = await buildLolEmbedContext({
+        account,
+        queueType,
+        participant,
+        gameStartTime: gameMs,
+        matchId,
+    });
+
+    const { matchUrl, queueLabel, riotId, championIconUrl, gameStartTimestamp } = context;
 
     const kills = Number(participant?.kills ?? 0);
     const deaths = Number(participant?.deaths ?? 0);
@@ -131,10 +167,9 @@ export async function buildLolMatchResultEmbed({
 
     const embed = new EmbedBuilder()
         .setURL(matchUrl)
-        // .setTimestamp(new Date())
-        .setTimestamp(Number.isFinite(Number(gameMs)) && Number(gameMs) > 0 ? new Date(Number(gameMs)) : new Date())
+        .setTimestamp(gameStartTimestamp)
         .setColor(didWin ? 0x2dcf71 : 0xf34e3c)
-        .setTitle(`${label} • ${didWin ? "Victory" : "Defeat"} • ${riotId}`)
+        .setTitle(`${queueLabel} • ${didWin ? "Victory" : "Defeat"} • ${riotId}`)
 
     const lpChangeValue = isRankedMatch ? formatDelta(didWin ? Math.abs(delta) : -Math.abs(delta)) : "—";
     const rankValue = isRankedMatch ? formatRankWithLp(afterRank) : "—";
@@ -142,7 +177,7 @@ export async function buildLolMatchResultEmbed({
     const damageDealt = Number(participant?.totalDamageDealtToChampions ?? 0);
     const totalCs = Number(participant?.totalMinionsKilled ?? 0) + Number(participant?.neutralMinionsKilled ?? 0);
     const duration = formatDurationFromSeconds(participant?.timePlayed ?? 0);
-    const missingPings = Number(participant?.enemyMissingPings ?? 0);
+    // const missingPings = Number(participant?.enemyMissingPings ?? 0);
     const lane = participant?.teamPosition ?? "Unknown";
     const visionScore = Number(participant?.visionScore ?? 0);
     const csPerMin = duration === "Unknown" ? null : totalCs / (Number(participant?.timePlayed) / 60);
@@ -161,33 +196,38 @@ export async function buildLolMatchResultEmbed({
         // { name: "Lane", value: lane, inline: true },
     );
 
-    try {
-        const version = await getLatestDDragonVersion();
-        const { championIconUrl } = await resolveChampionIcon(participant, version);
-        if (championIconUrl) embed.setThumbnail(championIconUrl);
-    } catch {
-    }
+    if (championIconUrl) embed.setThumbnail(championIconUrl);
     return { embed, files: [] };
 }
 
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
-    const riotId = `${account.gameName}#${account.tagLine}`;
     const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
-    const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
-    const queueLabel = queueLabelForGame(GAME_TYPES.LOL, queueType);
-    const gameStartTimeMs = Number(activeGame?.gameStartTime ?? 0) || null;
-
     const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
     const identity = getLolIdentity(account);
     const myPuuid = identity?.puuid ?? null;
     const me = resolveTrackedParticipant({ account, identity, participants });
 
-    const championName = me?.championName ? String(me.championName) : (me?.championId ? `ID ${me.championId}` : null);
+    const context = await buildLolEmbedContext({
+        account,
+        queueId,
+        participant: me,
+        gameStartTime: activeGame?.gameStartTime,
+    });
+
+    const {
+        riotId,
+        queueLabel,
+        championDisplay,
+        championIconUrl,
+        resolvedImageKey,
+        gameStartEpochSeconds,
+    } = context;
+
     const spell1 = me?.spell1Id ? `S1: ${me.spell1Id}` : null;
     const spell2 = me?.spell2Id ? `S2: ${me.spell2Id}` : null;
     const spellSummary = [spell1, spell2].filter(Boolean).join(" • ");
     console.log(
-        `[lol-live] resolvedParticipant account=${account?.key ?? `${account?.gameName}#${account?.tagLine}`} puuidPresent=${Boolean(myPuuid)} participantFound=${Boolean(me)} champion=${championName ?? "none"} spells=${spellSummary || "none"}`
+        `[lol-live] resolvedParticipant account=${account?.key ?? `${account?.gameName}#${account?.tagLine}`} puuidPresent=${Boolean(myPuuid)} participantFound=${Boolean(me)} champion=${championDisplay ?? "none"} spells=${spellSummary || "none"}`
     );
 
     const embed = new EmbedBuilder()
@@ -196,29 +236,21 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         .setTimestamp(new Date());
 
     embed.addFields(
-        { name: "Started", value: gameStartTimeMs ? `<t:${Math.floor(gameStartTimeMs / 1000)}:f>` : "Unknown", inline: false },
+        { name: "Started", value: gameStartEpochSeconds ? `<t:${gameStartEpochSeconds}:f>` : "Unknown", inline: false },
     );
 
-    if (championName) {
+    if (championDisplay) {
         embed.addFields({
             name: "Champion",
-            value: spellSummary ? `${championName} (${spellSummary})` : String(championName),
+            value: spellSummary ? `${championDisplay} (${spellSummary})` : String(championDisplay),
             inline: true,
         });
     }
 
-    try {
-        const version = await getLatestDDragonVersion();
-        // const championIconUrl = buildChampionIconUrl(me, version);
-        const { resolvedImageKey, championIconUrl } = await resolveChampionIcon(me, version);
-        console.log(
-            `[lol-live] championIconLookup championId=${me?.championId ?? "none"} imageKey=${resolvedImageKey ?? "none"} url=${championIconUrl ?? "none"}`
-        );
-
-        if (championIconUrl) embed.setThumbnail(championIconUrl);
-    } catch {
-    }
-
+    console.log(
+        `[lol-live] championIconLookup championId=${me?.championId ?? "none"} imageKey=${resolvedImageKey ?? "none"} url=${championIconUrl ?? "none"}`
+    );
+    if (championIconUrl) embed.setThumbnail(championIconUrl);
 
     return { embed, files: [] };
 }
