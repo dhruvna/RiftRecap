@@ -48,6 +48,7 @@ import {
     resolveLolQueueContext, 
     RANKED_QUEUES_BY_GAME,
     TFT_QUEUE_TYPES,
+    isRankedQueueForGame,
 } from '../constants/queues.js';
 
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
@@ -74,16 +75,12 @@ function buildInGameTransitionPatch({ tracking, nextTracking, game, guildId, acc
     const isInGame = nextTracking?.inGame === true;
 
     if (!wasInGame && isInGame) {
-        const now = Date.now();
         const previousDedupeKey = game === GAME_TYPES.LOL ? getLolInGameDedupeKey(tracking) : null;
         const nextDedupeKey = game === GAME_TYPES.LOL ? getLolInGameDedupeKey(nextTracking) : null;
         const sameLolGame = game === GAME_TYPES.LOL && Boolean(nextDedupeKey) && nextDedupeKey === previousDedupeKey;
         if (!sameLolGame) {
             console.log(`[match-poller] match started guild=${guildId} account=${accountKey} game=${game} dedupeKey=${nextDedupeKey ?? 'none'}`);
-            return {
-                lastAnnouncedActiveGameId: nextTracking?.activeGameId ?? null,
-                lastInGameAnnouncementAt: now,
-            };
+            return {};
         }
     }
 
@@ -331,11 +328,13 @@ function reduceLolLiveState({
         return { nextTrackingPatch, shouldAnnounceLive: false, debugReason: 'no_live_transition' };
     }
 
-    const previousAnnouncedGameId = previousTracking?.lastAnnouncedActiveGameId ?? null;
-    const nextActiveGameId = nextTrackingPatch.activeGameId ?? null;
-    const announcedThisGame = previousAnnouncedGameId != null
-        && nextActiveGameId != null
-        && String(previousAnnouncedGameId) === String(nextActiveGameId);
+    const previousAnnouncedInGameKey = previousTracking?.lastAnnouncedInGameKey
+        ?? getLolInGameDedupeKey({ activeGameId: previousTracking?.lastAnnouncedActiveGameId })
+        ?? null;
+    const nextInGameKey = getLolInGameDedupeKey(nextTrackingPatch);
+    const announcedThisGame = previousAnnouncedInGameKey != null
+        && nextInGameKey != null
+        && previousAnnouncedInGameKey === nextInGameKey;
     if (announcedThisGame) {
         return { nextTrackingPatch, shouldAnnounceLive: false, debugReason: 'already_announced' };
     }
@@ -344,11 +343,23 @@ function reduceLolLiveState({
     const announcedRecently = Number.isFinite(lastInGameAnnouncementAt)
         && lastInGameAnnouncementAt > 0
         && (now - lastInGameAnnouncementAt) < dedupeWindowMs;
-    if (announcedRecently) {
+    const cannotDisambiguateGames = previousAnnouncedInGameKey == null || nextInGameKey == null;
+    const sameDedupeKey = previousAnnouncedInGameKey != null
+        && nextInGameKey != null
+        && previousAnnouncedInGameKey === nextInGameKey;
+    if (announcedRecently && (cannotDisambiguateGames || sameDedupeKey)) {
         return { nextTrackingPatch, shouldAnnounceLive: false, debugReason: 'recently_announced' };
     }
+    Object.assign(nextTrackingPatch, {
+        lastAnnouncedInGameKey: nextInGameKey,
+        lastAnnouncedActiveGameId: nextTrackingPatch.activeGameId ?? null,
+        lastInGameAnnouncementAt: now,
+    });
+
     return { nextTrackingPatch, shouldAnnounceLive: true, debugReason: 'announce_live' };
 }
+
+export { reduceLolLiveState };
 
 async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild }) {
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
