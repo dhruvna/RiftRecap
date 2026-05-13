@@ -113,7 +113,16 @@ async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     }
 
     const identity = game === GAME_TYPES.LOL ? getLolIdentity(account) : getTftIdentity(account);
-    if (!identity?.puuid) return { inGame: false, lastSpectatorCheckAt: now };
+    if (!identity?.puuid) {
+        return {
+            inGame: false,
+            lastSpectatorCheckAt: now,
+            activeGameId: null,
+            activeQueueId: null,
+            activeGameStartTime: null,
+            activeGame: null,
+        };
+    }
 
     const fetcher = game === GAME_TYPES.LOL ? getLolActiveGameByPuuid : getTftActiveGameByPuuid;
     try {
@@ -654,7 +663,6 @@ export async function startMatchPoller(client) {
 
                     const announceQueues = guild?.announceQueues ?? DEFAULT_ANNOUNCE_QUEUES;
                     
-                    let lolSpectatorState = null;
 
                     if (canPollLol) {
                         const lolStateResult = await pollLolAccountState({
@@ -665,8 +673,6 @@ export async function startMatchPoller(client) {
                             channel,
                             channelIdForGuild,
                         });
-
-                        lolSpectatorState = lolStateResult.lolSpectatorState;
                         
                         stageTrackingUpsert({
                             guildId,
