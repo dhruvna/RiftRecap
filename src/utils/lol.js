@@ -38,29 +38,6 @@ function normalizeTeamSide(teamId) {
     return Number(teamId) === 200 ? "RED" : "BLUE";
 }
 
-// function buildNormalizedTeamRosters(participants) {
-//     if (!Array.isArray(participants) || participants.length === 0) {
-//         return { BLUE: {}, RED: {} };
-//     }
-
-//     return participants.reduce((rosters, participant) => {
-//         const side = normalizeTeamSide(participant?.teamId);
-//         const role = normalizeRole(participant?.teamPosition ?? participant?.individualPosition ?? participant?.lane);
-//         const entry = {
-//             puuid: participant?.puuid ?? null,
-//             summonerName: participant?.summonerName ?? null,
-//             riotId: participant?.riotId ?? null,
-//             championId: participant?.championId ?? null,
-//             championName: participant?.championName ?? null,
-//             spell1Id: participant?.spell1Id ?? null,
-//             spell2Id: participant?.spell2Id ?? null,
-//         };
-
-//         if (!rosters[side][role]) rosters[side][role] = [];
-//         rosters[side][role].push(entry);
-//         return rosters;
-//     }, { BLUE: {}, RED: {} });
-// }
 function buildNormalizedTeamRosters(participants) {
     if (!Array.isArray(participants) || participants.length === 0) {
         return { BLUE: {}, RED: {} };
@@ -169,6 +146,77 @@ async function buildLolEmbedContext({
     };
 }
 
+async function buildLolGameDto({
+    account,
+    identity = null,
+    queueId = null,
+    queueType = null,
+    participants = [],
+    participant = null,
+    gameStartTime = null,
+    matchId = null,
+}) {
+    const resolvedIdentity = identity ?? getLolIdentity(account);
+    const trackedParticipant = participant ?? resolveTrackedParticipant({ account, identity: resolvedIdentity, participants });
+    const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
+    if (trackedParticipant?.championId != null && !championIds.includes(trackedParticipant.championId)) championIds.push(trackedParticipant.championId);
+    const championImagesById = await getLolChampionImagesByIds(championIds);
+    
+    const context = await buildLolEmbedContext({
+        account,
+        queueId,
+        queueType,
+        participant: trackedParticipant,
+        participants,
+        gameStartTime,
+        matchId,
+        championImagesById,
+    });
+
+    const teamRostersBySideRole = buildNormalizedTeamRosters(participants);
+    for (const side of ["BLUE", "RED"]) {
+        for (const role of Object.keys(teamRostersBySideRole[side])) {
+            teamRostersBySideRole[side][role] = teamRostersBySideRole[side][role].map((entry) => ({
+                ...entry,
+                championIconUrl: championImagesById.get(String(entry?.championId ?? "")) ?? null,
+            }));
+        }
+    }
+
+    const spellIds = [Number(trackedParticipant?.spell1Id), Number(trackedParticipant?.spell2Id)].filter(Number.isFinite);
+    const spellSummary = spellIds.map((spellId, index) => `S${index + 1}: ${spellId}`).join(" • ");
+
+    return {
+        trackedPlayer: {
+            riotId: context.riotId,
+            puuid: resolvedIdentity?.puuid ?? null,
+            participantFound: Boolean(trackedParticipant),
+            participant: trackedParticipant,
+        },
+        queue: {
+            queueId: queueId ?? null,
+            queueType: context.queueType,
+            queueLabel: context.queueLabel,
+            isRanked: isRankedQueueForGame(GAME_TYPES.LOL, context.queueType),
+        },
+        game: {
+            gameStartTimestamp: context.gameStartTimestamp,
+            gameStartEpochSeconds: context.gameStartEpochSeconds,
+            matchId: matchId ?? null,
+            matchUrl: context.matchUrl,
+        },
+        rosters: { bySideRole: teamRostersBySideRole },
+        display: {
+            championDisplay: context.championDisplay,
+            championId: trackedParticipant?.championId ?? null,
+            championIconUrl: context.championIconUrl,
+            championImageKey: context.resolvedImageKey,
+            spellIds,
+            spellSummary,
+        },
+    };
+}
+
 /**
  * @typedef {Object} LolLiveGameViewModel
  * @property {{ riotId: string, puuid: (string|null), participantFound: boolean, participant: Object|null }} trackedPlayer
@@ -186,56 +234,21 @@ async function buildLolEmbedContext({
 export async function buildLolLiveGameViewModel({ account, activeGame }) {
     const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
     const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
-    const identity = getLolIdentity(account);
-    const me = resolveTrackedParticipant({ account, identity, participants });
-
-    const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
-    const championImagesById = await getLolChampionImagesByIds(championIds);
-    console.log(`Resolved champion image map for live game with ${championIds.length} champion ids`);
-    console.log(championImagesById);
-    const context = await buildLolEmbedContext({
+    const dto = await buildLolGameDto({
         account,
         queueId,
-        participant: me,
         participants,
         gameStartTime: activeGame?.gameStartTime,
-        championImagesById,
     });
 
-    const teamRostersBySideRole = buildNormalizedTeamRosters(participants);
-    for (const side of ["BLUE", "RED"]) {
-        for (const role of Object.keys(teamRostersBySideRole[side])) {
-            teamRostersBySideRole[side][role] = teamRostersBySideRole[side][role].map((entry) => ({
-                ...entry,
-                championIconUrl: championImagesById.get(String(entry?.championId ?? "")) ?? null,
-            }));
-        }
-    }
-
-    const spellIds = [Number(me?.spell1Id), Number(me?.spell2Id)].filter(Number.isFinite);
-    const spellSummary = spellIds.map((spellId, index) => `S${index + 1}: ${spellId}`).join(" • ");
-
     return {
-        trackedPlayer: {
-            riotId: context.riotId,
-            puuid: identity?.puuid ?? null,
-            participantFound: Boolean(me),
-            participant: me,
-        },
-        queueLabel: context.queueLabel,
-        gameStartEpochSeconds: context.gameStartEpochSeconds,
-        teamRostersBySideRole,
-        display: {
-            championDisplay: context.championDisplay,
-            championId: me?.championId ?? null,
-            championIconUrl: context.championIconUrl,
-            championImageKey: context.resolvedImageKey,
-            spellIds,
-            spellSummary,
-        },
+        trackedPlayer: dto.trackedPlayer,
+        queueLabel: dto.queue.queueLabel,
+        gameStartEpochSeconds: dto.game.gameStartEpochSeconds,
+        teamRostersBySideRole: dto.rosters.bySideRole,
+        display: dto.display,
     };
 }
-
 
 const LOL_ROLE_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 const DISCORD_EMBED_FIELD_VALUE_LIMIT = 1024;
@@ -331,7 +344,7 @@ export async function buildLolMatchResultEmbed({
     participants = [],
     gameMs,
  }) {
-    const context = await buildLolEmbedContext({
+    const dto = await buildLolGameDto({
         account,
         queueType,
         participant,
@@ -340,14 +353,18 @@ export async function buildLolMatchResultEmbed({
         matchId,
     });
 
-    const { matchUrl, queueLabel, riotId, championIconUrl, gameStartTimestamp } = context;
+    const trackedParticipant = dto.trackedPlayer.participant;
+    const { matchUrl, gameStartTimestamp } = dto.game;
+    const { queueLabel } = dto.queue;
+    const { riotId } = dto.trackedPlayer;
+    const { championIconUrl } = dto.display;
 
-    const kills = Number(participant?.kills ?? 0);
-    const deaths = Number(participant?.deaths ?? 0);
-    const assists = Number(participant?.assists ?? 0);
+    const kills = Number(trackedParticipant?.kills ?? 0);
+    const deaths = Number(trackedParticipant?.deaths ?? 0);
+    const assists = Number(trackedParticipant?.assists ?? 0);
     const kda = `${kills}/${deaths}/${assists}`;
-    const didWin = participant?.win === true;
-    const isRankedMatch = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
+    const didWin = trackedParticipant?.win === true;
+    const isRankedMatch = dto.queue.isRanked;
 
     const embed = new EmbedBuilder()
         .setURL(matchUrl)
@@ -357,14 +374,12 @@ export async function buildLolMatchResultEmbed({
 
     const lpChangeValue = isRankedMatch ? formatDelta(didWin ? Math.abs(delta) : -Math.abs(delta)) : "—";
     const rankValue = isRankedMatch ? formatRankWithLp(afterRank) : "—";
-
-    const damageDealt = Number(participant?.totalDamageDealtToChampions ?? 0);
-    const totalCs = Number(participant?.totalMinionsKilled ?? 0) + Number(participant?.neutralMinionsKilled ?? 0);
-    const duration = formatDurationFromSeconds(participant?.timePlayed ?? 0);
-    // const missingPings = Number(participant?.enemyMissingPings ?? 0);
-    const lane = participant?.teamPosition ?? "Unknown";
-    const visionScore = Number(participant?.visionScore ?? 0);
-    const csPerMin = duration === "Unknown" ? null : totalCs / (Number(participant?.timePlayed) / 60);
+    const damageDealt = Number(trackedParticipant?.totalDamageDealtToChampions ?? 0);
+    const totalCs = Number(trackedParticipant?.totalMinionsKilled ?? 0) + Number(trackedParticipant?.neutralMinionsKilled ?? 0);
+    const duration = formatDurationFromSeconds(trackedParticipant?.timePlayed ?? 0);
+    const lane = trackedParticipant?.teamPosition ?? "Unknown";
+    const visionScore = Number(trackedParticipant?.visionScore ?? 0);
+    const csPerMin = duration === "Unknown" ? null : totalCs / (Number(trackedParticipant?.timePlayed) / 60);
     const csPerMinLabel = Number.isFinite(csPerMin) && csPerMin > 0 ? `${csPerMin.toFixed(1)} CS/min` : null;
 
     embed.addFields(
@@ -385,21 +400,28 @@ export async function buildLolMatchResultEmbed({
 }
 
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
-    const viewModel = await buildLolLiveGameViewModel({ account, activeGame });
+    const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
+    const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
+    const dto = await buildLolGameDto({
+        account,
+        queueId,
+        participants,
+        gameStartTime: activeGame?.gameStartTime,
+    });
 
-    const redSideLine = formatRosterLineByRole(viewModel.teamRostersBySideRole?.RED);
-    const blueSideLine = formatRosterLineByRole(viewModel.teamRostersBySideRole?.BLUE);
+    const redSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.RED);
+    const blueSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.BLUE);
 
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
-        .setTitle(`${viewModel.queueLabel} Game in Progress for ${viewModel.trackedPlayer.riotId}`)
+        .setTitle(`${dto.queue.queueLabel} Game in Progress for ${dto.trackedPlayer.riotId}`)
         .addFields(
             { name: "Red Side", value: redSideLine, inline: false },
             { name: "Blue Side", value: blueSideLine, inline: false },
         )
         .setTimestamp(new Date());        
 
-    if (viewModel.display.championIconUrl) embed.setThumbnail(viewModel.display.championIconUrl);
+    if (dto.display.championIconUrl) embed.setThumbnail(dto.display.championIconUrl);
 
     return { embed, files: [] };
 }
