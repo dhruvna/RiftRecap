@@ -297,6 +297,173 @@ function findLatestRankedIndex(matches, { shouldInclude = () => true } = {}) {
     return -1;
 }
 
+function buildLolTrackingPatch({ lolTracking, lolSpectatorState, lolTransitionPatch = {}, trackingPatch = {} }) {
+    return {
+        ...trackingPatch,
+        inGame: lolSpectatorState?.inGame ?? lolTracking?.inGame ?? false,
+        lastSpectatorCheckAt: lolSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
+        activeGameId: lolSpectatorState?.activeGameId ?? null,
+        activeQueueId: lolSpectatorState?.activeQueueId ?? null,
+        activeGameStartTime: lolSpectatorState?.activeGameStartTime ?? null,
+        ...lolTransitionPatch,
+    };
+}
+
+async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild }) {
+    const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
+    const nextLolTracking = {
+        ...lolTracking,
+        inGame: lolSpectatorState.inGame ?? false,
+        activeGameId: lolSpectatorState.activeGameId ?? null,
+        activeQueueId: lolSpectatorState.activeQueueId ?? null,
+        activeGameStartTime: lolSpectatorState.activeGameStartTime ?? null,
+    };
+    const lolTransitionPatch = buildInGameTransitionPatch({
+        tracking: lolTracking,
+        nextTracking: nextLolTracking,
+        game: GAME_TYPES.LOL,
+        guildId,
+        accountKey: account.key,
+    });
+
+    const wasLolInGame = lolTracking?.inGame === true;
+    const isLolInGame = lolSpectatorState.inGame === true;
+    const previousAnnouncedGameId = lolTracking?.lastAnnouncedActiveGameId ?? null;
+    const nextActiveGameId = lolSpectatorState.activeGameId ?? null;
+    const announcedThisGame = previousAnnouncedGameId != null
+        && nextActiveGameId != null
+        && String(previousAnnouncedGameId) === String(nextActiveGameId);
+    const lastInGameAnnouncementAt = Number(lolTracking?.lastInGameAnnouncementAt ?? 0);
+    const announcedRecently = Number.isFinite(lastInGameAnnouncementAt)
+        && lastInGameAnnouncementAt > 0
+        && (Date.now() - lastInGameAnnouncementAt) < LIVE_ANNOUNCE_DEDUPE_WINDOW_MS;
+    const shouldAnnounceLolLiveGame = !wasLolInGame
+        && isLolInGame
+        && !announcedThisGame
+        && !announcedRecently;
+
+    if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
+        await announceGameMatchToDiscord({
+            buildEmbed: buildLolLiveGameEmbed,
+            channel,
+            guildId,
+            channelId: channelIdForGuild,
+            account,
+            activeGame: lolSpectatorState.activeGame,
+        });
+    }
+
+    return {
+        lolSpectatorState,
+        trackingPatch: buildLolTrackingPatch({ lolTracking, lolSpectatorState, lolTransitionPatch }),
+    };
+}
+
+async function processUnseenLolMatches({
+    riotLimiter,
+    account,
+    guildId,
+    channelIdForGuild,
+    channel,
+    lolIdentity,
+    lolTracking,
+    announceQueues,
+    refreshedRankSnapshotsByGame,
+}) {
+    const unseenLolMatchIds = await detectUnseenMatchIds({
+        tracking: lolTracking,
+        matchBackfillLimit: MATCH_BACKFILL_LIMIT,
+        fetchMatchIdsByAccount: ({ count, start }) =>
+            fetchMatchIds({ riotLimiter, account, count, start, game: GAME_TYPES.LOL }),
+    });
+
+    if (unseenLolMatchIds.length === 0) {
+        return { trackingPatch: null, rankSnapshot: refreshedRankSnapshotsByGame[GAME_TYPES.LOL] ?? null };
+    }
+
+    const orderedLolMatchIds = [...unseenLolMatchIds].reverse();
+    const beforeLol = lolTracking.lastRankByQueue ?? {};
+    let afterLol = beforeLol;
+    let lolRecapEvents = Array.isArray(lolTracking.recapEvents) ? lolTracking.recapEvents : [];
+    let lastProcessedLolMatchId = lolTracking.lastMatchId;
+    let lastProcessedLolMatchAt = Number(lolTracking.lastMatchAt ?? 0) || null;
+    /** @type {Array<preparedLolMatch>} */
+    const preparedLolMatches = [];
+
+    for (const matchId of orderedLolMatchIds) {
+        const match = await fetchMatch({ riotLimiter, account, matchId, game: GAME_TYPES.LOL });
+        const participants = match?.info?.participants ?? [];
+        const me = participants.find((p) => p.puuid === lolIdentity.puuid);
+        const meta = detectLolQueueMetaFromMatch(match);
+        const rawQueueType = meta.queueType || LOL_QUEUE_TYPES.UNKNOWN;
+        const queueType = mapRiotLolQueueType(rawQueueType) ?? rawQueueType;
+        const isRanked = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
+        const gameMs = Number(match?.info?.gameEndTimestamp ?? 0) || Number(match?.info?.gameCreation ?? 0) || Date.now();
+        preparedLolMatches.push({ matchId, me, participants, queueType, isRanked, gameMs });
+    }
+
+    const latestLolRankedIndex = findLatestRankedIndex(preparedLolMatches);
+    for (const [index, prepared] of preparedLolMatches.entries()) {
+        const { matchId, me, participants, queueType, isRanked, gameMs } = prepared;
+        const isLatestRankedMatch = index === latestLolRankedIndex;
+        if (isLatestRankedMatch) {
+            const memoizedRankSnapshot = refreshedRankSnapshotsByGame[GAME_TYPES.LOL];
+            if (memoizedRankSnapshot) {
+                afterLol = memoizedRankSnapshot;
+            } else {
+                try {
+                    afterLol = await refreshLolRankSnapshot({ riotLimiter, account });
+                    refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = afterLol;
+                } catch {}
+            }
+        }
+        const deltas = computeRankSnapshotDeltas({ before: beforeLol, after: afterLol });
+        const afterRank = isLatestRankedMatch ? (afterLol?.[queueType] ?? null) : null;
+        const delta = isLatestRankedMatch ? (deltas?.[queueType] ?? 0) : 0;
+        if (isRanked) {
+            const placement = me?.win ? 1 : 2;
+            lolRecapEvents = buildRecapEvents({ recapEvents: lolRecapEvents, matchId, queueType, delta, placement, gameMs });
+        }
+        const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
+        if (!shouldAnnounce) {
+            console.log(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`);
+            lastProcessedLolMatchId = matchId;
+            lastProcessedLolMatchAt = gameMs;
+            continue;
+        }
+        if (me) {
+            await announceGameMatchToDiscord({
+                buildEmbed: buildLolMatchResultEmbed,
+                channel,
+                account,
+                matchId,
+                queueType,
+                delta,
+                afterRank,
+                participant: me,
+                participants,
+                gameMs,
+                guildId,
+                channelId: channelIdForGuild,
+            });
+        }
+        if (isRanked) {
+            console.log(`[match-poller] NEW LoL match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} delta=${delta}`);
+        }
+        lastProcessedLolMatchId = matchId;
+        lastProcessedLolMatchAt = gameMs;
+    }
+    return {
+        trackingPatch: {
+            lastMatchId: lastProcessedLolMatchId,
+            lastMatchAt: lastProcessedLolMatchAt,
+            lastRankByQueue: afterLol,
+            recapEvents: lolRecapEvents,
+        },
+        rankSnapshot: afterLol,
+    };
+}
+
 // === Service entry point ===
 // Polls periodically for new matches and sends announcements.
 export async function startMatchPoller(client) {
@@ -428,70 +595,31 @@ export async function startMatchPoller(client) {
                             }
                         }
                     
-                    const lolSpectatorState = canPollLol
-                        ? await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL })
-                        : null;
                     const tftSpectatorState = canPollTft
                         ? await probeSpectatorState({ riotLimiter, account, tracking: tftTracking, game: GAME_TYPES.TFT })
                         : null;
 
                     const announceQueues = guild?.announceQueues ?? DEFAULT_ANNOUNCE_QUEUES;
                     
-                    if (canPollLol && lolSpectatorState) {
-                        const nextLolTracking = {
-                            ...lolTracking,
-                            inGame: lolSpectatorState.inGame ?? false,
-                            activeGameId: lolSpectatorState.activeGameId ?? null,
-                            activeQueueId: lolSpectatorState.activeQueueId ?? null,
-                            activeGameStartTime: lolSpectatorState.activeGameStartTime ?? null,
-                        };
-                        const lolTransitionPatch = buildInGameTransitionPatch({
-                            tracking: lolTracking,
-                            nextTracking: nextLolTracking,
-                            game: GAME_TYPES.LOL,
+                    let lolSpectatorState = null;
+
+                    if (canPollLol) {
+                        const lolStateResult = await pollLolAccountState({
+                            riotLimiter,
+                            account,
+                            lolTracking,
                             guildId,
-                            accountKey: account.key,
+                            channel,
+                            channelIdForGuild,
                         });
 
-                        const wasLolInGame = lolTracking?.inGame === true;
-                        const isLolInGame = lolSpectatorState.inGame === true;
-                        const previousAnnouncedGameId = lolTracking?.lastAnnouncedActiveGameId ?? null;
-                        const nextActiveGameId = lolSpectatorState.activeGameId ?? null;
-                        const announcedThisGame = previousAnnouncedGameId != null
-                            && nextActiveGameId != null
-                            && String(previousAnnouncedGameId) === String(nextActiveGameId);
-                        const lastInGameAnnouncementAt = Number(lolTracking?.lastInGameAnnouncementAt ?? 0);
-                        const announcedRecently = Number.isFinite(lastInGameAnnouncementAt)
-                            && lastInGameAnnouncementAt > 0
-                            && (Date.now() - lastInGameAnnouncementAt) < LIVE_ANNOUNCE_DEDUPE_WINDOW_MS;
-                        const shouldAnnounceLolLiveGame = !wasLolInGame
-                            && isLolInGame
-                            && !announcedThisGame
-                            && !announcedRecently;
-
-                        if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
-                            await announceGameMatchToDiscord({
-                                buildEmbed: buildLolLiveGameEmbed,
-                                channel,
-                                guildId,
-                                channelId: channelIdForGuild,
-                                account,
-                                activeGame: lolSpectatorState.activeGame,
-                            });
-                        }
+                        lolSpectatorState = lolStateResult.lolSpectatorState;
                         
                         stageTrackingUpsert({
                             guildId,
                             account,
                             gameKey: 'lol',
-                            trackingPatch: {
-                                inGame: lolSpectatorState.inGame ?? false,
-                                lastSpectatorCheckAt: lolSpectatorState.lastSpectatorCheckAt ?? Date.now(),
-                                activeGameId: lolSpectatorState.activeGameId ?? null,
-                                activeQueueId: lolSpectatorState.activeQueueId ?? null,
-                                activeGameStartTime: lolSpectatorState.activeGameStartTime ?? null,
-                                ...lolTransitionPatch,
-                            },
+                            trackingPatch: lolStateResult.trackingPatch,
                         });
                     }
                     if (canPollTft && tftSpectatorState) {
@@ -525,138 +653,29 @@ export async function startMatchPoller(client) {
                     }
 
                     if (canPollLol) {
-                        const unseenLolMatchIds = await detectUnseenMatchIds({
-                            tracking: lolTracking,
-                            matchBackfillLimit: MATCH_BACKFILL_LIMIT,
-                            fetchMatchIdsByAccount: ({ count, start }) =>
-                                fetchMatchIds({ riotLimiter, account, count, start, game: GAME_TYPES.LOL }),
+                        /** @type {lolPollResult} */
+                        const lolMatchResult = await processUnseenLolMatches({
+                            riotLimiter,
+                            account,
+                            guildId,
+                            channelIdForGuild,
+                            channel,
+                            lolIdentity,
+                            lolTracking,
+                            announceQueues,
+                            refreshedRankSnapshotsByGame,
                         });
-
-                        if (unseenLolMatchIds.length > 0) {
-                            const orderedLolMatchIds = [...unseenLolMatchIds].reverse();
-                            const beforeLol = lolTracking.lastRankByQueue ?? {};
-                            let afterLol = beforeLol;
-                            let lolRecapEvents = Array.isArray(lolTracking.recapEvents)
-                                ? lolTracking.recapEvents
-                                : [];
-                            let lastProcessedLolMatchId = lolTracking.lastMatchId;
-                            let lastProcessedLolMatchAt = Number(lolTracking.lastMatchAt ?? 0) || null;
-                            const preparedLolMatches = [];
-
-                            for (const matchId of orderedLolMatchIds) {
-                                const match = await fetchMatch({
-                                    riotLimiter,
-                                    account,
-                                    matchId,
-                                    game: GAME_TYPES.LOL,
-                                });
-                                const participants = match?.info?.participants ?? [];
-                                const me = participants.find((p) => p.puuid === lolIdentity.puuid);
-
-                                const meta = detectLolQueueMetaFromMatch(match);
-                                const rawQueueType = meta.queueType || LOL_QUEUE_TYPES.UNKNOWN;
-                                const queueType = mapRiotLolQueueType(rawQueueType) ?? rawQueueType;
-                                const isRanked = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
-                                const gameMs = Number(match?.info?.gameEndTimestamp ?? 0)
-                                    || Number(match?.info?.gameCreation ?? 0)
-                                    || Date.now();
-
-                                preparedLolMatches.push({
-                                    matchId,
-                                    me,
-                                    participants,
-                                    queueType,
-                                    isRanked,
-                                    gameMs,
-                                });
-                            }
-
-                            const latestLolRankedIndex = findLatestRankedIndex(preparedLolMatches);
-
-                            for (const [index, prepared] of preparedLolMatches.entries()) {
-                                const { matchId, me, participants, queueType, isRanked, gameMs } = prepared;
-                                const isLatestRankedMatch = index === latestLolRankedIndex;
-                                if (isLatestRankedMatch) {
-                                    const memoizedRankSnapshot = refreshedRankSnapshotsByGame[GAME_TYPES.LOL];
-                                    if (memoizedRankSnapshot) {
-                                        afterLol = memoizedRankSnapshot;
-                                    } else {
-                                        try {
-                                            afterLol = await refreshLolRankSnapshot({ riotLimiter, account });
-                                            refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = afterLol;
-                                        } catch {
-                                            // ignore refresh failure for delta calc
-                                        }
-                                    }
-                                }
-
-                                const deltas = computeRankSnapshotDeltas({ before: beforeLol, after: afterLol });
-                                const afterRank = isLatestRankedMatch ? (afterLol?.[queueType] ?? null) : null;
-                                const delta = isLatestRankedMatch ? (deltas?.[queueType] ?? 0) : 0;
-                                
-                                if (isRanked) {
-                                    const placement = me?.win ? 1 : 2;
-                                    lolRecapEvents = buildRecapEvents({
-                                        recapEvents: lolRecapEvents,
-                                        matchId,
-                                        queueType,
-                                        delta,
-                                        placement,
-                                        gameMs,
-                                    });
-                                }
-
-                                const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
-                                if (!shouldAnnounce) {
-                                    console.log(
-                                        `[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`
-                                    );
-                                    lastProcessedLolMatchId = matchId;
-                                    lastProcessedLolMatchAt = gameMs;
-                                    continue;
-                                }
-
-                                if (me) {
-                                    await announceGameMatchToDiscord({
-                                        buildEmbed: buildLolMatchResultEmbed,
-                                        channel,
-                                        account,
-                                        matchId,
-                                        queueType,
-                                        delta,
-                                        afterRank,
-                                        participant: me,
-                                        participants,
-                                        gameMs,
-                                        guildId,
-                                        channelId: channelIdForGuild,
-                                    });
-                                }
-
-                                if (isRanked) {
-                                    console.log(
-                                        `[match-poller] NEW LoL match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} delta=${delta}`
-                                    );
-                                }
-                                lastProcessedLolMatchId = matchId;
-                                lastProcessedLolMatchAt = gameMs;
-                            }
-
+                        refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = lolMatchResult.rankSnapshot;
+                        if (lolMatchResult.trackingPatch) {
                             stageTrackingUpsert({
                                 guildId,
                                 account,
                                 gameKey: 'lol',
-                                trackingPatch: {
-                                    lastMatchId: lastProcessedLolMatchId,
-                                    lastMatchAt: lastProcessedLolMatchAt,
-                                    lastRankByQueue: afterLol,
-                                    recapEvents: lolRecapEvents,
-                                    inGame: lolSpectatorState?.inGame ?? false,
-                                    lastSpectatorCheckAt: lolSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
-                                    activeGameId: lolSpectatorState?.activeGameId ?? null,
-                                    activeQueueId: lolSpectatorState?.activeQueueId ?? null,
-                                    activeGameStartTime: lolSpectatorState?.activeGameStartTime ?? null,
-                                },
+                                trackingPatch: buildLolTrackingPatch({
+                                    lolTracking,
+                                    lolSpectatorState,
+                                    trackingPatch: lolMatchResult.trackingPatch,
+                                }),
                             });
                         }
                     }
