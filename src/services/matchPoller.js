@@ -361,10 +361,10 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const nextLolTracking = {
         ...lolTracking,
-        inGame: lolSpectatorState.inGame ?? false,
-        activeGameId: lolSpectatorState.activeGameId ?? null,
-        activeQueueId: lolSpectatorState.activeQueueId ?? null,
-        activeGameStartTime: lolSpectatorState.activeGameStartTime ?? null,
+        ...buildLolTrackingPatch({
+            lolTracking,
+            lolSpectatorState,
+        }),
     };
     const lolTransitionPatch = buildInGameTransitionPatch({
         tracking: lolTracking,
