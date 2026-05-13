@@ -3,6 +3,7 @@ import {
     loadTFTChampions,
     loadTFTItems,
     loadTFTTraits,
+    loadLolChampions,
 } from './ddragon.js';
 
 function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
@@ -56,6 +57,11 @@ function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
     };
 }
 
+const lolChampionLookup = createLookupIndex({
+    loadDataset: loadLolChampions,
+    normalizeEntryId: (id) => String(id),
+});
+
 const championLookup = createLookupIndex({
     loadDataset: loadTFTChampions,
 });
@@ -92,4 +98,17 @@ export function getTftTraitNameById(traitId) {
 
 export function getTftTraitImageById(traitId) {
     return traitLookup.getImageById(traitId, 'tft-trait');
+}
+
+export async function getLolChampionImageKeyById(championId) {
+    const imageUrl = await lolChampionLookup.getImageById(championId, 'champion');
+    if (!imageUrl) return null;
+
+    const fileName = imageUrl.split('/').pop();
+    if (!fileName) return null;
+    return fileName.replace(/\.png$/i, '');
+}
+
+export function getLolChampionImageById(championId) {
+    return lolChampionLookup.getImageById(championId, 'champion');
 }

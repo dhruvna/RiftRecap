@@ -19,6 +19,7 @@ export {
     loadTFTChampions,
     loadTFTItems,
     loadTFTTraits,
+    loadLolChampions,
     getTftRegaliaThumbnailUrl,
 } from './riot/ddragon.js';
 
@@ -29,4 +30,6 @@ export {
     getTftItemImageById,
     getTftTraitNameById,
     getTftTraitImageById,
+    getLolChampionImageKeyById,
+    getLolChampionImageById,
 } from './riot/ddragonIndexes.js';

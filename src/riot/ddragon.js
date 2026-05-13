@@ -79,6 +79,11 @@ export const loadTFTTraits = createDatasetLoader({
     path: 'tft-trait.json',
 });
 
+export const loadLolChampions = createDatasetLoader({
+    cacheKey: 'LoL champion',
+    path: 'champion.json',
+});
+
 export async function getTftRegaliaThumbnailUrl({ queueType, tier }) {
     const regalia = await loadTFTRegalia();
     const version = await getLatestDDragonVersion();

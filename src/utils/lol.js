@@ -5,6 +5,8 @@ import { EmbedBuilder } from "discord.js";
 import { 
     getLatestDDragonVersion,
     getMatchUrl,
+    getLolChampionImageById,
+    getLolChampionImageKeyById,
 } from "../riot.js";
 import { getLolIdentity } from "../storage.js";
 import { GAME_TYPES } from "../constants/queues.js";
@@ -24,16 +26,39 @@ function formatDurationFromSeconds(seconds) {
     return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
-function buildChampionIconUrl(participant, version) {
-    const championName = participant?.championName;
-    if (!championName || !version) return null;
+async function resolveChampionIcon(participant, version) {
+    const championId = participant?.championId;
+    let resolvedImageKey = null;
+    let championIconUrl = null;
 
-    // Data Dragon champion icon files map to champion key names.
-    const normalized = String(championName).replace(/[ .'_]/g, '');
-    if (!normalized) return null;
+    if (championId != null) {
+        resolvedImageKey = await getLolChampionImageKeyById(championId);
+        championIconUrl = await getLolChampionImageById(championId);
+    }
 
-    return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
+    if (!championIconUrl && version) {
+        const championName = participant?.championName;
+        if (championName) {
+            const normalized = String(championName).replace(/[ .'_]/g, '');
+            if (normalized) {
+                resolvedImageKey = resolvedImageKey ?? normalized;
+                championIconUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
+            }
+        }
+    }
+
+     return { resolvedImageKey, championIconUrl };
 }
+// function buildChampionIconUrl(participant, version) {
+//     const championName = participant?.championName;
+//     if (!championName || !version) return null;
+
+//     // Data Dragon champion icon files map to champion key names.
+//     const normalized = String(championName).replace(/[ .'_]/g, '');
+//     if (!normalized) return null;
+
+//     return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
+// }
 
 function normalizeText(value) {
     return String(value ?? "").trim().toLowerCase();
@@ -138,7 +163,7 @@ export async function buildLolMatchResultEmbed({
 
     try {
         const version = await getLatestDDragonVersion();
-        const championIconUrl = buildChampionIconUrl(participant, version);
+        const { championIconUrl } = await resolveChampionIcon(participant, version);
         if (championIconUrl) embed.setThumbnail(championIconUrl);
     } catch {
     }
@@ -184,7 +209,12 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
 
     try {
         const version = await getLatestDDragonVersion();
-        const championIconUrl = buildChampionIconUrl(me, version);
+        // const championIconUrl = buildChampionIconUrl(me, version);
+        const { resolvedImageKey, championIconUrl } = await resolveChampionIcon(me, version);
+        console.log(
+            `[lol-live] championIconLookup championId=${me?.championId ?? "none"} imageKey=${resolvedImageKey ?? "none"} url=${championIconUrl ?? "none"}`
+        );
+
         if (championIconUrl) embed.setThumbnail(championIconUrl);
     } catch {
     }
