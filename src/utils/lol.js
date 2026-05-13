@@ -34,6 +34,13 @@ function buildChampionIconUrl(participant, version) {
     return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
 }
 
+function formatElapsedDuration(startTimeMs) {
+    const startMs = Number(startTimeMs ?? 0);
+    if (!Number.isFinite(startMs) || startMs <= 0) return null;
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+    return formatDurationFromSeconds(elapsedSeconds);
+}
+
 // === Queue helpers ===
 // Extract the queue id from a match payload while handling API variations.
 export function getQueueIdFromLolMatch(match) {
@@ -109,5 +116,46 @@ export async function buildLolMatchResultEmbed({
         if (championIconUrl) embed.setThumbnail(championIconUrl);
     } catch {
     }
+    return { embed, files: [] };
+}
+
+export async function buildLolLiveGameEmbed({ account, activeGame }) {
+    const riotId = `${account.gameName}#${account.tagLine}`;
+    const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
+    const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
+    const queueLabel = queueLabelForGame(GAME_TYPES.LOL, queueType);
+    const gameStartTimeMs = Number(activeGame?.gameStartTime ?? 0) || null;
+    const elapsedDuration = formatElapsedDuration(gameStartTimeMs);
+
+    const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
+    const me = participants.find((p) => p?.puuid === account?.lol?.puuid)
+        || participants.find((p) => p?.summonerId && p.summonerId === account?.lol?.summonerId)
+        || null;
+
+    const championName = me?.championName ?? me?.championId ?? null;
+    const spell1 = me?.spell1Id ? `S1: ${me.spell1Id}` : null;
+    const spell2 = me?.spell2Id ? `S2: ${me.spell2Id}` : null;
+    const spellSummary = [spell1, spell2].filter(Boolean).join(" • ");
+
+    const embed = new EmbedBuilder()
+        .setColor(0x6a5cff)
+        .setTitle(`🔴 Live • ${riotId}`)
+        .setTimestamp(new Date());
+
+    embed.addFields(
+        { name: "Queue", value: queueLabel, inline: true },
+        { name: "Region / Platform", value: `${account.regional} / ${account.platform}`, inline: true },
+        { name: "Started", value: gameStartTimeMs ? `<t:${Math.floor(gameStartTimeMs / 1000)}:f>` : "Unknown", inline: false },
+        { name: "Elapsed", value: elapsedDuration ?? "Unknown", inline: true },
+    );
+
+    if (championName) {
+        embed.addFields({
+            name: "Champion",
+            value: spellSummary ? `${championName} (${spellSummary})` : String(championName),
+            inline: true,
+        });
+    }
+
     return { embed, files: [] };
 }

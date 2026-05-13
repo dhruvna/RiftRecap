@@ -30,6 +30,7 @@ import {
  } from '../utils/tft.js';
 
 import {
+    buildLolLiveGameEmbed,
     buildLolMatchResultEmbed,
     detectLolQueueMetaFromMatch,
 } from '../utils/lol.js';
@@ -59,13 +60,46 @@ const MATCH_BACKFILL_LIMIT = 10;
 
 const SPECTATOR_CHECK_COOLDOWN_MS = 0.5 * 60 * 1000;
 
+function getLolInGameDedupeKey(tracking = {}) {
+    if (tracking?.activeGameId != null) return `gid:${String(tracking.activeGameId)}`;
+    const start = tracking?.activeGameStartTime;
+    const queue = tracking?.activeQueueId;
+    if (start != null && queue != null) return `start:${String(start)}:queue:${String(queue)}`;
+    return null;
+}
+
+function buildInGameTransitionPatch({ tracking, nextTracking, game, guildId, accountKey }) {
+    const wasInGame = tracking?.inGame === true;
+    const isInGame = nextTracking?.inGame === true;
+
+    if (!wasInGame && isInGame) {
+        const now = Date.now();
+        const previousDedupeKey = game === GAME_TYPES.LOL ? getLolInGameDedupeKey(tracking) : null;
+        const nextDedupeKey = game === GAME_TYPES.LOL ? getLolInGameDedupeKey(nextTracking) : null;
+        const sameLolGame = game === GAME_TYPES.LOL && Boolean(nextDedupeKey) && nextDedupeKey === previousDedupeKey;
+        if (!sameLolGame) {
+            console.log(`[match-poller] match started guild=${guildId} account=${accountKey} game=${game} dedupeKey=${nextDedupeKey ?? 'none'}`);
+            return {
+                lastAnnouncedActiveGameId: nextTracking?.activeGameId ?? null,
+                lastInGameAnnouncementAt: now,
+            };
+        }
+    }
+
+    if (wasInGame && !isInGame) {
+        console.log(`[match-poller] match ended guild=${guildId} account=${accountKey} game=${game}`);
+    }
+
+    return {};
+}
+
 async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     const now = Date.now();
     const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);
     const wasInGame = tracking?.inGame === true;
     if (Number.isFinite(lastCheckedAt) && now - lastCheckedAt < SPECTATOR_CHECK_COOLDOWN_MS) {
         console.log(`Skipping spectator check for account ${account.key} - cooldown in effect`);
-        return { inGame: wasInGame, lastSpectatorCheckAt: lastCheckedAt };
+        return { inGame: wasInGame, lastSpectatorCheckAt: lastCheckedAt, };
     }
 
     const identity = game === GAME_TYPES.LOL ? getLolIdentity(account) : getTftIdentity(account);
@@ -402,6 +436,20 @@ export async function startMatchPoller(client) {
                     const announceQueues = guild?.announceQueues ?? DEFAULT_ANNOUNCE_QUEUES;
                     
                     if (canPollLol && lolSpectatorState) {
+                        const nextLolTracking = {
+                            ...lolTracking,
+                            inGame: lolSpectatorState.inGame ?? false,
+                            activeGameId: lolSpectatorState.activeGameId ?? null,
+                            activeQueueId: lolSpectatorState.activeQueueId ?? null,
+                            activeGameStartTime: lolSpectatorState.activeGameStartTime ?? null,
+                        };
+                        const lolTransitionPatch = buildInGameTransitionPatch({
+                            tracking: lolTracking,
+                            nextTracking: nextLolTracking,
+                            game: GAME_TYPES.LOL,
+                            guildId,
+                            accountKey: account.key,
+                        });
                         stageTrackingUpsert({
                             guildId,
                             account,
@@ -412,10 +460,25 @@ export async function startMatchPoller(client) {
                                 activeGameId: lolSpectatorState.activeGameId ?? null,
                                 activeQueueId: lolSpectatorState.activeQueueId ?? null,
                                 activeGameStartTime: lolSpectatorState.activeGameStartTime ?? null,
+                                ...lolTransitionPatch,
                             },
                         });
                     }
                     if (canPollTft && tftSpectatorState) {
+                        const nextTftTracking = {
+                            ...tftTracking,
+                            inGame: tftSpectatorState.inGame ?? false,
+                            activeGameId: tftSpectatorState.activeGameId ?? null,
+                            activeQueueId: tftSpectatorState.activeQueueId ?? null,
+                            activeGameStartTime: tftSpectatorState.activeGameStartTime ?? null,
+                        };
+                        const tftTransitionPatch = buildInGameTransitionPatch({
+                            tracking: tftTracking,
+                            nextTracking: nextTftTracking,
+                            game: GAME_TYPES.TFT,
+                            guildId,
+                            accountKey: account.key,
+                        });
                         stageTrackingUpsert({
                             guildId,
                             account,
@@ -426,6 +489,7 @@ export async function startMatchPoller(client) {
                                 activeGameId: tftSpectatorState.activeGameId ?? null,
                                 activeQueueId: tftSpectatorState.activeQueueId ?? null,
                                 activeGameStartTime: tftSpectatorState.activeGameStartTime ?? null,
+                                ...tftTransitionPatch,
                             },
                         });
                     }
