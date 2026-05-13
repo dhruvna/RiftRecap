@@ -43,9 +43,9 @@ import {
 import {
     DEFAULT_ANNOUNCE_QUEUES,
     GAME_TYPES,
-    isRankedQueueForGame,
     LOL_QUEUE_TYPES,
-    mapRiotLolQueueType, 
+    mapRiotLolQueueType,
+    resolveLolQueueContext, 
     RANKED_QUEUES_BY_GAME,
     TFT_QUEUE_TYPES,
 } from '../constants/queues.js';
@@ -420,8 +420,7 @@ async function processUnseenLolMatches({
         const me = participants.find((p) => p.puuid === lolIdentity.puuid);
         const meta = detectLolQueueMetaFromMatch(match);
         const rawQueueType = meta.queueType || LOL_QUEUE_TYPES.UNKNOWN;
-        const queueType = mapRiotLolQueueType(rawQueueType) ?? rawQueueType;
-        const isRanked = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
+        const { queueType, isRanked } = resolveLolQueueContext({ match, rawQueueType });
         const gameMs = Number(match?.info?.gameEndTimestamp ?? 0) || Number(match?.info?.gameCreation ?? 0) || Date.now();
         preparedLolMatches.push({ matchId, me, participants, queueType, isRanked, gameMs });
     }

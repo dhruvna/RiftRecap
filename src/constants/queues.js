@@ -165,3 +165,15 @@ export function validRecapQueuesSet() {
 export function mapRiotLolQueueType(queueType) {
     return LOL_RIOT_QUEUE_TYPE_TO_BOT_QUEUE_TYPE[queueType] ?? null;
 }
+
+export function resolveLolQueueContext({ match = null, queueId = null, rawQueueType = null } = {}) {
+    const inferredQueueId = queueId ?? match?.info?.queueId ?? null;
+    const mappedFromQueueId = queueTypeFromQueueId(inferredQueueId, GAME_TYPES.LOL);
+    const mappedFromRawQueueType = mapRiotLolQueueType(rawQueueType);
+    const queueType = mappedFromRawQueueType ?? mappedFromQueueId;
+    return {
+        queueType,
+        queueLabel: queueLabelForGame(GAME_TYPES.LOL, queueType),
+        isRanked: isRankedQueueForGame(GAME_TYPES.LOL, queueType),
+    };
+}

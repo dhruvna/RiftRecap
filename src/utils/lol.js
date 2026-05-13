@@ -7,12 +7,7 @@ import {
     getLolChampionImagesByIds,
 } from "../riot.js";
 import { getLolIdentity } from "../storage.js";
-import { GAME_TYPES } from "../constants/queues.js";
-import {
-  isRankedQueueForGame,
-  queueLabelForGame,
-  queueTypeFromQueueId,
-} from "../constants/queues.js";
+import { GAME_TYPES, resolveLolQueueContext } from "../constants/queues.js";
 import { formatDelta, formatRankWithLp } from "./presentation.js";
 import { resolveChampionIcon } from "./lolChampionIcon.js";
 
@@ -102,8 +97,9 @@ async function buildLolEmbedContext({
 }) {
 
     const riotId = `${account?.gameName ?? "Unknown"}#${account?.tagLine ?? ""}`;
-    const resolvedQueueType = queueType ?? queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
-    const queueLabel = queueLabelForGame(GAME_TYPES.LOL, resolvedQueueType);
+    const queueContext = resolveLolQueueContext({ queueId, rawQueueType: queueType });
+    const resolvedQueueType = queueContext.queueType;
+    const queueLabel = queueContext.queueLabel;
 
     const championDisplay = participant?.championName
         ? String(participant.championName)
@@ -137,6 +133,7 @@ async function buildLolEmbedContext({
         riotId,
         queueType: resolvedQueueType,
         queueLabel,
+        isRanked: queueContext.isRanked,
         championDisplay,
         championIconUrl,
         resolvedImageKey,
@@ -197,7 +194,7 @@ async function buildLolGameDto({
             queueId: queueId ?? null,
             queueType: context.queueType,
             queueLabel: context.queueLabel,
-            isRanked: isRankedQueueForGame(GAME_TYPES.LOL, context.queueType),
+            isRanked: context.isRanked,
         },
         game: {
             gameStartTimestamp: context.gameStartTimestamp,
@@ -386,8 +383,8 @@ export function getQueueIdFromLolMatch(match) {
 // Convert queue id into human-friendly metadata.
 export function detectLolQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromLolMatch(match);
-    const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
-    return { queueId, queueType, label: queueLabelForGame(GAME_TYPES.LOL, queueType) };
+    const resolved = resolveLolQueueContext({ match, queueId });
+    return { queueId, queueType: resolved.queueType, label: resolved.queueLabel, isRanked: resolved.isRanked };
 }
 
 // === Embed construction ===
