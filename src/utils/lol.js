@@ -234,18 +234,14 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         .setColor(0x6a5cff)
         .setTitle(`${queueLabel} Game in Progress for ${riotId}`)
         .setTimestamp(new Date());
-
-    embed.addFields(
-        { name: "Started", value: gameStartEpochSeconds ? `<t:${gameStartEpochSeconds}:f>` : "Unknown", inline: false },
-    );
-
-    if (championDisplay) {
-        embed.addFields({
-            name: "Champion",
-            value: spellSummary ? `${championDisplay} (${spellSummary})` : String(championDisplay),
-            inline: true,
-        });
-    }
+        
+    // if (championDisplay) {
+    //     embed.addFields({
+    //         name: "Champion",
+    //         value: spellSummary ? `${championDisplay} (${spellSummary})` : String(championDisplay),
+    //         inline: true,
+    //     });
+    // }
 
     console.log(
         `[lol-live] championIconLookup championId=${me?.championId ?? "none"} imageKey=${resolvedImageKey ?? "none"} url=${championIconUrl ?? "none"}`
