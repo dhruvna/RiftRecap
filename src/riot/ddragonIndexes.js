@@ -155,3 +155,20 @@ export async function getLolChampionImageKeyById(championId) {
 export function getLolChampionImageById(championId) {
     return lolChampionLookup.getImageById(championId);
 }
+
+export async function getLolChampionImagesByIds(ids) {
+    const championIds = Array.isArray(ids) ? ids : [];
+    const resolved = new Map();
+
+    await Promise.all(championIds.map(async (championId) => {
+        const key = String(championId ?? '').trim();
+        if (!key || resolved.has(key)) return;
+
+        const imageUrl = await lolChampionLookup.getImageById(key);
+        if (imageUrl) {
+            resolved.set(key, imageUrl);
+        }
+    }));
+
+    return resolved;
+}

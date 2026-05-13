@@ -32,4 +32,5 @@ export {
     getTftTraitImageById,
     getLolChampionImageKeyById,
     getLolChampionImageById,
+    getLolChampionImagesByIds,
 } from './riot/ddragonIndexes.js';

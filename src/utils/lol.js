@@ -3,10 +3,8 @@
 
 import { EmbedBuilder } from "discord.js";
 import { 
-    getLatestDDragonVersion,
     getMatchUrl,
-    getLolChampionImageById,
-    getLolChampionImageKeyById,
+    getLolChampionImagesByIds,
 } from "../riot.js";
 import { getLolIdentity } from "../storage.js";
 import { GAME_TYPES } from "../constants/queues.js";
@@ -91,15 +89,13 @@ function resolveTrackedParticipant({ account, identity, participants }) {
     }) ?? null;
 }
 
-async function resolveChampionIcon(participant, version) {
+function resolveChampionIcon({ participant, version, championImagesById = new Map() }) {
     const championId = participant?.championId;
     let resolvedImageKey = null;
-    let championIconUrl = null;
 
-    if (championId != null) {
-        resolvedImageKey = await getLolChampionImageKeyById(championId);
-        championIconUrl = await getLolChampionImageById(championId);
-    }
+    const championIconUrl = championId != null
+        ? (championImagesById.get(String(championId)) ?? null)
+        : null;
 
     if (!championIconUrl && version) {
         const championName = participant?.championName;
@@ -112,10 +108,15 @@ async function resolveChampionIcon(participant, version) {
         }
     }
 
-     return { resolvedImageKey, championIconUrl };
+    if (championIconUrl) {
+        const fileName = championIconUrl.split("/").pop();
+        resolvedImageKey = fileName ? fileName.replace(/\.png$/i, "") : null;
+    }
+
+    return { resolvedImageKey, championIconUrl };
 }
 
-async function buildLolEmbedContext({ account, queueId, queueType, participant, gameStartTime, matchId }) {
+async function buildLolEmbedContext({ account, queueId, queueType, participant, participants = [], gameStartTime, matchId }) {
     const riotId = `${account?.gameName ?? "Unknown"}#${account?.tagLine ?? ""}`;
     const resolvedQueueType = queueType ?? queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
     const queueLabel = queueLabelForGame(GAME_TYPES.LOL, resolvedQueueType);
@@ -135,8 +136,9 @@ async function buildLolEmbedContext({ account, queueId, queueType, participant, 
     let championIconUrl = null;
     let resolvedImageKey = null;
     try {
-        const version = await getLatestDDragonVersion();
-        const resolved = await resolveChampionIcon(participant, version);
+        const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
+        const championImagesById = await getLolChampionImagesByIds(championIds);
+        const resolved = resolveChampionIcon({ participant, championImagesById });
         championIconUrl = resolved?.championIconUrl ?? null;
         resolvedImageKey = resolved?.resolvedImageKey ?? null;
     } catch {
@@ -179,8 +181,22 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
         account,
         queueId,
         participant: me,
+        participants,
         gameStartTime: activeGame?.gameStartTime,
     });
+
+    const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
+    const championImagesById = await getLolChampionImagesByIds(championIds);
+    const teamRostersBySideRole = buildNormalizedTeamRosters(participants);
+    for (const side of ["BLUE", "RED"]) {
+        for (const role of Object.keys(teamRostersBySideRole[side])) {
+            teamRostersBySideRole[side][role] = teamRostersBySideRole[side][role].map((entry) => ({
+                ...entry,
+                championIconUrl: championImagesById.get(String(entry?.championId ?? "")) ?? null,
+            }));
+            console.log(`Resolved ${teamRostersBySideRole[side][role].length} champion icons for ${side} ${role}`);
+        }
+    }
 
     const spellIds = [Number(me?.spell1Id), Number(me?.spell2Id)].filter(Number.isFinite);
     const spellSummary = spellIds.map((spellId, index) => `S${index + 1}: ${spellId}`).join(" • ");
@@ -194,7 +210,7 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
         },
         queueLabel: context.queueLabel,
         gameStartEpochSeconds: context.gameStartEpochSeconds,
-        teamRostersBySideRole: buildNormalizedTeamRosters(participants),
+        teamRostersBySideRole,
         display: {
             championDisplay: context.championDisplay,
             championId: me?.championId ?? null,
@@ -293,6 +309,6 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         .setTimestamp(new Date());
 
     if (viewModel.display.championIconUrl) embed.setThumbnail(viewModel.display.championIconUrl);
-    
+
     return { embed, files: [] };
 }
