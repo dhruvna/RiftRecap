@@ -247,22 +247,61 @@ function truncateForDiscordField(value, maxLength = DISCORD_EMBED_FIELD_VALUE_LI
     return `${text.slice(0, maxLength - 1)}…`;
 }
 
+function normalizeLolRoleKey(role) {
+    const normalized = normalizeText(role).toUpperCase();
+
+    if (["TOP"].includes(normalized)) return "TOP";
+    if (["JUNGLE", "JGL"].includes(normalized)) return "JUNGLE";
+    if (["MIDDLE", "MID"].includes(normalized)) return "MIDDLE";
+    if (["BOTTOM", "BOT", "ADC"].includes(normalized)) return "BOTTOM";
+    if (["UTILITY", "SUPPORT", "SUP"].includes(normalized)) return "UTILITY";
+    return null;
+}
+
+function getChampionImageKeyFromUrl(imageUrl) {
+    const text = String(imageUrl ?? "").trim();
+    if (!text) return null;
+
+    const fileName = text.split("/").pop();
+    if (!fileName) return null;
+
+    const key = fileName.replace(/\.png$/i, "").trim();
+    return key || null;
+}
+
+function safeChampionLabel(participant) {
+    const championName = String(participant?.championName ?? "").trim();
+    if (championName) return championName;
+
+    const imageKey = getChampionImageKeyFromUrl(participant?.championIconUrl);
+    if (imageKey) return imageKey;
+
+    const championId = participant?.championId;
+    if (championId !== null && championId !== undefined && String(championId).trim() !== "") {
+        return `ID ${String(championId).trim()}`;
+    }
+
+    return "—";
+}
+
 function formatRosterLineByRole(rosterByRole) {
-    const roleMap = rosterByRole && typeof rosterByRole === "object" ? rosterByRole : {};
+    const inputRoleMap = rosterByRole && typeof rosterByRole === "object" ? rosterByRole : {};
+    const normalizedRoleMap = {};
 
-    const entries = LOL_ROLE_ORDER.map((role) => {
-        const roleEntries = Array.isArray(roleMap[role]) ? roleMap[role] : [];
-        const participant = roleEntries[0] ?? null;
-        console.log(participant);
-        const championDisplay = participant?.championId
-        // const championDisplay = participant?.championName
-        //     ? String(participant.championName)
-        //     : (participant?.championId != null ? `ID ${participant.championId}` : "—");
+    for (const [rawRole, entries] of Object.entries(inputRoleMap)) {
+        const normalizedRole = normalizeLolRoleKey(rawRole);
+        if (!normalizedRole) continue;
+        normalizedRoleMap[normalizedRole] = Array.isArray(entries) ? entries : [];
+    }
 
+    const fields = LOL_ROLE_ORDER.map((role) => {
+        const participant = normalizedRoleMap[role]?.[0] ?? null;
+        const championDisplay = safeChampionLabel(participant);
         return `${role}: ${championDisplay}`;
     });
 
-    return truncateForDiscordField(entries.join(" | "));
+    const output = fields.join(" | ").replace(/\b(undefined|null)\b/gi, "—");
+    return truncateForDiscordField(output);
 }
 
 // === Queue helpers ===
