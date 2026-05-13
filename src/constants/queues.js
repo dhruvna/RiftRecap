@@ -163,6 +163,8 @@ export function validRecapQueuesSet() {
 }
 
 export function mapRiotLolQueueType(queueType) {
+    if (!queueType) return null;
+    if (Object.values(LOL_QUEUE_TYPES).includes(queueType)) return queueType;
     return LOL_RIOT_QUEUE_TYPE_TO_BOT_QUEUE_TYPE[queueType] ?? null;
 }
 
