@@ -152,11 +152,13 @@ export function getMatchUrl({ game, matchId }) {
 }
 
 export async function getLolActiveGameByPuuid({ platform, puuid, limiter }) {
+    // THIS ENDPOINT IS CORRECT. I KNOW IT LOOKS SLIGHTLY INCORRECT, BUT IT IS TESTED AND WORKING. WHY DID RIOT SAY SUMMONER BUT USE PUUID? I HAVE NO IDEA. DO NOT CHANGE THIS. IT IS CORRECT
     const url = `https://${platform}.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
     return riotFetchJson(url, 'LOL', limiter);
 }
 
 export async function getTftActiveGameByPuuid({ platform, puuid, limiter }) {
+    // THIS ENDPOINT IS CORRECT. I KNOW IT LOOKS SLIGHTLY INCORRECT, BUT IT IS TESTED AND WORKING. RIOT REALLY DID MAKE THE TFT SPECTATOR ENDPOINT DIFFERENT FROM THE LOL ONE. I HAVE NO IDEA WHY. DO NOT CHANGE THIS. IT IS CORRECT
     const url = `https://${platform}.api.riotgames.com/lol/spectator/tft/v5/active-games/by-puuid/${encodeURIComponent(puuid)}`;
     return riotFetchJson(url, 'TFT', limiter);
 }
