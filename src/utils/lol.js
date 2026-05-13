@@ -297,26 +297,6 @@ function safeChampionLabel(participant) {
     return "—";
 }
 
-function formatRosterLineByRole(rosterByRole) {
-    const inputRoleMap = rosterByRole && typeof rosterByRole === "object" ? rosterByRole : {};
-    const normalizedRoleMap = {};
-
-    for (const [rawRole, entries] of Object.entries(inputRoleMap)) {
-        const normalizedRole = normalizeLolRoleKey(rawRole);
-        if (!normalizedRole) continue;
-        normalizedRoleMap[normalizedRole] = Array.isArray(entries) ? entries : [];
-    }
-
-    const fields = LOL_ROLE_ORDER.map((role) => {
-        const participant = normalizedRoleMap[role]?.[0] ?? null;
-        const championDisplay = safeChampionLabel(participant);
-        return `${role}: ${championDisplay}`;
-    });
-
-    const output = fields.join(" | ").replace(/\b(undefined|null)\b/gi, "—");
-    return truncateForDiscordField(output);
-}
-
 function buildRoleSlotsForSide(rosterByRole = {}) {
     const normalizedRoleMap = {};
     for (const [rawRole, entries] of Object.entries(rosterByRole ?? {})) {
@@ -390,6 +370,7 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
         },
         queueLabel: dto.queue.queueLabel,
         gameStartEpochSeconds: dto.game.gameStartEpochSeconds,
+        display: dto.display,
         sides: { red, blue },
     };
 }
@@ -478,19 +459,6 @@ export async function buildLolMatchResultEmbed({
 
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const model = await buildLolLiveTeamPresentationModel({ account, activeGame });
-    // const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
-    // const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
-    const dto = await buildLolGameDto({
-        account,
-        // queueId,
-        queueId: Number(activeGame?.gameQueueConfigId ?? 0) || null,
-        participants: Array.isArray(activeGame?.participants) ? activeGame.participants : [],
-        // participants,
-        gameStartTime: activeGame?.gameStartTime,
-    });
-
-    // const redSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.RED);
-    // const blueSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.BLUE);
     const redSideLine = truncateForDiscordField(model.sides.red.map((slot) => `${slot.role}: ${safeChampionLabel({
         championName: slot?.champion?.name,
         championId: slot?.champion?.id,
@@ -513,7 +481,7 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         )
         .setTimestamp(new Date());        
 
-    if (dto.display.championIconUrl) embed.setThumbnail(dto.display.championIconUrl);
+    if (model.display.championIconUrl) embed.setThumbnail(model.display.championIconUrl);
 
     return { embed, files: [] };
 }

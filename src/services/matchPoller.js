@@ -149,7 +149,7 @@ async function fetchMatch({ riotLimiter, account, matchId, game }) {
         });
     }
     if (game === GAME_TYPES.LOL) {
-    return getLolMatch({
+        return getLolMatch({
             regional: account.regional,
             matchId,
             limiter: riotLimiter,
@@ -395,7 +395,6 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
         console.log(
             `[match-poller] skip live announce guild=${guildId} account=${account.key} reason=${liveTransitionDecision.debugReason}`
         );
-
     }
 
     return {
