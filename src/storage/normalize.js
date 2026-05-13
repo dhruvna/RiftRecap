@@ -49,9 +49,18 @@ function normalizeTrackedGameNamespace(
     const safeGameState = gameState && typeof gameState === 'object' ? gameState : {};
     const numericLastMatchAt = Number(safeGameState.lastMatchAt ?? 0);
     const enabled = typeof safeGameState.enabled === 'boolean' ? safeGameState.enabled : true;
+    const liveState = ['idle', 'in_game', 'awaiting_result'].includes(safeGameState.liveState)
+        ? safeGameState.liveState
+        : 'idle';
+    const numericLiveDetectedAt = Number(safeGameState.liveDetectedAt ?? 0);
+    const numericAwaitingSince = Number(safeGameState.awaitingSince ?? 0);
     return {
         ...safeGameState,
         enabled,
+        liveState,
+        liveGameId: safeGameState.liveGameId ?? null,
+        liveDetectedAt: Number.isFinite(numericLiveDetectedAt) && numericLiveDetectedAt > 0 ? numericLiveDetectedAt : null,
+        awaitingSince: Number.isFinite(numericAwaitingSince) && numericAwaitingSince > 0 ? numericAwaitingSince : null,
         lastMatchId: safeGameState.lastMatchId ?? null,
         lastMatchAt: Number.isFinite(numericLastMatchAt) && numericLastMatchAt > 0 ? numericLastMatchAt : null,
         lastRankByQueue:

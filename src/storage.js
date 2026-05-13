@@ -85,6 +85,18 @@ function assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, namesp
         throw new Error(`${context} must be an object.`);
     }
     if (typeof namespace.enabled !== 'boolean') throw new Error(`${context}.enabled must be boolean.`);
+    // if (!['idle', 'in_game', 'awaiting_result'].includes(namespace.liveState)) {
+    //     throw new Error(`${context}.liveState must be idle|in_game|awaiting_result.`);
+    // }
+    // if (!(namespace.liveGameId === null || typeof namespace.liveGameId === 'string')) {
+    //     throw new Error(`${context}.liveGameId must be string|null.`);
+    // }
+    // if (!(namespace.liveDetectedAt === null || Number.isFinite(namespace.liveDetectedAt))) {
+    //     throw new Error(`${context}.liveDetectedAt must be number|null.`);
+    // }
+    // if (!(namespace.awaitingSince === null || Number.isFinite(namespace.awaitingSince))) {
+    //     throw new Error(`${context}.awaitingSince must be number|null.`);
+    // }
     if (!(namespace.lastMatchId === null || typeof namespace.lastMatchId === 'string')) {
         throw new Error(`${context}.lastMatchId must be string|null.`);
     }
