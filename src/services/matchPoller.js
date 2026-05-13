@@ -297,15 +297,31 @@ function findLatestRankedIndex(matches, { shouldInclude = () => true } = {}) {
     return -1;
 }
 
+function buildLolSpectatorTrackingPatch({ spectatorState, transitionPatch = {}, fallbackTracking = {} }) {
+    const inGame = spectatorState?.inGame ?? fallbackTracking?.inGame ?? false;
+    return {
+        inGame,
+        lastSpectatorCheckAt: spectatorState?.lastSpectatorCheckAt ?? Date.now(),
+        activeGameId: spectatorState?.activeGameId ?? null,
+        activeQueueId: spectatorState?.activeQueueId ?? null,
+        activeGameStartTime: spectatorState?.activeGameStartTime ?? null,
+        ...(transitionPatch?.lastAnnouncedActiveGameId !== undefined
+            ? { lastAnnouncedActiveGameId: transitionPatch.lastAnnouncedActiveGameId ?? null }
+            : {}),
+        ...(transitionPatch?.lastInGameAnnouncementAt !== undefined
+            ? { lastInGameAnnouncementAt: transitionPatch.lastInGameAnnouncementAt ?? null }
+            : {}),
+    };
+}
+
 function buildLolTrackingPatch({ lolTracking, lolSpectatorState, lolTransitionPatch = {}, trackingPatch = {} }) {
     return {
         ...trackingPatch,
-        inGame: lolSpectatorState?.inGame ?? lolTracking?.inGame ?? false,
-        lastSpectatorCheckAt: lolSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
-        activeGameId: lolSpectatorState?.activeGameId ?? null,
-        activeQueueId: lolSpectatorState?.activeQueueId ?? null,
-        activeGameStartTime: lolSpectatorState?.activeGameStartTime ?? null,
-        ...lolTransitionPatch,
+        ...buildLolSpectatorTrackingPatch({
+            spectatorState: lolSpectatorState,
+            transitionPatch: lolTransitionPatch,
+            fallbackTracking: lolTracking,
+        }),
     };
 }
 
