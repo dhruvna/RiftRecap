@@ -246,12 +246,14 @@ export async function buildLolMatchResultEmbed({
     delta,
     afterRank,
     participant,
+    participants = [],
     gameMs,
  }) {
     const context = await buildLolEmbedContext({
         account,
         queueType,
         participant,
+        participants,
         gameStartTime: gameMs,
         matchId,
     });

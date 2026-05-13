@@ -564,6 +564,7 @@ export async function startMatchPoller(client) {
                                 preparedLolMatches.push({
                                     matchId,
                                     me,
+                                    participants,
                                     queueType,
                                     isRanked,
                                     gameMs,
@@ -573,7 +574,7 @@ export async function startMatchPoller(client) {
                             const latestLolRankedIndex = findLatestRankedIndex(preparedLolMatches);
 
                             for (const [index, prepared] of preparedLolMatches.entries()) {
-                                const { matchId, me, queueType, isRanked, gameMs } = prepared;
+                                const { matchId, me, participants, queueType, isRanked, gameMs } = prepared;
                                 const isLatestRankedMatch = index === latestLolRankedIndex;
                                 if (isLatestRankedMatch) {
                                     const memoizedRankSnapshot = refreshedRankSnapshotsByGame[GAME_TYPES.LOL];
@@ -625,6 +626,7 @@ export async function startMatchPoller(client) {
                                         delta,
                                         afterRank,
                                         participant: me,
+                                        participants,
                                         gameMs,
                                         guildId,
                                         channelId: channelIdForGuild,
