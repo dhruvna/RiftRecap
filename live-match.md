@@ -62,16 +62,8 @@ Given the internal limiter budget (`100 req / 2 min = 50 req/min`), unconditiona
 - only one game is checked,
 - or active-game checks are event-driven (e.g., only after "recently active" signals from match history).
 
-## 4) Decision matrix
-
-| Condition | Implementation choice | Schema impact | Poller impact |
-|---|---|---|---|
-| TFT `spectator-tft-v5` supports active-game lookup with available IDs | Implement true live state (`in_game`) for TFT | Add only required IDs (if not PUUID) | Add throttled spectator checks (not per-account-per-minute by default) |
-| TFT spectator exists but requires IDs we don't currently store | Implement live state **after** identity expansion + migration/backfill | Add encrypted ID fields under `account.identity.tft` | Stage rollout; limit query rate |
-| TFT has no usable active-game lookup for our auth/key tier | Implement `pending/awaiting_result` via match-history heuristics only | No required schema change | No new API family; keep current match polling + heuristic state machine |
-
 ## Recommended path for this repo
 0. PRIORITIZE LOL SPECTATOR SETUP. TFT IS LOWER PRIORITY. 
-1. Run a short endpoint spike against Riot `spectator-v5` and `spectator-tft-v5` references to confirm required path params and key access level.
-2. If TFT active lookup is usable, implement live-state with strong throttling (per-account cool-down + global budget guard).
-3. If not usable, explicitly implement heuristic pending state from existing match-history flow ("possible in-progress" until new match result arrives).
+1. BOTH ENDPOINTS ARE CURRENTLY CORRECT. DO NOT MESS WITH THEM. `spectator-v5` and `spectator-tft-v5` 
+2. Work on modifying storage based on received info from endpoints, as they are currently polling properly. 
+3. Create embeds to show things are working
