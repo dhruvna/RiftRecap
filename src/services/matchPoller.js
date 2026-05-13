@@ -325,6 +325,38 @@ function buildLolTrackingPatch({ lolTracking, lolSpectatorState, lolTransitionPa
     };
 }
 
+function shouldAnnounceLolLiveTransition({
+    previousTracking = {},
+    nextSpectatorState = {},
+    dedupeWindowMs = LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
+    now = Date.now(),
+}) {
+    const wasLolInGame = previousTracking?.inGame === true;
+    const isLolInGame = nextSpectatorState?.inGame === true;
+    if (wasLolInGame || !isLolInGame) {
+        return { shouldAnnounce: false, debugReason: 'no_live_transition' };
+    }
+
+    const previousAnnouncedGameId = previousTracking?.lastAnnouncedActiveGameId ?? null;
+    const nextActiveGameId = nextSpectatorState?.activeGameId ?? null;
+    const announcedThisGame = previousAnnouncedGameId != null
+        && nextActiveGameId != null
+        && String(previousAnnouncedGameId) === String(nextActiveGameId);
+    if (announcedThisGame) {
+        return { shouldAnnounce: false, debugReason: 'already_announced' };
+    }
+
+    const lastInGameAnnouncementAt = Number(previousTracking?.lastInGameAnnouncementAt ?? 0);
+    const announcedRecently = Number.isFinite(lastInGameAnnouncementAt)
+        && lastInGameAnnouncementAt > 0
+        && (now - lastInGameAnnouncementAt) < dedupeWindowMs;
+    if (announcedRecently) {
+        return { shouldAnnounce: false, debugReason: 'recently_announced' };
+    }
+
+    return { shouldAnnounce: true };
+}
+
 async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild }) {
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const nextLolTracking = {
@@ -342,21 +374,13 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
         accountKey: account.key,
     });
 
-    const wasLolInGame = lolTracking?.inGame === true;
-    const isLolInGame = lolSpectatorState.inGame === true;
-    const previousAnnouncedGameId = lolTracking?.lastAnnouncedActiveGameId ?? null;
-    const nextActiveGameId = lolSpectatorState.activeGameId ?? null;
-    const announcedThisGame = previousAnnouncedGameId != null
-        && nextActiveGameId != null
-        && String(previousAnnouncedGameId) === String(nextActiveGameId);
-    const lastInGameAnnouncementAt = Number(lolTracking?.lastInGameAnnouncementAt ?? 0);
-    const announcedRecently = Number.isFinite(lastInGameAnnouncementAt)
-        && lastInGameAnnouncementAt > 0
-        && (Date.now() - lastInGameAnnouncementAt) < LIVE_ANNOUNCE_DEDUPE_WINDOW_MS;
-    const shouldAnnounceLolLiveGame = !wasLolInGame
-        && isLolInGame
-        && !announcedThisGame
-        && !announcedRecently;
+    const liveTransitionDecision = shouldAnnounceLolLiveTransition({
+        previousTracking: lolTracking,
+        nextSpectatorState: lolSpectatorState,
+        dedupeWindowMs: LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
+        now: Date.now(),
+    });
+    const shouldAnnounceLolLiveGame = liveTransitionDecision.shouldAnnounce === true;
 
     if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
         await announceGameMatchToDiscord({
@@ -367,6 +391,11 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
             account,
             activeGame: lolSpectatorState.activeGame,
         });
+    } else if (liveTransitionDecision.debugReason) {
+        console.log(
+            `[match-poller] skip live announce guild=${guildId} account=${account.key} reason=${liveTransitionDecision.debugReason}`
+        );
+
     }
 
     return {
