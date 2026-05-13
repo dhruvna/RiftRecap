@@ -317,6 +317,83 @@ function formatRosterLineByRole(rosterByRole) {
     return truncateForDiscordField(output);
 }
 
+function buildRoleSlotsForSide(rosterByRole = {}) {
+    const normalizedRoleMap = {};
+    for (const [rawRole, entries] of Object.entries(rosterByRole ?? {})) {
+        const normalizedRole = normalizeLolRoleKey(rawRole);
+        if (!normalizedRole) continue;
+        normalizedRoleMap[normalizedRole] = Array.isArray(entries) ? entries : [];
+    }
+
+    return LOL_ROLE_ORDER.map((role) => {
+        const participant = normalizedRoleMap[role]?.[0] ?? null;
+        const spellIds = [Number(participant?.spell1Id), Number(participant?.spell2Id)].filter(Number.isFinite);
+        const runeIds = Array.isArray(participant?.runeIds)
+            ? participant.runeIds.map((id) => Number(id)).filter(Number.isFinite)
+            : [];
+
+        return {
+            role,
+            champion: {
+                id: participant?.championId ?? null,
+                name: participant?.championName ?? null,
+                iconUrl: participant?.championIconUrl ?? null,
+            },
+            spellIds,
+            runeIds,
+            player: participant ? {
+                puuid: participant?.puuid ?? null,
+                summonerName: participant?.summonerName ?? null,
+                riotId: participant?.riotId ?? null,
+            } : null,
+        };
+    });
+}
+
+export async function buildLolLiveTeamPresentationModel({ account, activeGame, identity = null }) {
+    const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
+    const participants = Array.isArray(activeGame?.participants)
+        ? activeGame.participants.map((participant) => {
+            const perkIds = Array.isArray(participant?.perks?.perkIds) ? participant.perks.perkIds : [];
+            return {
+                ...participant,
+                runeIds: perkIds,
+            };
+        })
+        : [];
+
+    const dto = await buildLolGameDto({
+        account,
+        identity,
+        queueId,
+        participants,
+        gameStartTime: activeGame?.gameStartTime,
+    });
+
+    const red = buildRoleSlotsForSide(dto.rosters.bySideRole?.RED);
+    const blue = buildRoleSlotsForSide(dto.rosters.bySideRole?.BLUE);
+
+    const tracked = dto.trackedPlayer?.participant ?? null;
+
+    return {
+        trackedPlayer: {
+            ...dto.trackedPlayer,
+            metadata: tracked ? {
+                teamId: tracked?.teamId ?? null,
+                role: normalizeLolRoleKey(tracked?.teamPosition ?? tracked?.individualPosition ?? tracked?.lane),
+                championId: tracked?.championId ?? null,
+                spellIds: [Number(tracked?.spell1Id), Number(tracked?.spell2Id)].filter(Number.isFinite),
+                runeIds: Array.isArray(tracked?.runeIds)
+                    ? tracked.runeIds.map((id) => Number(id)).filter(Number.isFinite)
+                    : [],
+            } : null,
+        },
+        queueLabel: dto.queue.queueLabel,
+        gameStartEpochSeconds: dto.game.gameStartEpochSeconds,
+        sides: { red, blue },
+    };
+}
+
 // === Queue helpers ===
 // Extract the queue id from a match payload while handling API variations.
 export function getQueueIdFromLolMatch(match) {
@@ -400,21 +477,36 @@ export async function buildLolMatchResultEmbed({
 }
 
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
-    const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
-    const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
+    const model = await buildLolLiveTeamPresentationModel({ account, activeGame });
+    // const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
+    // const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
     const dto = await buildLolGameDto({
         account,
-        queueId,
-        participants,
+        // queueId,
+        queueId: Number(activeGame?.gameQueueConfigId ?? 0) || null,
+        participants: Array.isArray(activeGame?.participants) ? activeGame.participants : [],
+        // participants,
         gameStartTime: activeGame?.gameStartTime,
     });
 
-    const redSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.RED);
-    const blueSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.BLUE);
+    // const redSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.RED);
+    // const blueSideLine = formatRosterLineByRole(dto.rosters.bySideRole?.BLUE);
+    const redSideLine = truncateForDiscordField(model.sides.red.map((slot) => `${slot.role}: ${safeChampionLabel({
+        championName: slot?.champion?.name,
+        championId: slot?.champion?.id,
+        championIconUrl: slot?.champion?.iconUrl,
+    })}`).join(" | "));
+    const blueSideLine = truncateForDiscordField(model.sides.blue.map((slot) => `${slot.role}: ${safeChampionLabel({
+        championName: slot?.champion?.name,
+        championId: slot?.champion?.id,
+        championIconUrl: slot?.champion?.iconUrl,
+    })}`).join(" | "));
+
 
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
-        .setTitle(`${dto.queue.queueLabel} Game in Progress for ${dto.trackedPlayer.riotId}`)
+        // .setTitle(`${dto.queue.queueLabel} Game in Progress for ${dto.trackedPlayer.riotId}`)
+        .setTitle(`${model.queueLabel} Game in Progress for ${model.trackedPlayer.riotId}`)
         .addFields(
             { name: "Red Side", value: redSideLine, inline: false },
             { name: "Blue Side", value: blueSideLine, inline: false },
