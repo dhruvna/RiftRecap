@@ -6,7 +6,7 @@ import {
     loadLolChampions,
 } from './ddragon.js';
 
-function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
+function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id, getEntryKeys = null }) {
     let nameById = null;
     let imageById = null;
     let cachedVersion = null;
@@ -57,10 +57,53 @@ function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
     };
 }
 
-const lolChampionLookup = createLookupIndex({
-    loadDataset: loadLolChampions,
-    normalizeEntryId: (id) => String(id),
-});
+function createLolChampionLookup() {
+    let imageByChampionId = null;
+    let cachedVersion = null;
+
+    async function loadIndexes() {
+        const latestVersion = await getLatestDDragonVersion();
+        if (imageByChampionId && cachedVersion === latestVersion) {
+            return { imageByChampionId, version: cachedVersion };
+        }
+
+        const dataset = await loadLolChampions();
+        const entries = Object.values(dataset?.data ?? {});
+        const nextImageByChampionId = new Map();
+
+        for (const entry of entries) {
+            const imageFile = entry?.image?.full;
+            if (!imageFile) continue;
+
+            const championKey = String(entry?.key ?? '').trim();
+            const championId = String(entry?.id ?? '').trim();
+
+            if (championKey) {
+                nextImageByChampionId.set(championKey, imageFile);
+            }
+            if (championId) {
+                nextImageByChampionId.set(championId, imageFile);
+            }
+        }
+
+        imageByChampionId = nextImageByChampionId;
+        cachedVersion = latestVersion;
+        return { imageByChampionId, version: cachedVersion };
+    }
+
+    return {
+        async getImageById(championId) {
+            const key = String(championId ?? '').trim();
+            if (!key) return null;
+            const { imageByChampionId: map, version } = await loadIndexes();
+            const file = map.get(key);
+            if (!file) return null;
+            return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${file}`;
+        },
+    };
+}
+
+const lolChampionLookup = createLolChampionLookup();
 
 const championLookup = createLookupIndex({
     loadDataset: loadTFTChampions,
@@ -101,7 +144,7 @@ export function getTftTraitImageById(traitId) {
 }
 
 export async function getLolChampionImageKeyById(championId) {
-    const imageUrl = await lolChampionLookup.getImageById(championId, 'champion');
+    const imageUrl = await lolChampionLookup.getImageById(championId);
     if (!imageUrl) return null;
 
     const fileName = imageUrl.split('/').pop();
@@ -110,5 +153,5 @@ export async function getLolChampionImageKeyById(championId) {
 }
 
 export function getLolChampionImageById(championId) {
-    return lolChampionLookup.getImageById(championId, 'champion');
+    return lolChampionLookup.getImageById(championId);
 }
