@@ -35,11 +35,36 @@ function buildChampionIconUrl(participant, version) {
     return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
 }
 
-function formatElapsedDuration(startTimeMs) {
-    const startMs = Number(startTimeMs ?? 0);
-    if (!Number.isFinite(startMs) || startMs <= 0) return null;
-    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
-    return formatDurationFromSeconds(elapsedSeconds);
+function normalizeText(value) {
+    return String(value ?? "").trim().toLowerCase();
+}
+
+function resolveTrackedParticipant({ account, identity, participants }) {
+    if (!Array.isArray(participants) || participants.length === 0) return null;
+
+    const myPuuid = identity?.puuid ?? null;
+    if (myPuuid) {
+        const byPuuid = participants.find((p) => p?.puuid && String(p.puuid) === String(myPuuid));
+        if (byPuuid) return byPuuid;
+    }
+
+    const gameName = normalizeText(account?.gameName);
+    const tagLine = normalizeText(account?.tagLine);
+    const riotId = `${gameName}#${tagLine}`;
+
+    return participants.find((p) => {
+        const participantRiotId = normalizeText(p?.riotId);
+        if (participantRiotId && participantRiotId === riotId) return true;
+
+        const participantGameName = normalizeText(p?.riotIdGameName);
+        const participantTagLine = normalizeText(p?.riotIdTagline ?? p?.riotIdTagLine);
+        if (participantGameName && participantTagLine && participantGameName === gameName && participantTagLine === tagLine) {
+            return true;
+        }
+
+        const summonerName = normalizeText(p?.summonerName);
+        return Boolean(summonerName && summonerName === gameName);
+    }) ?? null;
 }
 
 // === Queue helpers ===
@@ -126,14 +151,13 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.LOL);
     const queueLabel = queueLabelForGame(GAME_TYPES.LOL, queueType);
     const gameStartTimeMs = Number(activeGame?.gameStartTime ?? 0) || null;
-    const elapsedDuration = formatElapsedDuration(gameStartTimeMs);
 
     const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
     const identity = getLolIdentity(account);
     const myPuuid = identity?.puuid ?? null;
-    const me = myPuuid ? (participants.find((p) => p?.puuid === myPuuid) ?? null) : null;
+    const me = resolveTrackedParticipant({ account, identity, participants });
 
-    const championName = me?.championName ?? me?.championId ?? null;
+    const championName = me?.championName ? String(me.championName) : (me?.championId ? `ID ${me.championId}` : null);
     const spell1 = me?.spell1Id ? `S1: ${me.spell1Id}` : null;
     const spell2 = me?.spell2Id ? `S2: ${me.spell2Id}` : null;
     const spellSummary = [spell1, spell2].filter(Boolean).join(" • ");
@@ -143,14 +167,11 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
 
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
-        .setTitle(`🔴 Live • ${riotId}`)
+        .setTitle(`${queueLabel} Game in Progress for ${riotId}`)
         .setTimestamp(new Date());
 
     embed.addFields(
-        { name: "Queue", value: queueLabel, inline: true },
-        { name: "Region / Platform", value: `${account.regional} / ${account.platform}`, inline: true },
         { name: "Started", value: gameStartTimeMs ? `<t:${Math.floor(gameStartTimeMs / 1000)}:f>` : "Unknown", inline: false },
-        { name: "Elapsed", value: elapsedDuration ?? "Unknown", inline: true },
     );
 
     if (championName) {
@@ -160,6 +181,14 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
             inline: true,
         });
     }
+
+    try {
+        const version = await getLatestDDragonVersion();
+        const championIconUrl = buildChampionIconUrl(me, version);
+        if (championIconUrl) embed.setThumbnail(championIconUrl);
+    } catch {
+    }
+
 
     return { embed, files: [] };
 }
