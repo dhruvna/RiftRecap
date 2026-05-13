@@ -6,7 +6,7 @@ import {
     loadLolChampions,
 } from './ddragon.js';
 
-function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id, getEntryKeys = null }) {
+function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
     let nameById = null;
     let imageById = null;
     let cachedVersion = null;

@@ -297,53 +297,47 @@ function findLatestRankedIndex(matches, { shouldInclude = () => true } = {}) {
     return -1;
 }
 
-function buildLolSpectatorTrackingPatch({ spectatorState, transitionPatch = {}, fallbackTracking = {} }) {
-    const inGame = spectatorState?.inGame ?? fallbackTracking?.inGame ?? false;
-    return {
-        inGame,
-        lastSpectatorCheckAt: spectatorState?.lastSpectatorCheckAt ?? Date.now(),
+function reduceLolLiveState({
+    previousTracking = {},
+    spectatorState = {},
+    dedupeWindowMs = LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
+    now = Date.now(),
+    guildId,
+    accountKey,
+}) {
+    const nextTrackingPatch = {
+        inGame: spectatorState?.inGame ?? previousTracking?.inGame ?? false,
+        lastSpectatorCheckAt: spectatorState?.lastSpectatorCheckAt ?? now,
         activeGameId: spectatorState?.activeGameId ?? null,
         activeQueueId: spectatorState?.activeQueueId ?? null,
         activeGameStartTime: spectatorState?.activeGameStartTime ?? null,
-        ...(transitionPatch?.lastAnnouncedActiveGameId !== undefined
-            ? { lastAnnouncedActiveGameId: transitionPatch.lastAnnouncedActiveGameId ?? null }
-            : {}),
-        ...(transitionPatch?.lastInGameAnnouncementAt !== undefined
-            ? { lastInGameAnnouncementAt: transitionPatch.lastInGameAnnouncementAt ?? null }
-            : {}),
     };
-}
-
-function buildLolTrackingPatch({ lolTracking, lolSpectatorState, lolTransitionPatch = {}, trackingPatch = {} }) {
-    return {
-        ...trackingPatch,
-        ...buildLolSpectatorTrackingPatch({
-            spectatorState: lolSpectatorState,
-            transitionPatch: lolTransitionPatch,
-            fallbackTracking: lolTracking,
-        }),
+    const nextTracking = {
+        ...previousTracking,
+        ...nextTrackingPatch,
     };
-}
+    const inGameTransitionPatch = buildInGameTransitionPatch({
+        tracking: previousTracking,
+        nextTracking,
+        game: GAME_TYPES.LOL,
+        guildId,
+        accountKey,
+    });
+    Object.assign(nextTrackingPatch, inGameTransitionPatch);
 
-function shouldAnnounceLolLiveTransition({
-    previousTracking = {},
-    nextSpectatorState = {},
-    dedupeWindowMs = LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
-    now = Date.now(),
-}) {
     const wasLolInGame = previousTracking?.inGame === true;
-    const isLolInGame = nextSpectatorState?.inGame === true;
+    const isLolInGame = nextTrackingPatch.inGame === true;
     if (wasLolInGame || !isLolInGame) {
-        return { shouldAnnounce: false, debugReason: 'no_live_transition' };
+        return { nextTrackingPatch, shouldAnnounceLive: false, debugReason: 'no_live_transition' };
     }
 
     const previousAnnouncedGameId = previousTracking?.lastAnnouncedActiveGameId ?? null;
-    const nextActiveGameId = nextSpectatorState?.activeGameId ?? null;
+    const nextActiveGameId = nextTrackingPatch.activeGameId ?? null;
     const announcedThisGame = previousAnnouncedGameId != null
         && nextActiveGameId != null
         && String(previousAnnouncedGameId) === String(nextActiveGameId);
     if (announcedThisGame) {
-        return { shouldAnnounce: false, debugReason: 'already_announced' };
+        return { nextTrackingPatch, shouldAnnounceLive: false, debugReason: 'already_announced' };
     }
 
     const lastInGameAnnouncementAt = Number(previousTracking?.lastInGameAnnouncementAt ?? 0);
@@ -351,36 +345,22 @@ function shouldAnnounceLolLiveTransition({
         && lastInGameAnnouncementAt > 0
         && (now - lastInGameAnnouncementAt) < dedupeWindowMs;
     if (announcedRecently) {
-        return { shouldAnnounce: false, debugReason: 'recently_announced' };
+        return { nextTrackingPatch, shouldAnnounceLive: false, debugReason: 'recently_announced' };
     }
-
-    return { shouldAnnounce: true };
+    return { nextTrackingPatch, shouldAnnounceLive: true, debugReason: 'announce_live' };
 }
 
 async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild }) {
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
-    const nextLolTracking = {
-        ...lolTracking,
-        ...buildLolTrackingPatch({
-            lolTracking,
-            lolSpectatorState,
-        }),
-    };
-    const lolTransitionPatch = buildInGameTransitionPatch({
-        tracking: lolTracking,
-        nextTracking: nextLolTracking,
-        game: GAME_TYPES.LOL,
+    const liveTransitionDecision = reduceLolLiveState({
+        previousTracking: lolTracking,
+        spectatorState: lolSpectatorState,
+        dedupeWindowMs: LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
+        now: Date.now(),
         guildId,
         accountKey: account.key,
     });
-
-    const liveTransitionDecision = shouldAnnounceLolLiveTransition({
-        previousTracking: lolTracking,
-        nextSpectatorState: lolSpectatorState,
-        dedupeWindowMs: LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
-        now: Date.now(),
-    });
-    const shouldAnnounceLolLiveGame = liveTransitionDecision.shouldAnnounce === true;
+    const shouldAnnounceLolLiveGame = liveTransitionDecision.shouldAnnounceLive === true;
 
     if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
         await announceGameMatchToDiscord({
@@ -399,7 +379,7 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
 
     return {
         lolSpectatorState,
-        trackingPatch: buildLolTrackingPatch({ lolTracking, lolSpectatorState, lolTransitionPatch }),
+        trackingPatch: liveTransitionDecision.nextTrackingPatch,
     };
 }
 
@@ -715,11 +695,7 @@ export async function startMatchPoller(client) {
                                 guildId,
                                 account,
                                 gameKey: 'lol',
-                                trackingPatch: buildLolTrackingPatch({
-                                    lolTracking,
-                                    lolSpectatorState,
-                                    trackingPatch: lolMatchResult.trackingPatch,
-                                }),
+                                trackingPatch: lolMatchResult.trackingPatch,
                             });
                         }
                     }
