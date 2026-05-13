@@ -26,6 +26,71 @@ function formatDurationFromSeconds(seconds) {
     return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+function normalizeText(value) {
+    return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeRole(position) {
+    const role = normalizeText(position).toUpperCase();
+    return role || "UNKNOWN";
+}
+
+function normalizeTeamSide(teamId) {
+    return Number(teamId) === 200 ? "RED" : "BLUE";
+}
+
+function buildNormalizedTeamRosters(participants) {
+    if (!Array.isArray(participants) || participants.length === 0) {
+        return { BLUE: {}, RED: {} };
+    }
+
+    return participants.reduce((rosters, participant) => {
+        const side = normalizeTeamSide(participant?.teamId);
+        const role = normalizeRole(participant?.teamPosition ?? participant?.individualPosition ?? participant?.lane);
+        const entry = {
+            puuid: participant?.puuid ?? null,
+            summonerName: participant?.summonerName ?? null,
+            riotId: participant?.riotId ?? null,
+            championId: participant?.championId ?? null,
+            championName: participant?.championName ?? null,
+            spell1Id: participant?.spell1Id ?? null,
+            spell2Id: participant?.spell2Id ?? null,
+        };
+
+        if (!rosters[side][role]) rosters[side][role] = [];
+        rosters[side][role].push(entry);
+        return rosters;
+    }, { BLUE: {}, RED: {} });
+}
+
+function resolveTrackedParticipant({ account, identity, participants }) {
+    if (!Array.isArray(participants) || participants.length === 0) return null;
+
+    const myPuuid = identity?.puuid ?? null;
+    if (myPuuid) {
+        const byPuuid = participants.find((p) => p?.puuid && String(p.puuid) === String(myPuuid));
+        if (byPuuid) return byPuuid;
+    }
+
+    const gameName = normalizeText(account?.gameName);
+    const tagLine = normalizeText(account?.tagLine);
+    const riotId = `${gameName}#${tagLine}`;
+
+    return participants.find((p) => {
+        const participantRiotId = normalizeText(p?.riotId);
+        if (participantRiotId && participantRiotId === riotId) return true;
+
+        const participantGameName = normalizeText(p?.riotIdGameName);
+        const participantTagLine = normalizeText(p?.riotIdTagline ?? p?.riotIdTagLine);
+        if (participantGameName && participantTagLine && participantGameName === gameName && participantTagLine === tagLine) {
+            return true;
+        }
+
+        const summonerName = normalizeText(p?.summonerName);
+        return Boolean(summonerName && summonerName === gameName);
+    }) ?? null;
+}
+
 async function resolveChampionIcon(participant, version) {
     const championId = participant?.championId;
     let resolvedImageKey = null;
@@ -90,36 +155,55 @@ async function buildLolEmbedContext({ account, queueId, queueType, participant, 
     };
 }
 
-function normalizeText(value) {
-    return String(value ?? "").trim().toLowerCase();
-}
+/**
+ * @typedef {Object} LolLiveGameViewModel
+ * @property {{ riotId: string, puuid: (string|null), participantFound: boolean, participant: Object|null }} trackedPlayer
+ * @property {string} queueLabel
+ * @property {(number|null)} gameStartEpochSeconds
+ * @property {{ BLUE: Record<string, Array<Object>>, RED: Record<string, Array<Object>> }} teamRostersBySideRole
+ * @property {{ championDisplay: (string|null), championId: (number|null), championIconUrl: (string|null), championImageKey: (string|null), spellIds: Array<number>, spellSummary: string }} display
+ */
 
-function resolveTrackedParticipant({ account, identity, participants }) {
-    if (!Array.isArray(participants) || participants.length === 0) return null;
+/**
+ * Build a pure display-agnostic view model for live game rendering.
+ * @param {{ account: Object, activeGame: Object }} params
+ * @returns {Promise<LolLiveGameViewModel>}
+ */
+export async function buildLolLiveGameViewModel({ account, activeGame }) {
+    const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
+    const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
+    const identity = getLolIdentity(account);
+    const me = resolveTrackedParticipant({ account, identity, participants });
 
-    const myPuuid = identity?.puuid ?? null;
-    if (myPuuid) {
-        const byPuuid = participants.find((p) => p?.puuid && String(p.puuid) === String(myPuuid));
-        if (byPuuid) return byPuuid;
-    }
+    const context = await buildLolEmbedContext({
+        account,
+        queueId,
+        participant: me,
+        gameStartTime: activeGame?.gameStartTime,
+    });
 
-    const gameName = normalizeText(account?.gameName);
-    const tagLine = normalizeText(account?.tagLine);
-    const riotId = `${gameName}#${tagLine}`;
+    const spellIds = [Number(me?.spell1Id), Number(me?.spell2Id)].filter(Number.isFinite);
+    const spellSummary = spellIds.map((spellId, index) => `S${index + 1}: ${spellId}`).join(" • ");
 
-    return participants.find((p) => {
-        const participantRiotId = normalizeText(p?.riotId);
-        if (participantRiotId && participantRiotId === riotId) return true;
-
-        const participantGameName = normalizeText(p?.riotIdGameName);
-        const participantTagLine = normalizeText(p?.riotIdTagline ?? p?.riotIdTagLine);
-        if (participantGameName && participantTagLine && participantGameName === gameName && participantTagLine === tagLine) {
-            return true;
-        }
-
-        const summonerName = normalizeText(p?.summonerName);
-        return Boolean(summonerName && summonerName === gameName);
-    }) ?? null;
+    return {
+        trackedPlayer: {
+            riotId: context.riotId,
+            puuid: identity?.puuid ?? null,
+            participantFound: Boolean(me),
+            participant: me,
+        },
+        queueLabel: context.queueLabel,
+        gameStartEpochSeconds: context.gameStartEpochSeconds,
+        teamRostersBySideRole: buildNormalizedTeamRosters(participants),
+        display: {
+            championDisplay: context.championDisplay,
+            championId: me?.championId ?? null,
+            championIconUrl: context.championIconUrl,
+            championImageKey: context.resolvedImageKey,
+            spellIds,
+            spellSummary,
+        },
+    };
 }
 
 // === Queue helpers ===
@@ -201,52 +285,14 @@ export async function buildLolMatchResultEmbed({
 }
 
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
-    const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
-    const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
-    const identity = getLolIdentity(account);
-    const myPuuid = identity?.puuid ?? null;
-    const me = resolveTrackedParticipant({ account, identity, participants });
-
-    const context = await buildLolEmbedContext({
-        account,
-        queueId,
-        participant: me,
-        gameStartTime: activeGame?.gameStartTime,
-    });
-
-    const {
-        riotId,
-        queueLabel,
-        championDisplay,
-        championIconUrl,
-        resolvedImageKey,
-        gameStartEpochSeconds,
-    } = context;
-
-    const spell1 = me?.spell1Id ? `S1: ${me.spell1Id}` : null;
-    const spell2 = me?.spell2Id ? `S2: ${me.spell2Id}` : null;
-    const spellSummary = [spell1, spell2].filter(Boolean).join(" • ");
-    console.log(
-        `[lol-live] resolvedParticipant account=${account?.key ?? `${account?.gameName}#${account?.tagLine}`} puuidPresent=${Boolean(myPuuid)} participantFound=${Boolean(me)} champion=${championDisplay ?? "none"} spells=${spellSummary || "none"}`
-    );
+    const viewModel = await buildLolLiveGameViewModel({ account, activeGame });
 
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
-        .setTitle(`${queueLabel} Game in Progress for ${riotId}`)
+        .setTitle(`${viewModel.queueLabel} Game in Progress for ${viewModel.trackedPlayer.riotId}`)
         .setTimestamp(new Date());
-        
-    // if (championDisplay) {
-    //     embed.addFields({
-    //         name: "Champion",
-    //         value: spellSummary ? `${championDisplay} (${spellSummary})` : String(championDisplay),
-    //         inline: true,
-    //     });
-    // }
 
-    console.log(
-        `[lol-live] championIconLookup championId=${me?.championId ?? "none"} imageKey=${resolvedImageKey ?? "none"} url=${championIconUrl ?? "none"}`
-    );
-    if (championIconUrl) embed.setThumbnail(championIconUrl);
-
+    if (viewModel.display.championIconUrl) embed.setThumbnail(viewModel.display.championIconUrl);
+    
     return { embed, files: [] };
 }
