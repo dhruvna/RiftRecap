@@ -26,6 +26,9 @@ export default [
 
       // optional: disable base rule to avoid duplicate reporting
       "no-unused-vars": "off",
+
+      // Prevent duplicate keys inside object literals
+      "no-dupe-keys": "error",
     },
   },
 ];

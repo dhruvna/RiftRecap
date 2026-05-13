@@ -70,27 +70,6 @@ function getLolInGameDedupeKey(tracking = {}) {
     return null;
 }
 
-function buildInGameTransitionPatch({ tracking, nextTracking, game, guildId, accountKey }) {
-    const wasInGame = tracking?.inGame === true;
-    const isInGame = nextTracking?.inGame === true;
-
-    if (!wasInGame && isInGame) {
-        const previousDedupeKey = game === GAME_TYPES.LOL ? getLolInGameDedupeKey(tracking) : null;
-        const nextDedupeKey = game === GAME_TYPES.LOL ? getLolInGameDedupeKey(nextTracking) : null;
-        const sameLolGame = game === GAME_TYPES.LOL && Boolean(nextDedupeKey) && nextDedupeKey === previousDedupeKey;
-        if (!sameLolGame) {
-            console.log(`[match-poller] match started guild=${guildId} account=${accountKey} game=${game} dedupeKey=${nextDedupeKey ?? 'none'}`);
-            return {};
-        }
-    }
-
-    if (wasInGame && !isInGame) {
-        console.log(`[match-poller] match ended guild=${guildId} account=${accountKey} game=${game}`);
-    }
-
-    return {};
-}
-
 async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     const now = Date.now();
     const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);
@@ -341,17 +320,21 @@ function reduceLolLiveState({
         ...previousTracking,
         ...nextTrackingPatch,
     };
-    const inGameTransitionPatch = buildInGameTransitionPatch({
-        tracking: previousTracking,
-        nextTracking,
-        game: GAME_TYPES.LOL,
-        guildId,
-        accountKey,
-    });
-    Object.assign(nextTrackingPatch, inGameTransitionPatch);
 
     const wasLolInGame = previousTracking?.inGame === true;
     const isLolInGame = nextTrackingPatch.inGame === true;
+    if (!wasLolInGame && isLolInGame) {
+        const previousDedupeKey = getLolInGameDedupeKey(previousTracking);
+        const nextDedupeKey = getLolInGameDedupeKey(nextTracking);
+        const sameLolGame = Boolean(nextDedupeKey) && nextDedupeKey === previousDedupeKey;
+        if (!sameLolGame) {
+            console.log(`[match-poller] match started guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL} dedupeKey=${nextDedupeKey ?? 'none'}`);
+        }
+    }
+    if (wasLolInGame && !isLolInGame) {
+        console.log(`[match-poller] match ended guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL}`);
+    }
+
     if (wasLolInGame || !isLolInGame) {
         return { nextTrackingPatch, shouldAnnounceLive: false, debugReason: 'no_live_transition' };
     }
@@ -689,13 +672,14 @@ export async function startMatchPoller(client) {
                             activeQueueId: tftSpectatorState.activeQueueId ?? tftTracking?.activeQueueId ?? null,
                             activeGameStartTime: tftSpectatorState.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
                         };
-                        const tftTransitionPatch = buildInGameTransitionPatch({
-                            tracking: tftTracking,
-                            nextTracking: nextTftTracking,
-                            game: GAME_TYPES.TFT,
-                            guildId,
-                            accountKey: account.key,
-                        });
+                        const wasTftInGame = tftTracking?.inGame === true;
+                        const isTftInGame = nextTftTracking.inGame === true;
+                        if (!wasTftInGame && isTftInGame) {
+                            console.log(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=none`);
+                        }
+                        if (wasTftInGame && !isTftInGame) {
+                            console.log(`[match-poller] match ended guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT}`);
+                        }
                         stageTrackingUpsert({
                             guildId,
                             account,
@@ -706,7 +690,6 @@ export async function startMatchPoller(client) {
                                 activeGameId: tftSpectatorState.activeGameId ?? tftTracking?.activeGameId ?? null,
                                 activeQueueId: tftSpectatorState.activeQueueId ?? tftTracking?.activeQueueId ?? null,
                                 activeGameStartTime: tftSpectatorState.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
-                                ...tftTransitionPatch,
                             },
                         });
                     }
