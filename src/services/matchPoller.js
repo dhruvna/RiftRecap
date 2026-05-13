@@ -95,9 +95,21 @@ async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     const now = Date.now();
     const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);
     const wasInGame = tracking?.inGame === true;
+    const previousActiveGameId = tracking?.activeGameId;
+    const previousActiveQueueId = tracking?.activeQueueId;
+    const previousActiveGameStartTime = tracking?.activeGameStartTime;
+
     if (Number.isFinite(lastCheckedAt) && now - lastCheckedAt < SPECTATOR_CHECK_COOLDOWN_MS) {
         console.log(`Skipping spectator check for account ${account.key} - cooldown in effect`);
-        return { inGame: wasInGame, lastSpectatorCheckAt: lastCheckedAt, };
+        return {
+            inGame: wasInGame,
+            lastSpectatorCheckAt: lastCheckedAt,
+            activeGameId: previousActiveGameId,
+            activeQueueId: previousActiveQueueId,
+            activeGameStartTime: previousActiveGameStartTime,
+            activeGame: null,
+        };
+
     }
 
     const identity = game === GAME_TYPES.LOL ? getLolIdentity(account) : getTftIdentity(account);
@@ -118,7 +130,14 @@ async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     } catch (err) {
         if (Number(err?.status) === 404) return { inGame: false, lastSpectatorCheckAt: now, activeGameId: null, activeQueueId: null, activeGameStartTime: null };
         console.log(`Error probing spectator state for account ${account.key}`, err);
-        return { inGame: wasInGame, lastSpectatorCheckAt: now };
+        return {
+            inGame: wasInGame,
+            lastSpectatorCheckAt: now,
+            activeGameId: previousActiveGameId,
+            activeQueueId: previousActiveQueueId,
+            activeGameStartTime: previousActiveGameStartTime,
+            activeGame: null,
+        };
     }
 }
 
@@ -305,9 +324,9 @@ function reduceLolLiveState({
     const nextTrackingPatch = {
         inGame: spectatorState?.inGame ?? previousTracking?.inGame ?? false,
         lastSpectatorCheckAt: spectatorState?.lastSpectatorCheckAt ?? now,
-        activeGameId: spectatorState?.activeGameId ?? null,
-        activeQueueId: spectatorState?.activeQueueId ?? null,
-        activeGameStartTime: spectatorState?.activeGameStartTime ?? null,
+        activeGameId: spectatorState?.activeGameId ?? previousTracking?.activeGameId ?? null,
+        activeQueueId: spectatorState?.activeQueueId ?? previousTracking?.activeQueueId ?? null,
+        activeGameStartTime: spectatorState?.activeGameStartTime ?? previousTracking?.activeGameStartTime ?? null,
     };
     const nextTracking = {
         ...previousTracking,
@@ -660,9 +679,9 @@ export async function startMatchPoller(client) {
                         const nextTftTracking = {
                             ...tftTracking,
                             inGame: tftSpectatorState.inGame ?? false,
-                            activeGameId: tftSpectatorState.activeGameId ?? null,
-                            activeQueueId: tftSpectatorState.activeQueueId ?? null,
-                            activeGameStartTime: tftSpectatorState.activeGameStartTime ?? null,
+                            activeGameId: tftSpectatorState.activeGameId ?? tftTracking?.activeGameId ?? null,
+                            activeQueueId: tftSpectatorState.activeQueueId ?? tftTracking?.activeQueueId ?? null,
+                            activeGameStartTime: tftSpectatorState.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
                         };
                         const tftTransitionPatch = buildInGameTransitionPatch({
                             tracking: tftTracking,
@@ -678,9 +697,9 @@ export async function startMatchPoller(client) {
                             trackingPatch: {
                                 inGame: tftSpectatorState.inGame ?? false,
                                 lastSpectatorCheckAt: tftSpectatorState.lastSpectatorCheckAt ?? Date.now(),
-                                activeGameId: tftSpectatorState.activeGameId ?? null,
-                                activeQueueId: tftSpectatorState.activeQueueId ?? null,
-                                activeGameStartTime: tftSpectatorState.activeGameStartTime ?? null,
+                                activeGameId: tftSpectatorState.activeGameId ?? tftTracking?.activeGameId ?? null,
+                                activeQueueId: tftSpectatorState.activeQueueId ?? tftTracking?.activeQueueId ?? null,
+                                activeGameStartTime: tftSpectatorState.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
                                 ...tftTransitionPatch,
                             },
                         });
@@ -878,9 +897,9 @@ export async function startMatchPoller(client) {
                             recapEvents,
                             inGame: tftSpectatorState?.inGame ?? false,
                             lastSpectatorCheckAt: tftSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
-                            activeGameId: tftSpectatorState?.activeGameId ?? null,
-                            activeQueueId: tftSpectatorState?.activeQueueId ?? null,
-                            activeGameStartTime: tftSpectatorState?.activeGameStartTime ?? null,
+                            activeGameId: tftSpectatorState?.activeGameId ?? tftTracking?.activeGameId ?? null,
+                            activeQueueId: tftSpectatorState?.activeQueueId ?? tftTracking?.activeQueueId ?? null,
+                            activeGameStartTime: tftSpectatorState?.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
                         },
                     });
             } catch (err) {
