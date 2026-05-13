@@ -64,7 +64,7 @@ async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);
     const wasInGame = tracking?.inGame === true;
     if (Number.isFinite(lastCheckedAt) && now - lastCheckedAt < SPECTATOR_CHECK_COOLDOWN_MS) {
-        console.log(`Skipping spectator check for account ${account.key} (guild=${account.guildId}) - cooldown in effect`);
+        console.log(`Skipping spectator check for account ${account.key} - cooldown in effect`);
         return { inGame: wasInGame, lastSpectatorCheckAt: lastCheckedAt };
     }
 
@@ -74,11 +74,17 @@ async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     const fetcher = game === GAME_TYPES.LOL ? getLolActiveGameByPuuid : getTftActiveGameByPuuid;
     try {
         const activeGame = await fetcher({ platform: account.platform, puuid: identity.puuid, limiter: riotLimiter });
-        console.log(`Probed spectator state for account ${account.key} (guild=${account.guildId}): inGame=${Boolean(activeGame)}`);
-        return { inGame: Boolean(activeGame), lastSpectatorCheckAt: now };
+        console.log(`Probed spectator state for account ${account.key}: inGame=${Boolean(activeGame)}`);
+        return { 
+            inGame: Boolean(activeGame), 
+            lastSpectatorCheckAt: now,
+            activeGameId: activeGame?.gameId ?? null,
+            activeQueueId: activeGame?.gameQueueConfigId ?? null,
+            activeGameStartTime: activeGame?.gameStartTime ?? null,
+        };
     } catch (err) {
-        if (Number(err?.status) === 404) return { inGame: false, lastSpectatorCheckAt: now };
-        console.log(`Error probing spectator state for account ${account.key} (guild=${account.guildId})`, err);
+        if (Number(err?.status) === 404) return { inGame: false, lastSpectatorCheckAt: now, activeGameId: null, activeQueueId: null, activeGameStartTime: null };
+        console.log(`Error probing spectator state for account ${account.key}`, err);
         return { inGame: wasInGame, lastSpectatorCheckAt: now };
     }
 }
@@ -274,6 +280,22 @@ export async function startMatchPoller(client) {
             const channelCache = new Map(); // channelId -> channel (cache per tick)
             const pendingUpsertsByGuild = new Map();
 
+            const stageTrackingUpsert = ({ guildId, account, gameKey, trackingPatch }) => {
+                const accountKey = `${guildId}:${account.key}`;
+                const current = pendingUpsertsByGuild.get(accountKey) ?? account;
+                const currentTracking = gameKey === 'lol' ? getLolTracking(current) : getTftTracking(current);
+                pendingUpsertsByGuild.set(accountKey, {
+                    ...current,
+                    trackedGames: {
+                        ...(current.trackedGames ?? {}),
+                        [gameKey]: {
+                            ...currentTracking,
+                            ...trackingPatch,
+                        },
+                    },
+                });
+            };
+
             const db = await loadDb();
             const guildIds = getKnownGuildIds(db);
             if (guildIds.length === 0) return;
@@ -334,19 +356,13 @@ export async function startMatchPoller(client) {
                                 const refreshedLol = await refreshLolRankSnapshot({ riotLimiter, account });
                                 refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = refreshedLol;
 
-                                pendingUpsertsByGuild.set(
-                                    `${guildId}:${account.key}`,
-                                    {
-                                    ...account,
-                                    trackedGames: {
-                                        ...(account.trackedGames ?? {}),
-                                        lol: {
-                                            ...lolTracking,
-                                            lastRankByQueue: refreshedLol,
-                                        },
-                                    },
-                                    }
-                                );
+                                stageTrackingUpsert({
+                                    guildId,
+                                    account,
+                                    gameKey: 'lol',
+                                    trackingPatch: { lastRankByQueue: refreshedLol },
+                                });
+
                                 lolTracking.lastRankByQueue = refreshedLol;
                             } catch (err) {
                                 console.error(
@@ -361,19 +377,12 @@ export async function startMatchPoller(client) {
                                 const refreshed = await refreshRankSnapshot({ riotLimiter, account });
                                 refreshedRankSnapshotsByGame[GAME_TYPES.TFT] = refreshed;
 
-                                pendingUpsertsByGuild.set(
-                                    `${guildId}:${account.key}`,
-                                    {
-                                    ...account,
-                                    trackedGames: {
-                                        ...(account.trackedGames ?? {}),
-                                        tft: {
-                                            ...tftTracking,
-                                            lastRankByQueue: refreshed,
-                                        },
-                                    },
-                                }
-                            );
+                                stageTrackingUpsert({
+                                    guildId,
+                                    account,
+                                    gameKey: 'tft',
+                                    trackingPatch: { lastRankByQueue: refreshed },
+                                });
                                 tftTracking.lastRankByQueue = refreshed;
                             } catch (err) {
                                 console.error(
@@ -391,6 +400,35 @@ export async function startMatchPoller(client) {
                         : null;
 
                     const announceQueues = guild?.announceQueues ?? DEFAULT_ANNOUNCE_QUEUES;
+                    
+                    if (canPollLol && lolSpectatorState) {
+                        stageTrackingUpsert({
+                            guildId,
+                            account,
+                            gameKey: 'lol',
+                            trackingPatch: {
+                                inGame: lolSpectatorState.inGame ?? false,
+                                lastSpectatorCheckAt: lolSpectatorState.lastSpectatorCheckAt ?? Date.now(),
+                                activeGameId: lolSpectatorState.activeGameId ?? null,
+                                activeQueueId: lolSpectatorState.activeQueueId ?? null,
+                                activeGameStartTime: lolSpectatorState.activeGameStartTime ?? null,
+                            },
+                        });
+                    }
+                    if (canPollTft && tftSpectatorState) {
+                        stageTrackingUpsert({
+                            guildId,
+                            account,
+                            gameKey: 'tft',
+                            trackingPatch: {
+                                inGame: tftSpectatorState.inGame ?? false,
+                                lastSpectatorCheckAt: tftSpectatorState.lastSpectatorCheckAt ?? Date.now(),
+                                activeGameId: tftSpectatorState.activeGameId ?? null,
+                                activeQueueId: tftSpectatorState.activeQueueId ?? null,
+                                activeGameStartTime: tftSpectatorState.activeGameStartTime ?? null,
+                            },
+                        });
+                    }
 
                     if (canPollLol) {
                         const unseenLolMatchIds = await detectUnseenMatchIds({
@@ -508,19 +546,20 @@ export async function startMatchPoller(client) {
                                 lastProcessedLolMatchAt = gameMs;
                             }
 
-                            pendingUpsertsByGuild.set(`${guildId}:${account.key}`, {
-                                ...account,
-                                trackedGames: {
-                                    ...(account.trackedGames ?? {}),
-                                    lol: {
-                                        ...lolTracking,
-                                        lastMatchId: lastProcessedLolMatchId,
-                                        lastMatchAt: lastProcessedLolMatchAt,
-                                        lastRankByQueue: afterLol,
-                                        recapEvents: lolRecapEvents,
-                                        inGame: lolSpectatorState?.inGame ?? false,
-                                        lastSpectatorCheckAt: lolSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
-                                    },
+                            stageTrackingUpsert({
+                                guildId,
+                                account,
+                                gameKey: 'lol',
+                                trackingPatch: {
+                                    lastMatchId: lastProcessedLolMatchId,
+                                    lastMatchAt: lastProcessedLolMatchAt,
+                                    lastRankByQueue: afterLol,
+                                    recapEvents: lolRecapEvents,
+                                    inGame: lolSpectatorState?.inGame ?? false,
+                                    lastSpectatorCheckAt: lolSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
+                                    activeGameId: lolSpectatorState?.activeGameId ?? null,
+                                    activeQueueId: lolSpectatorState?.activeQueueId ?? null,
+                                    activeGameStartTime: lolSpectatorState?.activeGameStartTime ?? null,
                                 },
                             });
                         }
@@ -682,20 +721,21 @@ export async function startMatchPoller(client) {
                         lastProcessedMatchAt = gameMs;
                     }
 
-                    pendingUpsertsByGuild.set(`${guildId}:${account.key}`, {
-                        ...account,
-                        trackedGames: {
-                            ...(account.trackedGames ?? {}),
-                            tft: {
-                                ...tftTracking,
-                                // Persist lastMatchId so we only announce new games.
-                                lastMatchId: lastProcessedMatchId,
-                                lastMatchAt: lastProcessedMatchAt,
-                                lastRankByQueue: after,
-                                recapEvents,
-                                inGame: tftSpectatorState?.inGame ?? false,
-                                lastSpectatorCheckAt: tftSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
-                            },
+                    stageTrackingUpsert({
+                        guildId,
+                        account,
+                        gameKey: 'tft',
+                        trackingPatch: {
+                            // Persist lastMatchId so we only announce new games.
+                            lastMatchId: lastProcessedMatchId,
+                            lastMatchAt: lastProcessedMatchAt,
+                            lastRankByQueue: after,
+                            recapEvents,
+                            inGame: tftSpectatorState?.inGame ?? false,
+                            lastSpectatorCheckAt: tftSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
+                            activeGameId: tftSpectatorState?.activeGameId ?? null,
+                            activeQueueId: tftSpectatorState?.activeQueueId ?? null,
+                            activeGameStartTime: tftSpectatorState?.activeGameStartTime ?? null,
                         },
                     });
             } catch (err) {
