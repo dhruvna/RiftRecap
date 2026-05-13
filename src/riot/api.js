@@ -157,6 +157,6 @@ export async function getLolActiveGameByPuuid({ platform, puuid, limiter }) {
 }
 
 export async function getTftActiveGameByPuuid({ platform, puuid, limiter }) {
-    const url = `https://${platform}.api.riotgames.com/lol/spectator/tft/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
+    const url = `https://${platform}.api.riotgames.com/lol/spectator/tft/v5/active-games/by-puuid/${encodeURIComponent(puuid)}`;
     return riotFetchJson(url, 'TFT', limiter);
 }

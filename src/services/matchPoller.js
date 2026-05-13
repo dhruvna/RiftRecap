@@ -16,6 +16,8 @@ import {
     getLolRankByPuuid,
     getLolMatch,
     getLolMatchIdsByPuuid,
+    getLolActiveGameByPuuid,
+    getTftActiveGameByPuuid,
     getTFTMatch,
     getTFTMatchIdsByPuuid,
     getTFTRankByPuuid,
@@ -54,6 +56,32 @@ import config from '../config.js';
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
 const MATCH_BACKFILL_LIMIT = 10;
+
+const SPECTATOR_CHECK_COOLDOWN_MS = 0.5 * 60 * 1000;
+
+async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
+    const now = Date.now();
+    const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);
+    const wasInGame = tracking?.inGame === true;
+    if (Number.isFinite(lastCheckedAt) && now - lastCheckedAt < SPECTATOR_CHECK_COOLDOWN_MS) {
+        console.log(`Skipping spectator check for account ${account.key} (guild=${account.guildId}) - cooldown in effect`);
+        return { inGame: wasInGame, lastSpectatorCheckAt: lastCheckedAt };
+    }
+
+    const identity = game === GAME_TYPES.LOL ? getLolIdentity(account) : getTftIdentity(account);
+    if (!identity?.puuid) return { inGame: false, lastSpectatorCheckAt: now };
+
+    const fetcher = game === GAME_TYPES.LOL ? getLolActiveGameByPuuid : getTftActiveGameByPuuid;
+    try {
+        const activeGame = await fetcher({ platform: account.platform, puuid: identity.puuid, limiter: riotLimiter });
+        console.log(`Probed spectator state for account ${account.key} (guild=${account.guildId}): inGame=${Boolean(activeGame)}`);
+        return { inGame: Boolean(activeGame), lastSpectatorCheckAt: now };
+    } catch (err) {
+        if (Number(err?.status) === 404) return { inGame: false, lastSpectatorCheckAt: now };
+        console.log(`Error probing spectator state for account ${account.key} (guild=${account.guildId})`, err);
+        return { inGame: wasInGame, lastSpectatorCheckAt: now };
+    }
+}
 
 // === Rank refresh logic ===
 // Determine whether cached rank data is stale enough to refresh.
@@ -355,6 +383,13 @@ export async function startMatchPoller(client) {
                             }
                         }
                     
+                    const lolSpectatorState = canPollLol
+                        ? await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL })
+                        : null;
+                    const tftSpectatorState = canPollTft
+                        ? await probeSpectatorState({ riotLimiter, account, tracking: tftTracking, game: GAME_TYPES.TFT })
+                        : null;
+
                     const announceQueues = guild?.announceQueues ?? DEFAULT_ANNOUNCE_QUEUES;
 
                     if (canPollLol) {
@@ -483,6 +518,8 @@ export async function startMatchPoller(client) {
                                         lastMatchAt: lastProcessedLolMatchAt,
                                         lastRankByQueue: afterLol,
                                         recapEvents: lolRecapEvents,
+                                        inGame: lolSpectatorState?.inGame ?? false,
+                                        lastSpectatorCheckAt: lolSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
                                     },
                                 },
                             });
@@ -656,6 +693,8 @@ export async function startMatchPoller(client) {
                                 lastMatchAt: lastProcessedMatchAt,
                                 lastRankByQueue: after,
                                 recapEvents,
+                                inGame: tftSpectatorState?.inGame ?? false,
+                                lastSpectatorCheckAt: tftSpectatorState?.lastSpectatorCheckAt ?? Date.now(),
                             },
                         },
                     });
