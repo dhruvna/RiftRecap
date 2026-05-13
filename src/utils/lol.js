@@ -38,6 +38,29 @@ function normalizeTeamSide(teamId) {
     return Number(teamId) === 200 ? "RED" : "BLUE";
 }
 
+// function buildNormalizedTeamRosters(participants) {
+//     if (!Array.isArray(participants) || participants.length === 0) {
+//         return { BLUE: {}, RED: {} };
+//     }
+
+//     return participants.reduce((rosters, participant) => {
+//         const side = normalizeTeamSide(participant?.teamId);
+//         const role = normalizeRole(participant?.teamPosition ?? participant?.individualPosition ?? participant?.lane);
+//         const entry = {
+//             puuid: participant?.puuid ?? null,
+//             summonerName: participant?.summonerName ?? null,
+//             riotId: participant?.riotId ?? null,
+//             championId: participant?.championId ?? null,
+//             championName: participant?.championName ?? null,
+//             spell1Id: participant?.spell1Id ?? null,
+//             spell2Id: participant?.spell2Id ?? null,
+//         };
+
+//         if (!rosters[side][role]) rosters[side][role] = [];
+//         rosters[side][role].push(entry);
+//         return rosters;
+//     }, { BLUE: {}, RED: {} });
+// }
 function buildNormalizedTeamRosters(participants) {
     if (!Array.isArray(participants) || participants.length === 0) {
         return { BLUE: {}, RED: {} };
@@ -120,10 +143,6 @@ async function buildLolEmbedContext({
     let championIconUrl = null;
     let resolvedImageKey = null;
     try {
-        // const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
-        // if (championIds.length === 0 && participant?.championId != null) championIds.push(participant.championId);
-        // const championImagesById = await getLolChampionImagesByIds(championIds);
-        // const resolved = resolveChampionIcon({ participant, championImagesById });
         let imagesById = championImagesById;
         if (!imagesById) {
             const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
@@ -183,8 +202,6 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
         championImagesById,
     });
 
-    // const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
-    // const championImagesById = await getLolChampionImagesByIds(championIds);
     const teamRostersBySideRole = buildNormalizedTeamRosters(participants);
     for (const side of ["BLUE", "RED"]) {
         for (const role of Object.keys(teamRostersBySideRole[side])) {
@@ -192,8 +209,6 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
                 ...entry,
                 championIconUrl: championImagesById.get(String(entry?.championId ?? "")) ?? null,
             }));
-            // console.log(`Resolved ${teamRostersBySideRole[side][role].length} champion icons for ${side} ${role}`);
-            // console.log(teamRostersBySideRole[side]["championId"]);
         }
     }
 
@@ -219,6 +234,35 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
             spellSummary,
         },
     };
+}
+
+
+const LOL_ROLE_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
+const DISCORD_EMBED_FIELD_VALUE_LIMIT = 1024;
+
+function truncateForDiscordField(value, maxLength = DISCORD_EMBED_FIELD_VALUE_LIMIT) {
+    const text = String(value ?? "");
+    if (text.length <= maxLength) return text;
+    if (maxLength <= 1) return text.slice(0, maxLength);
+    return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function formatRosterLineByRole(rosterByRole) {
+    const roleMap = rosterByRole && typeof rosterByRole === "object" ? rosterByRole : {};
+
+    const entries = LOL_ROLE_ORDER.map((role) => {
+        const roleEntries = Array.isArray(roleMap[role]) ? roleMap[role] : [];
+        const participant = roleEntries[0] ?? null;
+        console.log(participant);
+        const championDisplay = participant?.championId
+        // const championDisplay = participant?.championName
+        //     ? String(participant.championName)
+        //     : (participant?.championId != null ? `ID ${participant.championId}` : "—");
+
+        return `${role}: ${championDisplay}`;
+    });
+
+    return truncateForDiscordField(entries.join(" | "));
 }
 
 // === Queue helpers ===
@@ -304,10 +348,17 @@ export async function buildLolMatchResultEmbed({
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const viewModel = await buildLolLiveGameViewModel({ account, activeGame });
 
+    const redSideLine = formatRosterLineByRole(viewModel.teamRostersBySideRole?.RED);
+    const blueSideLine = formatRosterLineByRole(viewModel.teamRostersBySideRole?.BLUE);
+
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
         .setTitle(`${viewModel.queueLabel} Game in Progress for ${viewModel.trackedPlayer.riotId}`)
-        .setTimestamp(new Date());
+        .addFields(
+            { name: "Red Side", value: redSideLine, inline: false },
+            { name: "Blue Side", value: blueSideLine, inline: false },
+        )
+        .setTimestamp(new Date());        
 
     if (viewModel.display.championIconUrl) embed.setThumbnail(viewModel.display.championIconUrl);
 
