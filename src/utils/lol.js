@@ -14,6 +14,7 @@ import {
   queueTypeFromQueueId,
 } from "../constants/queues.js";
 import { formatDelta, formatRankWithLp } from "./presentation.js";
+import { resolveChampionIcon } from "./lolChampionIcon.js";
 
 function formatDurationFromSeconds(seconds) {
     const totalSeconds = Number(seconds);
@@ -89,32 +90,34 @@ function resolveTrackedParticipant({ account, identity, participants }) {
     }) ?? null;
 }
 
-function resolveChampionIcon({ participant, version, championImagesById = new Map() }) {
-    const championId = participant?.championId;
-    let resolvedImageKey = null;
+// function resolveChampionIcon({ participant, version, championImagesById = new Map() }) {
+//     const championId = participant?.championId;
+//     let resolvedImageKey = null;
 
-    const championIconUrl = championId != null
-        ? (championImagesById.get(String(championId)) ?? null)
-        : null;
+//     // const championIconUrl = championId != null
+//     // NOTE: keep this mutable because fallback-by-name may assign when ID lookup misses.
+//     let championIconUrl = championId != null
+//         ? (championImagesById.get(String(championId)) ?? null)
+//         : null;
 
-    if (!championIconUrl && version) {
-        const championName = participant?.championName;
-        if (championName) {
-            const normalized = String(championName).replace(/[ .'_]/g, '');
-            if (normalized) {
-                resolvedImageKey = resolvedImageKey ?? normalized;
-                championIconUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
-            }
-        }
-    }
+//     if (!championIconUrl && version) {
+//         const championName = participant?.championName;
+//         if (championName) {
+//             const normalized = String(championName).replace(/[ .'_]/g, '');
+//             if (normalized) {
+//                 resolvedImageKey = resolvedImageKey ?? normalized;
+//                 championIconUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${normalized}.png`;
+//             }
+//         }
+//     }
 
-    if (championIconUrl) {
-        const fileName = championIconUrl.split("/").pop();
-        resolvedImageKey = fileName ? fileName.replace(/\.png$/i, "") : null;
-    }
+//     if (championIconUrl) {
+//         const fileName = championIconUrl.split("/").pop();
+//         resolvedImageKey = fileName ? fileName.replace(/\.png$/i, "") : null;
+//     }
 
-    return { resolvedImageKey, championIconUrl };
-}
+//     return { resolvedImageKey, championIconUrl };
+// }
 
 async function buildLolEmbedContext({ account, queueId, queueType, participant, participants = [], gameStartTime, matchId }) {
     const riotId = `${account?.gameName ?? "Unknown"}#${account?.tagLine ?? ""}`;
@@ -137,6 +140,7 @@ async function buildLolEmbedContext({ account, queueId, queueType, participant, 
     let resolvedImageKey = null;
     try {
         const championIds = participants.map((p) => p?.championId).filter((id) => id != null);
+        if (championIds.length === 0 && participant?.championId != null) championIds.push(participant.championId);
         const championImagesById = await getLolChampionImagesByIds(championIds);
         const resolved = resolveChampionIcon({ participant, championImagesById });
         championIconUrl = resolved?.championIconUrl ?? null;
@@ -195,6 +199,8 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
                 championIconUrl: championImagesById.get(String(entry?.championId ?? "")) ?? null,
             }));
             console.log(`Resolved ${teamRostersBySideRole[side][role].length} champion icons for ${side} ${role}`);
+            console.log(teamRostersBySideRole[side]["championId"
+            ]);
         }
     }
 

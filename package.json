@@ -9,7 +9,8 @@
     "register": "node src/register-commands.js",
     "unused": "eslint \"src/**/*.js\"",
     "unused:fix": "eslint \"src/**/*.js\" --fix",
-    "knip": "knip"
+    "knip": "knip",
+    "test:resolveChampionIcon": "node src/tests/resolveChampionIcon.assert.js"
   },
   "repository": {
     "type": "git",
