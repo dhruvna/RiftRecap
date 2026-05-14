@@ -475,10 +475,6 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
         .setTitle(`${model.queueLabel} Game in Progress for ${model.trackedPlayer.riotId}`)
-        .addFields(
-            { name: "Blue Side", value: blueSideLine, inline: false },
-            { name: "Red Side", value: redSideLine, inline: false },
-        )
         .setTimestamp(new Date());
 
     try {
