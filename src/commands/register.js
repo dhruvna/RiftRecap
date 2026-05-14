@@ -133,10 +133,6 @@ export default {
             trackedGames: {
                 tft: {
                     enabled: true,
-                    liveState: 'idle',
-                    liveGameId: null,
-                    liveDetectedAt: null,
-                    awaitingSince: null,
                     lastMatchId: tftState.lastMatchId,
                     lastMatchAt: tftState.lastMatchAt,
                     lastRankByQueue: tftState.lastRankByQueue,
@@ -144,10 +140,6 @@ export default {
                 },
                 lol: {
                     enabled: true,
-                    liveState: 'idle',
-                    liveGameId: null,
-                    liveDetectedAt: null,
-                    awaitingSince: null,
                     lastMatchId: lolState.lastMatchId,
                     lastMatchAt: lolState.lastMatchAt,
                     lastRankByQueue: lolState.lastRankByQueue,

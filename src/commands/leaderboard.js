@@ -91,15 +91,13 @@ export default {
     }
 
     await interaction.deferReply();
-    const rawQueueType = interaction.options.getString('queue');
-    const validQueueTypes = new Set(ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => choice.value));
-    if (rawQueueType && !validQueueTypes.has(rawQueueType)) {
-      const validQueues = ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(', ');
-      await interaction.editReply(`Invalid queue \`${rawQueueType}\`. Choose one of: ${validQueues}.`);
-      return;
+    const queueType = interaction.options.getString('queue') ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
+
+    if (process.env.NODE_ENV !== 'production') {
+      const validQueueTypes = new Set(ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => choice.value));
+      console.assert(validQueueTypes.has(queueType), `[leaderboard] Unexpected queue type: ${queueType}`);
     }
     
-    const queueType = rawQueueType ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
     const game = resolveGameFromQueue(queueType);
     const limit = interaction.options.getInteger('limit') ?? 15;
 

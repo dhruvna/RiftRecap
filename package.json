@@ -12,10 +12,7 @@
     "knip": "knip",
     "test:resolveChampionIcon": "node src/tests/resolveChampionIcon.assert.js",
     "test:liveDraftImage": "node src/tests/liveDraftImage.assert.js",
-    "test:embedFields": "node src/tests/embedFields.assert.js",
-    "lint": "eslint \"src/index.js\" \"src/utils/tft.js\" \"src/commands/**/*.js\" --max-warnings=0",
-    "lint:fix": "eslint \"src/index.js\" \"src/utils/tft.js\" \"src/commands/**/*.js\" --fix",
-    "ci:lint": "npm run lint"
+    "test:embedFields": "node src/tests/embedFields.assert.js"
   },
   "repository": {
     "type": "git",

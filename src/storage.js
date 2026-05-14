@@ -84,19 +84,10 @@ function assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, namesp
     if (!namespace || typeof namespace !== 'object' || Array.isArray(namespace)) {
         throw new Error(`${context} must be an object.`);
     }
-    if (typeof namespace.enabled !== 'boolean') throw new Error(`${context}.enabled must be boolean.`);
-    // if (!['idle', 'in_game', 'awaiting_result'].includes(namespace.liveState)) {
-    //     throw new Error(`${context}.liveState must be idle|in_game|awaiting_result.`);
-    // }
-    // if (!(namespace.liveGameId === null || typeof namespace.liveGameId === 'string')) {
-    //     throw new Error(`${context}.liveGameId must be string|null.`);
-    // }
-    // if (!(namespace.liveDetectedAt === null || Number.isFinite(namespace.liveDetectedAt))) {
-    //     throw new Error(`${context}.liveDetectedAt must be number|null.`);
-    // }
-    // if (!(namespace.awaitingSince === null || Number.isFinite(namespace.awaitingSince))) {
-    //     throw new Error(`${context}.awaitingSince must be number|null.`);
-    // }
+
+    // Canonical tracked-game namespace invariants.
+    // NOTE: live-game detection fields are intentionally non-canonical and must not be required here.
+    if (typeof namespace.enabled !== 'boolean') throw new Error(`${context}.enabled must be boolean.`)
     if (!(namespace.lastMatchId === null || typeof namespace.lastMatchId === 'string')) {
         throw new Error(`${context}.lastMatchId must be string|null.`);
     }
@@ -143,6 +134,16 @@ function assertCanonicalAccountShape(guildId, account, accountIndex) {
  *     recapConfigs: RecapConfig[]
  *   }
  * }
+ *
+ * AccountTracking trackedGames[gameKey] canonical invariants:
+ * - enabled: boolean
+ * - lastMatchId: string | null
+ * - lastMatchAt: number | null (epoch ms)
+ * - lastRankByQueue: object
+ * - recapEvents: array
+ *
+ * Any live-game fields (e.g. liveState/liveGameId/liveDetectedAt/awaitingSince)
+ * are non-canonical legacy data and are normalized away.
  */
 
 export async function loadDb() {
