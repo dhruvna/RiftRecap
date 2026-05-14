@@ -10,6 +10,7 @@ import { getLolIdentity } from "../storage.js";
 import { GAME_TYPES, resolveLolQueueContext } from "../constants/queues.js";
 import { formatDelta, formatRankWithLp } from "./presentation.js";
 import { resolveChampionIcon } from "./lolChampionIcon.js";
+import { buildLiveDraftImageBuffer } from "./liveDraftImage.js";
 
 function formatDurationFromSeconds(seconds) {
     const totalSeconds = Number(seconds);
@@ -467,18 +468,27 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         championIconUrl: slot?.champion?.iconUrl,
     })}`).join(" | "));
 
+    const files = [];
+    const blueIconUrls = model.sides.blue.map((slot) => slot?.champion?.iconUrl ?? null);
+    const redIconUrls = model.sides.red.map((slot) => slot?.champion?.iconUrl ?? null);
 
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
-        // .setTitle(`${dto.queue.queueLabel} Game in Progress for ${dto.trackedPlayer.riotId}`)
         .setTitle(`${model.queueLabel} Game in Progress for ${model.trackedPlayer.riotId}`)
         .addFields(
-            { name: "Red Side", value: redSideLine, inline: false },
             { name: "Blue Side", value: blueSideLine, inline: false },
+            { name: "Red Side", value: redSideLine, inline: false },
         )
-        .setTimestamp(new Date());        
+        .setTimestamp(new Date());
+
+    try {
+        const stripBuffer = await buildLiveDraftImageBuffer({ blueIconUrls, redIconUrls });
+        files.push({ attachment: stripBuffer, name: "lol-live-draft.png" });
+        embed.setImage("attachment://lol-live-draft.png");
+    } catch {
+    }        
 
     if (model.display.championIconUrl) embed.setThumbnail(model.display.championIconUrl);
 
-    return { embed, files: [] };
+    return { embed, files };
 }
