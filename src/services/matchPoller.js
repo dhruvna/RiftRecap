@@ -70,7 +70,6 @@ function getLolInGameDedupeKey(tracking = {}) {
     return null;
 }
 
-
 function getLolFinishedMatchDedupeKey({ match, queueType }) {
     const gameId = match?.info?.gameId;
     if (gameId != null) return `gid:${String(gameId)}`;
