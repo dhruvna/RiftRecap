@@ -8,7 +8,12 @@ import {
 } from "../riot.js";
 import { getLolIdentity } from "../storage.js";
 import { GAME_TYPES, resolveLolQueueContext } from "../constants/queues.js";
-import { formatDelta, formatRankWithLp } from "./presentation.js";
+import {
+    formatRankAndLpFields,
+    normalizeEmbedTimestamp,
+    resolveMatchResultPresentation,
+    resolveQueuePresentation,
+} from "./matchEmbedShared.js";
 import { resolveChampionIcon } from "./lolChampionIcon.js";
 import { buildLiveDraftImageBuffer } from "./liveDraftImage.js";
 
@@ -98,7 +103,12 @@ async function buildLolEmbedContext({
 }) {
 
     const riotId = `${account?.gameName ?? "Unknown"}#${account?.tagLine ?? ""}`;
-    const queueContext = resolveLolQueueContext({ queueId, rawQueueType: queueType });
+    const queueContext = resolveQueuePresentation({
+        game: GAME_TYPES.LOL,
+        queueId,
+        queueType,
+        queueResolver: ({ queueId: resolvedQueueId, queueType: rawQueueType }) => resolveLolQueueContext({ queueId: resolvedQueueId, rawQueueType }),
+    });
     const resolvedQueueType = queueContext.queueType;
     const queueLabel = queueContext.queueLabel;
 
@@ -389,7 +399,11 @@ export function getQueueIdFromLolMatch(match) {
 // Convert queue id into human-friendly metadata.
 export function detectLolQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromLolMatch(match);
-    const resolved = resolveLolQueueContext({ match, queueId });
+    const resolved = resolveQueuePresentation({
+        game: GAME_TYPES.LOL,
+        queueId,
+        queueResolver: ({ queueId: resolvedQueueId }) => resolveLolQueueContext({ match, queueId: resolvedQueueId }),
+    });
     return { queueId, queueType: resolved.queueType, label: resolved.queueLabel, isRanked: resolved.isRanked };
 }
 
@@ -429,12 +443,26 @@ export async function buildLolMatchResultEmbed({
 
     const embed = new EmbedBuilder()
         .setURL(matchUrl)
-        .setTimestamp(gameStartTimestamp)
-        .setColor(didWin ? 0x2dcf71 : 0xf34e3c)
-        .setTitle(`${queueLabel} • ${didWin ? "Victory" : "Defeat"} • ${riotId}`)
+        .setTimestamp(normalizeEmbedTimestamp(gameStartTimestamp?.getTime?.() ?? gameMs));
 
-    const lpChangeValue = isRankedMatch ? formatDelta(didWin ? Math.abs(delta) : -Math.abs(delta)) : "—";
-    const rankValue = isRankedMatch ? formatRankWithLp(afterRank) : "—";
+        const resultPresentation = resolveMatchResultPresentation({
+        didWin,
+        queueLabel,
+        riotId,
+        game: GAME_TYPES.LOL,
+    });
+
+    embed
+        .setColor(resultPresentation.color)
+        .setTitle(resultPresentation.title)
+
+    const { lpChangeValue, rankValue } = formatRankAndLpFields({
+        isRanked: isRankedMatch,
+        delta,
+        didWin,
+        afterRank,
+    });
+
     const damageDealt = Number(trackedParticipant?.totalDamageDealtToChampions ?? 0);
     const totalCs = Number(trackedParticipant?.totalMinionsKilled ?? 0) + Number(trackedParticipant?.neutralMinionsKilled ?? 0);
     const duration = formatDurationFromSeconds(trackedParticipant?.timePlayed ?? 0);

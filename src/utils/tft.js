@@ -16,7 +16,11 @@ import {
   queueLabelForGame,
   queueTypeFromQueueId,
 } from "../constants/queues.js";
-import { formatDelta, formatRankWithLp } from "./presentation.js";
+import {
+  formatRankAndLpFields,
+  normalizeEmbedTimestamp,
+  resolveMatchResultPresentation,
+} from "./matchEmbedShared.js";
 
 // === Queue helpers ===
 // Extract the queue id from a match payload while handling API variations.
@@ -54,11 +58,6 @@ export function placementToOrdinal(placement) {
     return `${placement}th`;
 }
 
-// Wrap queue label helper for semantic clarity at call sites.
-export function labelForQueueType(queueType) {
-    return queueLabelForGame(GAME_TYPES.TFT, queueType);
-}
-
 // === Embed construction ===
 // Build the Discord embed used for match announcements.
 export async function buildMatchResultEmbed({ 
@@ -72,7 +71,7 @@ export async function buildMatchResultEmbed({
     gameMs,
  }) {
     const matchUrl = getMatchUrl({ game: GAME_TYPES.TFT, matchId });
-    const label = labelForQueueType(queueType);
+    const queueLabel = queueLabelForGame(GAME_TYPES.TFT, queueType);
 
     const p = typeof placement === "number" ? placement : null;
     const d = typeof delta === "number" ? delta : 0;
@@ -82,13 +81,16 @@ export async function buildMatchResultEmbed({
     const isWin = p !== null && p <= 4;
     const isLoss = p !== null && p >= 5;
     
-    const lpChangeValue = isRanked ? formatDelta(d) : "—";
-    const rankValue = isRanked ? formatRankWithLp(afterRank) : "—";
+    const { lpChangeValue, rankValue } = formatRankAndLpFields({
+        isRanked,
+        delta: d,
+        afterRank,
+    });
      
     // Start with a URL + timestamp so the embed is linkable and time-stamped
     const embed = new EmbedBuilder()
         .setURL(matchUrl)
-        .setTimestamp(Number.isFinite(Number(gameMs)) && Number(gameMs) > 0 ? new Date(Number(gameMs)) : new Date());
+        .setTimestamp(normalizeEmbedTimestamp(gameMs));
 
     if (isRanked) {
         try {
@@ -105,16 +107,13 @@ export async function buildMatchResultEmbed({
     const riotId = `${account.gameName}#${account.tagLine}`;
     const ord = p ? placementToOrdinal(p) : 'N/A';
 
-    // Use different colors/titles for wins and losses for quick scanning.
-    if (isWin) {
-        embed.setColor(0x2dcf71).setTitle(`${label} Victory for ${riotId}!`);
-    } else if (isLoss) {
-        embed.setColor(0xf34e3c).setTitle(`${label} Defeat for ${riotId}...`);
-    } else {
-        embed
-        .setColor(0x5865f2)
-        .setTitle(`${label} Result for ${riotId}`)
-    }
+    const resultPresentation = resolveMatchResultPresentation({
+        didWin: isWin ? true : (isLoss ? false : null),
+        queueLabel,
+        riotId,
+        game: GAME_TYPES.TFT,
+    });
+    embed.setColor(resultPresentation.color).setTitle(resultPresentation.title);
 
     embed.addFields(
         { name: "Placement", value: p ? ord : "Unknown", inline: true },

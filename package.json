@@ -11,7 +11,8 @@
     "unused:fix": "eslint \"src/**/*.js\" --fix",
     "knip": "knip",
     "test:resolveChampionIcon": "node src/tests/resolveChampionIcon.assert.js",
-    "test:liveDraftImage": "node src/tests/liveDraftImage.assert.js"
+    "test:liveDraftImage": "node src/tests/liveDraftImage.assert.js",
+    "test:embedFields": "node src/tests/embedFields.assert.js"
   },
   "repository": {
     "type": "git",
