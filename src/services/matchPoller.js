@@ -70,6 +70,15 @@ function getLolInGameDedupeKey(tracking = {}) {
     return null;
 }
 
+
+function getLolFinishedMatchDedupeKey({ match, queueType }) {
+    const gameId = match?.info?.gameId;
+    if (gameId != null) return `gid:${String(gameId)}`;
+    const start = match?.info?.gameCreation;
+    if (start != null && queueType != null) return `start:${String(start)}:queue:${String(queueType)}`;
+    return null;
+}
+
 async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     const now = Date.now();
     const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);
@@ -427,6 +436,7 @@ async function processUnseenLolMatches({
     announceQueues,
     refreshedRankSnapshotsByGame,
 }) {
+    let shouldClearLiveAnnouncementTracking = false;
     const unseenLolMatchIds = await detectUnseenMatchIds({
         tracking: lolTracking,
         matchBackfillLimit: MATCH_BACKFILL_LIMIT,
@@ -455,13 +465,15 @@ async function processUnseenLolMatches({
         const rawQueueType = meta.queueType || LOL_QUEUE_TYPES.UNKNOWN;
         const { queueType, isRanked } = resolveLolQueueContext({ match, rawQueueType });
         const gameMs = Number(match?.info?.gameEndTimestamp ?? 0) || Number(match?.info?.gameCreation ?? 0) || Date.now();
-        preparedLolMatches.push({ matchId, me, participants, queueType, isRanked, gameMs });
+        preparedLolMatches.push({ matchId, me, participants, queueType, isRanked, gameMs, match });
     }
 
     const latestLolRankedIndex = findLatestRankedIndex(preparedLolMatches);
+    const newestFinishedLolMatchIndex = preparedLolMatches.length - 1;
     for (const [index, prepared] of preparedLolMatches.entries()) {
-        const { matchId, me, participants, queueType, isRanked, gameMs } = prepared;
+        const { matchId, me, participants, queueType, isRanked, gameMs, match } = prepared;
         const isLatestRankedMatch = index === latestLolRankedIndex;
+        const isNewestFinishedLolMatch = index === newestFinishedLolMatchIndex;
         if (isLatestRankedMatch) {
             const memoizedRankSnapshot = refreshedRankSnapshotsByGame[GAME_TYPES.LOL];
             if (memoizedRankSnapshot) {
@@ -488,7 +500,7 @@ async function processUnseenLolMatches({
             continue;
         }
         if (me) {
-            await announceGameMatchToDiscord({
+            const resultAnnouncementContext = {
                 buildEmbed: buildLolMatchResultEmbed,
                 channel,
                 account,
@@ -501,7 +513,46 @@ async function processUnseenLolMatches({
                 gameMs,
                 guildId,
                 channelId: channelIdForGuild,
-            });
+            };
+            await announceGameMatchToDiscord(resultAnnouncementContext);
+
+            const strategy = config.lolPostMatchAnnouncementStrategy ?? 'edit';
+            const finishedMatchDedupeKey = getLolFinishedMatchDedupeKey({ match, queueType });
+            const trackedLiveKey = lolTracking?.liveAnnouncementGameKey ?? null;
+            const shouldReconcileLiveMessage = isNewestFinishedLolMatch
+                && trackedLiveKey != null
+                && finishedMatchDedupeKey != null
+                && trackedLiveKey === finishedMatchDedupeKey
+                && lolTracking?.liveAnnouncementMessageId
+                && (lolTracking?.liveAnnouncementChannelId || channelIdForGuild);
+            if (shouldReconcileLiveMessage) {
+                const liveChannelId = lolTracking?.liveAnnouncementChannelId ?? channelIdForGuild;
+                const liveChannel = liveChannelId
+                    ? (channel?.id === liveChannelId ? channel : await channel?.client?.channels?.fetch(liveChannelId).catch(() => null))
+                    : null;
+                if (liveChannel) {
+                    const { embed, files } = await buildLolMatchResultEmbed(resultAnnouncementContext);
+                    try {
+                        const liveMessage = await liveChannel.messages.fetch(lolTracking.liveAnnouncementMessageId);
+                        if (strategy === 'delete_and_send') {
+                            await liveMessage.delete().catch(() => null);
+                            await liveChannel.send({ embeds: [embed], files });
+                        } else {
+                            await liveMessage.edit({ embeds: [embed], files });
+                        }
+                        shouldClearLiveAnnouncementTracking = true;
+                    } catch (err) {
+                        const statusCode = Number(err?.status ?? err?.code ?? 0);
+                        const isMissingMessage = statusCode === 404 || statusCode === 10008;
+                        if (isMissingMessage) {
+                            await liveChannel.send({ embeds: [embed], files });
+                            shouldClearLiveAnnouncementTracking = true;
+                        } else {
+                            throw err;
+                        }
+                    }
+                }
+            }
         }
         if (isRanked) {
             console.log(`[match-poller] NEW LoL match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} delta=${delta}`);
@@ -515,6 +566,13 @@ async function processUnseenLolMatches({
             lastMatchAt: lastProcessedLolMatchAt,
             lastRankByQueue: afterLol,
             recapEvents: lolRecapEvents,
+            ...(shouldClearLiveAnnouncementTracking
+                ? {
+                    liveAnnouncementMessageId: null,
+                    liveAnnouncementChannelId: null,
+                    liveAnnouncementGameKey: null,
+                }
+                : {}),
         },
         rankSnapshot: afterLol,
     };

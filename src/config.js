@@ -16,6 +16,7 @@ import 'dotenv/config';
  * @property {number} rankRefreshIntervalMinutes
  * @property {number} recapAutopostHour
  * @property {number} recapAutopostMinute
+ * @property {string} lolPostMatchAnnouncementStrategy
  */
 
 // === Defaults and validation sets ===
@@ -88,6 +89,16 @@ function readRegion() {
     return normalized;
 }
 
+function readLolPostMatchAnnouncementStrategy() {
+    const raw = readEnv('LOL_POST_MATCH_ANNOUNCEMENT_STRATEGY') ?? 'edit';
+    const normalized = String(raw).toLowerCase();
+    const valid = new Set(['edit', 'delete_and_send']);
+    if (!valid.has(normalized)) {
+        throw new Error(`Environment variable LOL_POST_MATCH_ANNOUNCEMENT_STRATEGY must be one of: ${[...valid].join(', ')}`);
+    }
+    return normalized;
+}
+
 // === Final config ===
 // Freeze the config so accidental mutations don't create confusing runtime bugs.
 /** @type {AppConfig} */
@@ -122,6 +133,7 @@ export const config = Object.freeze({
         min: 0,
         max: 59,
     }),
+    lolPostMatchAnnouncementStrategy: readLolPostMatchAnnouncementStrategy(),
 });
 
 // Export a default for convenience so imports stay concise.
