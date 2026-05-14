@@ -528,8 +528,6 @@ async function processUnseenLolMatches({
                 guildId,
                 channelId: channelIdForGuild,
             };
-            await announceGameMatchToDiscord(resultAnnouncementContext);
-
             const strategy = config.lolPostMatchAnnouncementStrategy ?? 'edit';
             const finishedMatchDedupeKey = getLolFinishedMatchDedupeKey({ match, queueType });
             const trackedLiveKey = lolTracking?.liveAnnouncementGameKey ?? null;
@@ -539,6 +537,7 @@ async function processUnseenLolMatches({
                 && trackedLiveKey === finishedMatchDedupeKey
                 && lolTracking?.liveAnnouncementMessageId
                 && (lolTracking?.liveAnnouncementChannelId || channelIdForGuild);
+            let didAnnounceResult = false;
             if (shouldReconcileLiveMessage) {
                 const liveChannelId = lolTracking?.liveAnnouncementChannelId ?? channelIdForGuild;
                 const liveChannel = liveChannelId
@@ -554,18 +553,24 @@ async function processUnseenLolMatches({
                         } else {
                             await liveMessage.edit({ embeds: [embed], files });
                         }
+                        didAnnounceResult = true;
                         shouldClearLiveAnnouncementTracking = true;
                     } catch (err) {
                         const statusCode = Number(err?.status ?? err?.code ?? 0);
                         const isMissingMessage = statusCode === 404 || statusCode === 10008;
                         if (isMissingMessage) {
                             await liveChannel.send({ embeds: [embed], files });
+                            didAnnounceResult = true;
                             shouldClearLiveAnnouncementTracking = true;
                         } else {
                             throw err;
                         }
                     }
                 }
+            }
+            if (!didAnnounceResult) {
+                const sentMessage = await announceGameMatchToDiscord(resultAnnouncementContext);
+                didAnnounceResult = Boolean(sentMessage);
             }
         }
         if (isRanked) {
