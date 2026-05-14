@@ -17,6 +17,7 @@ import 'dotenv/config';
  * @property {number} recapAutopostHour
  * @property {number} recapAutopostMinute
  * @property {string} lolPostMatchAnnouncementStrategy
+ * @property {boolean} liveAnnounceRankedOnly
  */
 
 // === Defaults and validation sets ===
@@ -73,6 +74,15 @@ function readInt(name, { defaultValue, min = -Infinity, max = Infinity }) {
         );
     }
     return parsed;
+}
+
+function readBool(name, { defaultValue = false } = {}) {
+    const raw = readEnv(name);
+    if (raw === undefined || raw === '') return defaultValue;
+    const normalized = String(raw).trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    throw new Error(`Environment variable ${name} must be a boolean`);
 }
 
 /**
@@ -134,6 +144,10 @@ export const config = Object.freeze({
         max: 59,
     }),
     lolPostMatchAnnouncementStrategy: readLolPostMatchAnnouncementStrategy(),
+    liveAnnounceRankedOnly: readBool('LIVE_ANNOUNCE_RANKED_ONLY', {
+        defaultValue: true,
+    }),
+
 });
 
 // Export a default for convenience so imports stay concise.

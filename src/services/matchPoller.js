@@ -382,7 +382,7 @@ function reduceLolLiveState({
 
 export { reduceLolLiveState };
 
-async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild }) {
+async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueues }) {
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
         previousTracking: lolTracking,
@@ -395,6 +395,21 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
     const shouldAnnounceLolLiveGame = liveTransitionDecision.shouldAnnounceLive === true;
 
     if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
+        const queueContext = resolveLolQueueContext({
+            queueId: lolSpectatorState?.activeGame?.gameQueueConfigId ?? lolSpectatorState?.activeQueueId ?? null,
+        });
+        const queueType = queueContext?.queueType ?? LOL_QUEUE_TYPES.UNKNOWN;
+        const isRankedLiveQueue = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
+        const isAllowedByGuildQueueConfig = !announceQueues || announceQueues.includes(queueType);
+        const shouldAnnounceBasedOnQueue = (!config.liveAnnounceRankedOnly || isRankedLiveQueue) && isAllowedByGuildQueueConfig;
+
+        if (!shouldAnnounceBasedOnQueue) {
+            console.log(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=queue_gated queue=${queueType} rankedOnly=${config.liveAnnounceRankedOnly} ranked=${isRankedLiveQueue} allowed=${isAllowedByGuildQueueConfig}`);
+            return {
+                lolSpectatorState,
+                trackingPatch: liveTransitionDecision.nextTrackingPatch,
+            };
+        }
         const liveAnnouncementGameKey = getLolInGameDedupeKey({
             activeGameId: lolSpectatorState?.activeGame?.gameId ?? lolSpectatorState?.activeGameId ?? null,
             activeGameStartTime: lolSpectatorState?.activeGame?.gameStartTime ?? lolSpectatorState?.activeGameStartTime ?? null,
@@ -724,6 +739,7 @@ export async function startMatchPoller(client) {
                             guildId,
                             channel,
                             channelIdForGuild,
+                            announceQueues,
                         });
                         
                         stageTrackingUpsert({
