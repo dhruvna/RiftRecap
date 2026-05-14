@@ -455,7 +455,7 @@ export async function resetGuildAccountProgressBeforeInStore(guildId, cutoffMs, 
     const clearMatchCursor = options?.clearMatchCursor === true;
     const requestedScope = Array.isArray(options?.gameScope) ? options.gameScope : [];
     if (requestedScope.length === 0) {
-        throw new Error("[resetGuildAccountProgressBeforeInStore] options.gameScope must be a non-empty array of tracked game keys.");
+        throw new Error('[resetGuildAccountProgressBeforeInStore] options.gameScope must be a non-empty array of tracked game keys.');
     }
     return mutateGuild(guildId, ({ guild }) => {
         const accounts = Array.isArray(guild?.accounts) ? guild.accounts : [];

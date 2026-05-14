@@ -1,46 +1,44 @@
 // === TFT utilities ===
 // This module holds helpers for queue detection, placement formatting, and embeds.
 
-import { EmbedBuilder } from "discord.js";
+import { EmbedBuilder } from 'discord.js';
 import { 
     getMatchUrl,
     getTftRegaliaThumbnailUrl,
-} from "../riot.js";
-import { buildUnitStripImage } from "./unitStrip.js";
+} from '../riot.js';
+import { buildUnitStripImage } from './unitStrip.js';
 import {
   GAME_TYPES,
   TFT_QUEUE_TYPES,
-} from "../constants/queues.js";
-import {
   isRankedQueueForGame,
   queueLabelForGame,
   queueTypeFromQueueId,
-} from "../constants/queues.js";
+} from '../constants/queues.js';
 import {
   formatRankAndLpFields,
   normalizeEmbedTimestamp,
   resolveMatchResultPresentation,
-} from "./matchEmbedShared.js";
+} from './matchEmbedShared.js';
 
 // === Queue helpers ===
 // Extract the queue id from a match payload while handling API variations.
 export function getQueueIdFromMatch(match) {
     const info = match?.info;
     const q = info?.queueId ?? info?.queue_id ?? null;
-    return typeof q === "number" ? q: (q ? Number(q) : null);
+    return typeof q === 'number' ? q: (q ? Number(q) : null);
 }
 
 // Convert queue id into human-friendly metadata.
 export function detectQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromMatch(match);
     const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
-    const mode = queueType === TFT_QUEUE_TYPES.RANKED ? "RANKED" : (queueType === TFT_QUEUE_TYPES.RANKED_DOUBLE_UP ? "DOUBLE UP" : "UNKNOWN");
+    const mode = queueType === TFT_QUEUE_TYPES.RANKED ? 'RANKED' : (queueType === TFT_QUEUE_TYPES.RANKED_DOUBLE_UP ? 'DOUBLE UP' : 'UNKNOWN');
     return { queueId, mode, queueType, label: queueLabelForGame(GAME_TYPES.TFT, queueType) };
 }
 
 // Normalize placement for queue-specific differences (like Double Up).
-export function normalizePlacement({ placement, queueType}) {
-    if (typeof placement !== "number" || placement < 1 || placement > 8) return null;
+export function normalizePlacement({ placement, queueType }) {
+    if (typeof placement !== 'number' || placement < 1 || placement > 8) return null;
 
     if (queueType === TFT_QUEUE_TYPES.RANKED_DOUBLE_UP) {
         return Math.ceil(placement / 2); //
@@ -51,10 +49,10 @@ export function normalizePlacement({ placement, queueType}) {
 
 // Convert a placement number to ordinal text.
 export function placementToOrdinal(placement) {
-    if (!placement) return "?";
-    if (placement === 1) return "1st";
-    if (placement === 2) return "2nd";
-    if (placement === 3) return "3rd";
+    if (!placement) return '?';
+    if (placement === 1) return '1st';
+    if (placement === 2) return '2nd';
+    if (placement === 3) return '3rd';
     return `${placement}th`;
 }
 
@@ -73,8 +71,8 @@ export async function buildMatchResultEmbed({
     const matchUrl = getMatchUrl({ game: GAME_TYPES.TFT, matchId });
     const queueLabel = queueLabelForGame(GAME_TYPES.TFT, queueType);
 
-    const p = typeof placement === "number" ? placement : null;
-    const d = typeof delta === "number" ? delta : 0;
+    const p = typeof placement === 'number' ? placement : null;
+    const d = typeof delta === 'number' ? delta : 0;
 
     const isRanked = isRankedQueueForGame(GAME_TYPES.TFT, queueType);
     
@@ -116,9 +114,9 @@ export async function buildMatchResultEmbed({
     embed.setColor(resultPresentation.color).setTitle(resultPresentation.title);
 
     embed.addFields(
-        { name: "Placement", value: p ? ord : "Unknown", inline: true },
-        { name: "LP Change", value: lpChangeValue, inline: true },
-        { name: "Rank", value: rankValue, inline: true }
+        { name: 'Placement', value: p ? ord : 'Unknown', inline: true },
+        { name: 'LP Change', value: lpChangeValue, inline: true },
+        { name: 'Rank', value: rankValue, inline: true }
     );
 
     let files = [];
@@ -131,8 +129,8 @@ export async function buildMatchResultEmbed({
             traitIconSize: 30,
         });
         if (unitImage) {
-            files = [{ attachment: unitImage, name: "units.png" }];
-            embed.setImage("attachment://units.png");
+            files = [{ attachment: unitImage, name: 'units.png' }];
+            embed.setImage('attachment://units.png');
         }
     } catch {
         // ignore image generation errors

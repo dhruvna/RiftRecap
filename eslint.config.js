@@ -26,9 +26,16 @@ export default [
 
       // optional: disable base rule to avoid duplicate reporting
       "no-unused-vars": "off",
-
       // Prevent duplicate keys inside object literals
       "no-dupe-keys": "error",
+      "no-duplicate-imports": "error",
+      "quotes": ["error", "single", { "avoidEscape": true, "allowTemplateLiterals": false }],
+      "object-curly-spacing": ["error", "always"],
+      "comma-spacing": ["error", { "before": false, "after": true }],
+      "space-before-blocks": ["error", "always"],
+      "keyword-spacing": ["error", { "before": true, "after": true }],
+      "semi": ["error", "always"],
+
     },
   },
 ];

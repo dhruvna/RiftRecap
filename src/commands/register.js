@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from 'discord.js';
 
 import {
     getTFTMatch,
@@ -16,13 +16,13 @@ import {
     makeAccountKey,
     upsertGuildAccountInStore,
 } from '../storage.js';
-import { LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from "../constants/queues.js";
-import { getRegistrationSnapshot } from "../services/registrationSnapshot.js";
+import { LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
+import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
 
 export default {
     data: new SlashCommandBuilder()
-        .setName("register")
-        .setDescription("Register Riot ID in this server for future lookup")
+        .setName('register')
+        .setDescription('Register Riot ID in this server for future lookup')
         .addStringOption((opt) =>
             opt.setName('gamename').setDescription('Riot ID Gamename (before #)').setRequired(true)
         )
@@ -37,14 +37,14 @@ export default {
         // 1. Ensure command is run in a server only
         const guildId = interaction.guildId;
         if (!guildId) {
-            await interaction.reply({content: "This command can only be used in a server (not DMs).", ephemeral: true});
+            await interaction.reply({ content: 'This command can only be used in a server (not DMs).', ephemeral: true });
             return;
         }
 
         // 2. Pull user inputs from disc command
-        const gameName = interaction.options.getString("gamename", true);
-        const tagLine = interaction.options.getString("tagline", true);
-        const regionInput = interaction.options.getString("region", true);
+        const gameName = interaction.options.getString('gamename', true);
+        const tagLine = interaction.options.getString('tagline', true);
+        const regionInput = interaction.options.getString('region', true);
 
         // 3. Normalize platform + get regional routing 
         const { platform, regional, region } = resolveRegion(regionInput);

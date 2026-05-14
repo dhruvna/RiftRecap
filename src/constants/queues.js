@@ -2,31 +2,31 @@
 // Keep queue identifiers scoped by game so semantics stay explicit.
 
 export const GAME_TYPES = Object.freeze({
-    TFT: "TFT",
-    LOL: "LOL",
+    TFT: 'TFT',
+    LOL: 'LOL',
 });
 
 export const TRACKING_GAME_CHOICES = Object.freeze([
-    { name: "TFT", value: "TFT" },
-    { name: "LoL", value: "LOL" },
-    { name: "Both", value: "BOTH" },
+    { name: 'TFT', value: 'TFT' },
+    { name: 'LoL', value: 'LOL' },
+    { name: 'Both', value: 'BOTH' },
 ]);
 
 export const TFT_QUEUE_TYPES = Object.freeze({
-    RANKED: "RANKED_TFT",
-    RANKED_DOUBLE_UP: "RANKED_TFT_DOUBLE_UP",
-    UNKNOWN: "UNKNOWN_TFT",
+    RANKED: 'RANKED_TFT',
+    RANKED_DOUBLE_UP: 'RANKED_TFT_DOUBLE_UP',
+    UNKNOWN: 'UNKNOWN_TFT',
 });
 
 export const LOL_QUEUE_TYPES = Object.freeze({
-    RANKED_SOLO_DUO: "RANKED_SOLO_DUO",
-    RANKED_FLEX: "RANKED_FLEX",
-    UNKNOWN: "UNKNOWN_LOL",
+    RANKED_SOLO_DUO: 'RANKED_SOLO_DUO',
+    RANKED_FLEX: 'RANKED_FLEX',
+    UNKNOWN: 'UNKNOWN_LOL',
 });
 
 export const GAME_TYPE_CHOICES = Object.freeze([
-    { name: "TFT", value: GAME_TYPES.TFT },
-    { name: "LoL", value: GAME_TYPES.LOL },
+    { name: 'TFT', value: GAME_TYPES.TFT },
+    { name: 'LoL', value: GAME_TYPES.LOL },
 ]);
 
 export const QUEUE_ID_TO_QUEUE_TYPE = Object.freeze({
@@ -43,14 +43,14 @@ export const LOL_RIOT_QUEUE_TYPE_TO_BOT_QUEUE_TYPE = Object.freeze({
 
 const QUEUE_LABELS_BY_GAME = Object.freeze({
     [GAME_TYPES.TFT]: Object.freeze({
-        [TFT_QUEUE_TYPES.RANKED]: "Ranked TFT",
-        [TFT_QUEUE_TYPES.RANKED_DOUBLE_UP]: "Double Up TFT",
-        [TFT_QUEUE_TYPES.UNKNOWN]: "Unknown",
+        [TFT_QUEUE_TYPES.RANKED]: 'Ranked TFT',
+        [TFT_QUEUE_TYPES.RANKED_DOUBLE_UP]: 'Double Up TFT',
+        [TFT_QUEUE_TYPES.UNKNOWN]: 'Unknown',
     }),
     [GAME_TYPES.LOL]: Object.freeze({
-        [LOL_QUEUE_TYPES.RANKED_SOLO_DUO]: "Ranked Solo/Duo",
-        [LOL_QUEUE_TYPES.RANKED_FLEX]: "Ranked Flex",
-        [LOL_QUEUE_TYPES.UNKNOWN]: "Unknown",
+        [LOL_QUEUE_TYPES.RANKED_SOLO_DUO]: 'Ranked Solo/Duo',
+        [LOL_QUEUE_TYPES.RANKED_FLEX]: 'Ranked Flex',
+        [LOL_QUEUE_TYPES.UNKNOWN]: 'Unknown',
     }),
 });
 
@@ -74,13 +74,13 @@ export const DEFAULT_ANNOUNCE_QUEUES = [
 ];
 
 export const TFT_RECAP_QUEUE_CHOICES = Object.freeze([
-    { name: "Ranked TFT", value: TFT_QUEUE_TYPES.RANKED },
-    { name: "Double Up TFT", value: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP },
+    { name: 'Ranked TFT', value: TFT_QUEUE_TYPES.RANKED },
+    { name: 'Double Up TFT', value: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP },
 ]);
 
 export const LOL_RECAP_QUEUE_CHOICES = Object.freeze([
-    { name: "LoL Ranked Solo/Duo", value: LOL_QUEUE_TYPES.RANKED_SOLO_DUO },
-    { name: "LoL Ranked Flex", value: LOL_QUEUE_TYPES.RANKED_FLEX },
+    { name: 'LoL Ranked Solo/Duo', value: LOL_QUEUE_TYPES.RANKED_SOLO_DUO },
+    { name: 'LoL Ranked Flex', value: LOL_QUEUE_TYPES.RANKED_FLEX },
 ]);
 
 export const TFT_LEADERBOARD_QUEUE_CHOICES = TFT_RECAP_QUEUE_CHOICES;
@@ -115,7 +115,7 @@ export function queueChoicesForRecap(game = GAME_TYPES.TFT) {
 // === Queue helpers ===
 // Provide a single spot to adjust labeling or ranked logic later.
 export function queueLabel(game, queueType) {
-    if (!queueType) return game === GAME_TYPES.LOL ? "LoL" : "TFT";
+    if (!queueType) return game === GAME_TYPES.LOL ? 'LoL' : 'TFT';
     const labels = QUEUE_LABELS_BY_GAME[game] ?? {};
     return labels[queueType] ?? queueType;
 }

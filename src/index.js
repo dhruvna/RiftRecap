@@ -74,7 +74,7 @@ client.once('clientReady', async () => {
 
             if (debugEnabled) {
                 console.log(
-                    `[startup][debug] guild=${gid} channelId=${g?.channelId ?? "null"} accounts=${accounts.length} rankedSnapshots=${rankedSnapshots} recapConfigs=${JSON.stringify(
+                    `[startup][debug] guild=${gid} channelId=${g?.channelId ?? 'null'} accounts=${accounts.length} rankedSnapshots=${rankedSnapshots} recapConfigs=${JSON.stringify(
                         g?.recapConfigs ?? []
                     )} tft=${JSON.stringify(g?.tft ?? null)}`
                 );
@@ -84,7 +84,7 @@ client.once('clientReady', async () => {
             `[startup] guilds=${guildEntries.length} totalAccounts=${totalAccounts} rankedSnapshots=${totalRankedSnapshots}`
         );
     } catch (e) {
-        console.error("[startup] failed reading db:", e);
+        console.error('[startup] failed reading db:', e);
     }
 
     // Start the background services that keep the bot up-to-date:
@@ -120,7 +120,7 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);
-    if(!command) return;
+    if (!command) return;
 
     try {
         await command.execute(interaction);

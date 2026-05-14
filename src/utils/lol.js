@@ -1,42 +1,42 @@
 // === LOL utilities ===
 // This module holds helpers for queue detection, placement formatting, and embeds.
 
-import { EmbedBuilder } from "discord.js";
+import { EmbedBuilder } from 'discord.js';
 import { 
     getMatchUrl,
     getLolChampionImagesByIds,
-} from "../riot.js";
-import { getLolIdentity } from "../storage.js";
-import { GAME_TYPES, resolveLolQueueContext } from "../constants/queues.js";
+} from '../riot.js';
+import { getLolIdentity } from '../storage.js';
+import { GAME_TYPES, resolveLolQueueContext } from '../constants/queues.js';
 import {
     formatRankAndLpFields,
     normalizeEmbedTimestamp,
     resolveMatchResultPresentation,
     resolveQueuePresentation,
-} from "./matchEmbedShared.js";
-import { resolveChampionIcon } from "./lolChampionIcon.js";
-import { buildLiveDraftImageBuffer } from "./liveDraftImage.js";
+} from './matchEmbedShared.js';
+import { resolveChampionIcon } from './lolChampionIcon.js';
+import { buildLiveDraftImageBuffer } from './liveDraftImage.js';
 
 function formatDurationFromSeconds(seconds) {
     const totalSeconds = Number(seconds);
-    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "Unknown";
+    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return 'Unknown';
 
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
-    return `${mins}:${String(secs).padStart(2, "0")}`;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
 function normalizeText(value) {
-    return String(value ?? "").trim().toLowerCase();
+    return String(value ?? '').trim().toLowerCase();
 }
 
 function normalizeRole(position) {
     const role = normalizeText(position).toUpperCase();
-    return role || "UNKNOWN";
+    return role || 'UNKNOWN';
 }
 
 function normalizeTeamSide(teamId) {
-    return Number(teamId) === 200 ? "RED" : "BLUE";
+    return Number(teamId) === 200 ? 'RED' : 'BLUE';
 }
 
 function buildNormalizedTeamRosters(participants) {
@@ -102,7 +102,7 @@ async function buildLolEmbedContext({
     championImagesById = null,
 }) {
 
-    const riotId = `${account?.gameName ?? "Unknown"}#${account?.tagLine ?? ""}`;
+    const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
     const queueContext = resolveQueuePresentation({
         game: GAME_TYPES.LOL,
         queueId,
@@ -182,17 +182,17 @@ async function buildLolGameDto({
     });
 
     const teamRostersBySideRole = buildNormalizedTeamRosters(participants);
-    for (const side of ["BLUE", "RED"]) {
+    for (const side of ['BLUE', 'RED']) {
         for (const role of Object.keys(teamRostersBySideRole[side])) {
             teamRostersBySideRole[side][role] = teamRostersBySideRole[side][role].map((entry) => ({
                 ...entry,
-                championIconUrl: championImagesById.get(String(entry?.championId ?? "")) ?? null,
+                championIconUrl: championImagesById.get(String(entry?.championId ?? '')) ?? null,
             }));
         }
     }
 
     const spellIds = [Number(trackedParticipant?.spell1Id), Number(trackedParticipant?.spell2Id)].filter(Number.isFinite);
-    const spellSummary = spellIds.map((spellId, index) => `S${index + 1}: ${spellId}`).join(" • ");
+    const spellSummary = spellIds.map((spellId, index) => `S${index + 1}: ${spellId}`).join(' • ');
 
     return {
         trackedPlayer: {
@@ -258,16 +258,16 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
     };
 }
 
-const LOL_ROLE_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
+const LOL_ROLE_ORDER = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
 
 function normalizeLolRoleKey(role) {
     const normalized = normalizeText(role).toUpperCase();
 
-    if (["TOP"].includes(normalized)) return "TOP";
-    if (["JUNGLE", "JGL"].includes(normalized)) return "JUNGLE";
-    if (["MIDDLE", "MID"].includes(normalized)) return "MIDDLE";
-    if (["BOTTOM", "BOT", "ADC"].includes(normalized)) return "BOTTOM";
-    if (["UTILITY", "SUPPORT", "SUP"].includes(normalized)) return "UTILITY";
+    if (['TOP'].includes(normalized)) return 'TOP';
+    if (['JUNGLE', 'JGL'].includes(normalized)) return 'JUNGLE';
+    if (['MIDDLE', 'MID'].includes(normalized)) return 'MIDDLE';
+    if (['BOTTOM', 'BOT', 'ADC'].includes(normalized)) return 'BOTTOM';
+    if (['UTILITY', 'SUPPORT', 'SUP'].includes(normalized)) return 'UTILITY';
     return null;
 }
 
@@ -359,7 +359,7 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
 export function getQueueIdFromLolMatch(match) {
     const info = match?.info;
     const q = info?.queueId ?? info?.queue_id ?? null;
-    return typeof q === "number" ? q : (q ? Number(q) : null);
+    return typeof q === 'number' ? q : (q ? Number(q) : null);
 }
 
 // Convert queue id into human-friendly metadata.
@@ -420,7 +420,7 @@ export async function buildLolMatchResultEmbed({
 
     embed
         .setColor(resultPresentation.color)
-        .setTitle(resultPresentation.title)
+        .setTitle(resultPresentation.title);
 
     const { lpChangeValue, rankValue } = formatRankAndLpFields({
         isRanked: isRankedMatch,
@@ -432,20 +432,20 @@ export async function buildLolMatchResultEmbed({
     const damageDealt = Number(trackedParticipant?.totalDamageDealtToChampions ?? 0);
     const totalCs = Number(trackedParticipant?.totalMinionsKilled ?? 0) + Number(trackedParticipant?.neutralMinionsKilled ?? 0);
     const duration = formatDurationFromSeconds(trackedParticipant?.timePlayed ?? 0);
-    const lane = trackedParticipant?.teamPosition ?? "Unknown";
+    const lane = trackedParticipant?.teamPosition ?? 'Unknown';
     const visionScore = Number(trackedParticipant?.visionScore ?? 0);
-    const csPerMin = duration === "Unknown" ? null : totalCs / (Number(trackedParticipant?.timePlayed) / 60);
+    const csPerMin = duration === 'Unknown' ? null : totalCs / (Number(trackedParticipant?.timePlayed) / 60);
     const csPerMinLabel = Number.isFinite(csPerMin) && csPerMin > 0 ? `${csPerMin.toFixed(1)} CS/min` : null;
 
     embed.addFields(
-        { name: "K/D/A", value: kda, inline: true },
-        { name: "Damage", value: damageDealt.toLocaleString(), inline: true },  
+        { name: 'K/D/A', value: kda, inline: true },
+        { name: 'Damage', value: damageDealt.toLocaleString(), inline: true },  
         // if lane = UTILITY, show vision score instead of CS/min (and corresponding label as well)
-        { name: lane === "UTILITY" ? "Vision Score" : "CS/min", value: lane === "UTILITY" ? visionScore.toString() : (csPerMinLabel ?? "—"), inline: true },
+        { name: lane === 'UTILITY' ? 'Vision Score' : 'CS/min', value: lane === 'UTILITY' ? visionScore.toString() : (csPerMinLabel ?? '—'), inline: true },
         // { name: "CS/min", value: csPerMinLabel ?? "—", inline: true }, 
-        { name: "Rank", value: rankValue.slice(0, 1024), inline: true },
-        { name: didWin ? "LP Win" : "LP Loss", value: lpChangeValue, inline: true },
-        { name: "Duration", value: duration, inline: true },
+        { name: 'Rank', value: rankValue.slice(0, 1024), inline: true },
+        { name: didWin ? 'LP Win' : 'LP Loss', value: lpChangeValue, inline: true },
+        { name: 'Duration', value: duration, inline: true },
         // { name: "Missing Pings", value: missingPings.toString(), inline: true },
         // { name: "Lane", value: lane, inline: true },
     );
@@ -468,8 +468,8 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
 
     try {
         const stripBuffer = await buildLiveDraftImageBuffer({ blueIconUrls, redIconUrls });
-        files.push({ attachment: stripBuffer, name: "lol-live-draft.png" });
-        embed.setImage("attachment://lol-live-draft.png");
+        files.push({ attachment: stripBuffer, name: 'lol-live-draft.png' });
+        embed.setImage('attachment://lol-live-draft.png');
     } catch {
     }        
 

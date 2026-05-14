@@ -1,6 +1,6 @@
 // === Imports ===
 // Autocomplete needs access to per-guild accounts stored on disk.
-import { listGuildAccounts } from "../storage.js";
+import { listGuildAccounts } from '../storage.js';
 
 // === Autocomplete helper ===
 // Provide account choices that match the user's typed query.
@@ -9,7 +9,7 @@ export async function respondWithAccountChoices(interaction) {
     if (!guildId) return interaction.respond([]);
 
     // Discord provides the current focused value; use it to filter results.
-    const focused = interaction.options.getFocused() ?? "";
+    const focused = interaction.options.getFocused() ?? '';
     const q = focused.toLowerCase();
 
     const accounts = await listGuildAccounts(guildId);
@@ -20,7 +20,7 @@ export async function respondWithAccountChoices(interaction) {
             ? accounts
             : accounts.filter(a => {
                 const name = `${a.gameName}#${a.tagLine}`.toLowerCase();
-                const region = String(a.region ?? "").toLowerCase();
+                const region = String(a.region ?? '').toLowerCase();
                 return name.includes(q) || region.includes(q);
             });
 

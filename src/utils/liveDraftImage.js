@@ -1,4 +1,4 @@
-import { Canvas, loadImage } from "@napi-rs/canvas";
+import { Canvas, loadImage } from '@napi-rs/canvas';
 
 const SLOT_COUNT_PER_SIDE = 5;
 const ICON_SIZE = 48;
@@ -7,10 +7,10 @@ const SIDE_PADDING_X = 16;
 const CANVAS_PADDING_Y = 12;
 const VS_WIDTH = 42;
 
-const BACKGROUND_COLOR = "#141822";
-const VS_BACKGROUND = "#21283A";
-const BLUE_EMPTY = "#4B5563";
-const RED_EMPTY = "#4B5563";
+const BACKGROUND_COLOR = '#141822';
+const VS_BACKGROUND = '#21283A';
+const BLUE_EMPTY = '#4B5563';
+const RED_EMPTY = '#4B5563';
 const SLOT_RADIUS = 6;
 
 export function getLiveDraftStripLayout() {
@@ -55,7 +55,7 @@ async function drawSlotIconOrFallback(ctx, iconUrl, x, y, fallbackColor) {
 export async function buildLiveDraftImageBuffer({ blueIconUrls = [], redIconUrls = [] }) {
   const { width, height, sideWidth } = getLiveDraftStripLayout();
   const canvas = new Canvas(width, height);
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext('2d');
 
   ctx.fillStyle = BACKGROUND_COLOR;
   ctx.fillRect(0, 0, width, height);
@@ -72,5 +72,5 @@ export async function buildLiveDraftImageBuffer({ blueIconUrls = [], redIconUrls
     await drawSlotIconOrFallback(ctx, redIconUrls[index], rx, topY, RED_EMPTY);
   }
 
-  return canvas.toBuffer("image/png");
+  return canvas.toBuffer('image/png');
 }

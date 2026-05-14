@@ -1,12 +1,12 @@
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from 'discord.js';
 
-import { removeGuildAccountByKey } from "../storage.js";
-import { respondWithAccountChoices } from "../utils/autocomplete.js";
+import { removeGuildAccountByKey } from '../storage.js';
+import { respondWithAccountChoices } from '../utils/autocomplete.js';
 
 export default {
     data: new SlashCommandBuilder()
-        .setName("unregister")
-        .setDescription("Unregister a Riot ID from this server")
+        .setName('unregister')
+        .setDescription('Unregister a Riot ID from this server')
         .addStringOption((opt) =>
             opt
                 .setName('account')
@@ -19,7 +19,7 @@ export default {
         try {
             await respondWithAccountChoices(interaction);
         } catch (err) {
-            console.error("Error during unregister autocomplete:", err);
+            console.error('Error during unregister autocomplete:', err);
             return interaction.respond([]);
         }        
     },
@@ -28,7 +28,7 @@ export default {
         const guildId = interaction.guildId;
         if (!guildId) {
             await interaction.reply({
-                content: "This command can only be used inside a server (not DMs).",
+                content: 'This command can only be used inside a server (not DMs).',
                 ephemeral: true,
             });
             return;
@@ -41,7 +41,7 @@ export default {
         const removed = await removeGuildAccountByKey(guildId, key);
 
         if (!removed) {
-            await interaction.editReply("The selected Riot ID is not registered in this server. It may have already been removed.");
+            await interaction.editReply('The selected Riot ID is not registered in this server. It may have already been removed.');
             return;
         }
 

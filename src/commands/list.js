@@ -1,16 +1,16 @@
-import { SlashCommandBuilder } from "discord.js";
+import { SlashCommandBuilder } from 'discord.js';
 import { listGuildAccounts } from '../storage.js';
 
 export default {
     data: new SlashCommandBuilder()
-        .setName("list")
-        .setDescription("Lists all registered Riot IDs in this server"),
+        .setName('list')
+        .setDescription('Lists all registered Riot IDs in this server'),
     
     async execute(interaction) {
         const guildId = interaction.guildId;
         if (!guildId) {
             await interaction.reply({
-                content: "This command can only be used inside a server (not DMs).",
+                content: 'This command can only be used inside a server (not DMs).',
                 ephemeral: true,
             });
             return;
@@ -20,7 +20,7 @@ export default {
 
         const accounts = await listGuildAccounts(guildId);
         if (accounts.length === 0) {
-            await interaction.editReply("No Riot IDs are registered in this server.");
+            await interaction.editReply('No Riot IDs are registered in this server.');
             return;
         }
 

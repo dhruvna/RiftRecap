@@ -201,7 +201,7 @@ function collectUnseenMatchIds({ ids, lastMatchId, unseenMatchIds, limit }) {
     return { unseenMatchIds, foundLast };
 }
 
-async function detectUnseenMatchIds({ tracking, matchBackfillLimit, fetchMatchIdsByAccount}) {
+async function detectUnseenMatchIds({ tracking, matchBackfillLimit, fetchMatchIdsByAccount }) {
     // If we have never seen a match for this account, fetch just one ID to seed it.
     if (!tracking?.lastMatchId) {
         const ids = await fetchMatchIdsByAccount({ count: 1, start: 0 });
@@ -291,7 +291,7 @@ async function announceGameMatchToDiscord({ buildEmbed, ...context }) {
     const { channel, guildId, channelId } = context;
     if (!channel) {
         console.log(
-            `[match-poller] no channel for guild=${guildId} (channelId=${channelId ?? "null"})`
+            `[match-poller] no channel for guild=${guildId} (channelId=${channelId ?? 'null'})`
         );
         return null;
     }

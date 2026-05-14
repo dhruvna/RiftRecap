@@ -1,11 +1,11 @@
 // === Imports ===
 // Recap output is rendered into Discord embeds, with queue labels for clarity.
 
-import { EmbedBuilder } from "discord.js";
-import { GAME_TYPES, queueLabel } from "../constants/queues.js";
-import { modeLabel } from "../constants/recap.js";
-import { medalForIndex } from "./presentation.js";
-import { getLolTracking, getTftTracking } from "../storage.js";
+import { EmbedBuilder } from 'discord.js';
+import { GAME_TYPES, queueLabel } from '../constants/queues.js';
+import { modeLabel } from '../constants/recap.js';
+import { medalForIndex } from './presentation.js';
+import { getLolTracking, getTftTracking } from '../storage.js';
 
 // === Formatting helpers ===
 // Normalize LP deltas into a human-readable string.
@@ -13,7 +13,7 @@ function formatDelta(delta) {
   const d = Number(delta ?? 0);
   if (d > 0) return `↑ +${d} LP`;
   if (d < 0) return `↓ ${Math.abs(d)} LP`;
-  return "0 LP";
+  return '0 LP';
 }
 
 // Consistent account name formatting across the board.
@@ -65,7 +65,7 @@ function sortByLosses(rows) {
 // Build line entries with medals and optional game counts.
 function buildLines(rows, limit) {
   return rows.slice(0, limit).map((r, i) => {
-    const games = r.games > 0 ? ` — ${r.games} games` : "";
+    const games = r.games > 0 ? ` — ${r.games} games` : '';
     return `${medalForIndex(i)} **${accountName(r.account)}** ${formatDelta(r.delta)}${games}`;
   });
 }
@@ -78,17 +78,17 @@ export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hour
   const gains = sortByGains(rows);
   const losses = sortByLosses(rows);
 
-  const gainsText = (buildLines(gains, 25).join("\n") || "—").slice(0, 1024);
+  const gainsText = (buildLines(gains, 25).join('\n') || '—').slice(0, 1024);
   const lossesText =
     losses.length > 0
-      ? buildLines(losses, 10).join("\n").slice(0, 1024)
-      : "—";
+      ? buildLines(losses, 10).join('\n').slice(0, 1024)
+      : '—';
 
   return new EmbedBuilder()
     .setTitle(`${modeLabel(mode)} Recap`)
     .addFields(
-      { name: "Top gains", value: gainsText, inline: true },
-      { name: "Top losses", value: lossesText, inline: true }
+      { name: 'Top gains', value: gainsText, inline: true },
+      { name: 'Top losses', value: lossesText, inline: true }
     )
     .setFooter({
       text: `${rows.length} players | ${totalGames} games • ${queueLabel(game, queue)} • last ${hours}h`,

@@ -1,33 +1,33 @@
 // === Imports ===
 // Leaderboard needs Discord builders, storage, and rank snapshot helpers.
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { listGuildAccounts } from '../storage.js';
 
-import { GAME_TYPES } from "../constants/queues.js";
-import {
+import { 
+  GAME_TYPES, 
   allLeaderboardQueueChoices,
   defaultRankedQueueByGame,
   queueLabelForGame,
   resolveGameFromQueue,
-} from "../constants/queues.js";
+} from '../constants/queues.js';
 
 const ALL_LEADERBOARD_QUEUE_CHOICES = allLeaderboardQueueChoices();
-import { getRankSnapshotForQueue } from "../utils/rankSnapshot.js";
-import { formatRankWithLp, formatWinrate, medalForIndex } from "../utils/presentation.js";
+import { getRankSnapshotForQueue } from '../utils/rankSnapshot.js';
+import { formatRankWithLp, formatWinrate, medalForIndex } from '../utils/presentation.js';
 
 // === Ranking constants ===
 // Tier ordering (low -> high) used to compute a sortable score.
 const TIER_ORDER = [
-  "IRON", // 0 - 399
-  "BRONZE", // 400 - 799
-  "SILVER", // 800 - 1199
-  "GOLD", // 1200 - 1599
-  "PLATINUM", // 1600 - 1999
-  "EMERALD", // 2000 - 2399
-  "DIAMOND", // 2400 - 2799
-  "MASTER", // 2800+
-  "GRANDMASTER",
-  "CHALLENGER",
+  'IRON', // 0 - 399
+  'BRONZE', // 400 - 799
+  'SILVER', // 800 - 1199
+  'GOLD', // 1200 - 1599
+  'PLATINUM', // 1600 - 1999
+  'EMERALD', // 2000 - 2399
+  'DIAMOND', // 2400 - 2799
+  'MASTER', // 2800+
+  'GRANDMASTER',
+  'CHALLENGER',
 ];
 
 // Division ordering for non-apex tiers.
@@ -52,7 +52,7 @@ function rankScore(rank) {
     if (t < 0) return -1;
 
     // Master+ has no division, it's just above D1
-    const isApex = ["MASTER", "GRANDMASTER", "CHALLENGER"].includes(rank.tier);
+    const isApex = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(rank.tier);
     const div = isApex ? 4 : (DIVISION_ORDER[rank.rank] ?? 0);
     const lp = Number(rank.lp ?? rank.leaguePoints ?? 0);
 
@@ -63,19 +63,19 @@ function rankScore(rank) {
 // === Slash command definition ===
 export default {
   data: new SlashCommandBuilder()
-    .setName("leaderboard")
-    .setDescription("Show server leaderboard for registered accounts by queue")
+    .setName('leaderboard')
+    .setDescription('Show server leaderboard for registered accounts by queue')
     .addStringOption((opt) =>
       opt
-        .setName("queue")
-        .setDescription("Which ladder? (TFT + LoL options)")
+        .setName('queue')
+        .setDescription('Which ladder? (TFT + LoL options)')
         .setRequired(false)
         .addChoices(...ALL_LEADERBOARD_QUEUE_CHOICES)
     )
     .addIntegerOption((opt) =>
       opt
-        .setName("limit")
-        .setDescription("How many entries to show (1–25)")
+        .setName('limit')
+        .setDescription('How many entries to show (1–25)')
         .setRequired(false)
         .setMinValue(1)
         .setMaxValue(25)
@@ -86,26 +86,26 @@ export default {
   async execute(interaction) {
     const guildId = interaction.guildId;
     if (!guildId) {
-      await interaction.reply({ content: "This command can only be used inside a server (not DMs).", ephemeral: true });
+      await interaction.reply({ content: 'This command can only be used inside a server (not DMs).', ephemeral: true });
       return;
     }
 
     await interaction.deferReply();
-    const rawQueueType = interaction.options.getString("queue");
+    const rawQueueType = interaction.options.getString('queue');
     const validQueueTypes = new Set(ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => choice.value));
     if (rawQueueType && !validQueueTypes.has(rawQueueType)) {
-      const validQueues = ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(", ");
+      const validQueues = ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(', ');
       await interaction.editReply(`Invalid queue \`${rawQueueType}\`. Choose one of: ${validQueues}.`);
       return;
     }
     
     const queueType = rawQueueType ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
     const game = resolveGameFromQueue(queueType);
-    const limit = interaction.options.getInteger("limit") ?? 15;
+    const limit = interaction.options.getInteger('limit') ?? 15;
 
     const accounts = await listGuildAccounts(guildId);
     if (!accounts.length) {
-      await interaction.editReply("No accounts registered in this server yet. Use `/register` first.");
+      await interaction.editReply('No accounts registered in this server yet. Use `/register` first.');
       return;
     }
     
@@ -123,7 +123,7 @@ export default {
       .sort((a, b) => b.score - a.score);
     
     if (!ranked.length) {
-      await interaction.editReply("No ranked snapshots available for this queue yet.");
+      await interaction.editReply('No ranked snapshots available for this queue yet.');
       return;
     }
 
@@ -149,8 +149,8 @@ export default {
 
     // Build and send the embed.
     const embed = new EmbedBuilder()
-        .setTitle(`${game === GAME_TYPES.LOL ? "LoL" : "TFT"} Leaderboard — ${queueLabelForGameText}`)
-        .setDescription(lines.join("\n"))
+        .setTitle(`${game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} Leaderboard — ${queueLabelForGameText}`)
+        .setDescription(lines.join('\n'))
         .setFooter({ text: `Showing top ${shown.length} of ${ranked.length} ranked account(s)` });
         
     await interaction.editReply({ embeds: [embed] });

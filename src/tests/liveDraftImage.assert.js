@@ -1,5 +1,5 @@
-import assert from "node:assert/strict";
-import { buildLiveDraftImageBuffer, getLiveDraftStripLayout } from "../utils/liveDraftImage.js";
+import assert from 'node:assert/strict';
+import { buildLiveDraftImageBuffer, getLiveDraftStripLayout } from '../utils/liveDraftImage.js';
 
 async function runLiveDraftImageAssertions() {
   const layout = getLiveDraftStripLayout();
@@ -22,4 +22,4 @@ async function runLiveDraftImageAssertions() {
 }
 
 await runLiveDraftImageAssertions();
-console.log("liveDraftImage assertions passed");
+console.log('liveDraftImage assertions passed');

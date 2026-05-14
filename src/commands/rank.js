@@ -1,10 +1,9 @@
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import { getTftRegaliaThumbnailUrl, getProfileUrl } from "../riot.js";
-import { GAME_TYPES, TRACKING_GAME_CHOICES } from "../constants/queues.js"
-import { queueLabelForGame, rankedQueueChoicesByGame } from "../constants/queues.js"
-import { getLolTracking, getTftTracking, loadDb } from "../storage.js";
-import { respondWithAccountChoices } from "../utils/autocomplete.js";
-import { formatRankLine, formatWinrate } from "../utils/presentation.js";
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { getTftRegaliaThumbnailUrl, getProfileUrl } from '../riot.js';
+import { GAME_TYPES, TRACKING_GAME_CHOICES, queueLabelForGame, rankedQueueChoicesByGame } from '../constants/queues.js';
+import { getLolTracking, getTftTracking, loadDb } from '../storage.js';
+import { respondWithAccountChoices } from '../utils/autocomplete.js';
+import { formatRankLine, formatWinrate } from '../utils/presentation.js';
 
 /* Add a section for a specific queue type to the fields array 
    - A header field with the rank line
@@ -17,15 +16,15 @@ function addQueueSection(fields, label, entry) {
     // Header / rank line
     fields.push({ name: label, value: `**${formatRankLine(entry)}**`, inline: false });
     fields.push(
-        { name: "Wins", value: `${wins}`, inline: true },
-        { name: "Losses", value: `${losses}`, inline: true },
-        { name: "Winrate", value: `${wr}`, inline: true }
+        { name: 'Wins', value: `${wins}`, inline: true },
+        { name: 'Losses', value: `${losses}`, inline: true },
+        { name: 'Winrate', value: `${wr}`, inline: true }
     );
 }
 
 function formatLastUpdated(lastUpdatedAt) {
     const millis = Number(lastUpdatedAt);
-    if (!Number.isFinite(millis) || millis <= 0) return "Unknown";
+    if (!Number.isFinite(millis) || millis <= 0) return 'Unknown';
 
     const unixSeconds = Math.floor(millis / 1000);
     return `<t:${unixSeconds}:F> (<t:${unixSeconds}:R>)`;
@@ -39,15 +38,15 @@ function buildQueueEntry(lastRankByQueue, queueType, gameType) {
 }
 
 const QUEUE_DEFINITIONS = [
-    ...rankedQueueChoicesByGame(GAME_TYPES.TFT).map((choice) => ({ gameType: GAME_TYPES.TFT, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "TFT" })),
-    ...rankedQueueChoicesByGame(GAME_TYPES.LOL).map((choice) => ({ gameType: GAME_TYPES.LOL, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === "BOTH" || selectedGame === "LOL" })),
+    ...rankedQueueChoicesByGame(GAME_TYPES.TFT).map((choice) => ({ gameType: GAME_TYPES.TFT, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === 'BOTH' || selectedGame === 'TFT' })),
+    ...rankedQueueChoicesByGame(GAME_TYPES.LOL).map((choice) => ({ gameType: GAME_TYPES.LOL, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === 'BOTH' || selectedGame === 'LOL' })),
 ];
 
-async function buildQueueEmbed({account, label, entry}) {
+async function buildQueueEmbed({ account, label, entry }) {
     const fields = [];
     addQueueSection(fields, label, entry);
 
-    fields.push({ name: "Last updated", value: formatLastUpdated(entry.lastUpdatedAt), inline: false });
+    fields.push({ name: 'Last updated', value: formatLastUpdated(entry.lastUpdatedAt), inline: false });
     const profileUrl = getProfileUrl({
         game: entry.gameType,
         region: account.region,
@@ -70,8 +69,8 @@ async function buildQueueEmbed({account, label, entry}) {
 
 export default {
     data: new SlashCommandBuilder()
-        .setName("rank")
-        .setDescription("Show stored TFT/LoL ranked snapshots for a registered account")
+        .setName('rank')
+        .setDescription('Show stored TFT/LoL ranked snapshots for a registered account')
         .addStringOption((opt) =>
             opt.setName('account').setDescription('Select a Riot ID').setRequired(true).setAutocomplete(true)
         )
@@ -91,7 +90,7 @@ export default {
         // 1. Make sure command is run in server/guild only
         const guildId = interaction.guildId;
         if (!guildId) {
-            await interaction.reply({ content: "This command can only be used inside a server (not DMs).", ephemeral: true, });
+            await interaction.reply({ content: 'This command can only be used inside a server (not DMs).', ephemeral: true, });
             return;
         }   
 
@@ -107,11 +106,11 @@ export default {
         const stored = accountIdx >= 0 ? guild.accounts[accountIdx] : null;
         
         if (!stored) {
-            await interaction.editReply("The selected account is not registered in this server. Try registering again.");
+            await interaction.editReply('The selected account is not registered in this server. Try registering again.');
             return;
         }
 
-        const selectedGame = interaction.options.getString('game') ?? "BOTH";
+        const selectedGame = interaction.options.getString('game') ?? 'BOTH';
         
         // 4. Pull out separate tracked rank snapshots for each game
         const tftTracking = getTftTracking(stored);
@@ -141,18 +140,18 @@ export default {
         }
         // 6. If no ranked entries, show unranked message
         if (embeds.length === 0) {
-            const gameSuffix = selectedGame === "BOTH" ? "" : ` ${selectedGame === "LOL" ? "LoL" : "TFT"}`;
+            const gameSuffix = selectedGame === 'BOTH' ? '' : ` ${selectedGame === 'LOL' ? 'LoL' : 'TFT'}`;
             embeds.push(
                 new EmbedBuilder()
                 .setTitle(`${stored.gameName}#${stored.tagLine}'s${gameSuffix} Rank:`)
                 .setDescription('Unranked')
-            )
+            );
         }
         
         //7. Send reply with embeds (one main reply + up to 9 follow-ups if multiple queues)
         await interaction.editReply({ embeds: [embeds[0]] });
         for (let i = 1; i < embeds.length && i < 10; i++) {
-                await interaction.followUp({ embeds: [embeds[i]], ephemeral: true});
+                await interaction.followUp({ embeds: [embeds[i]], ephemeral: true });
         }
     },
 };

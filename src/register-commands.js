@@ -4,7 +4,7 @@
 import { REST, Routes } from 'discord.js';
 import config from './config.js';
 import { loadCommands } from './commands/loadCommands.js';
-import { loadDb, getKnownGuildIds } from './storage.js'
+import { loadDb, getKnownGuildIds } from './storage.js';
 
 // === Configuration ===
 // Pull required values from config once so we can validate early.

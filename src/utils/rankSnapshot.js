@@ -1,7 +1,7 @@
 // === Imports ===
 // Ranked queue constants ensure we only snapshot relevant queues.
-import { GAME_TYPES, TFT_QUEUE_TYPES } from "../constants/queues.js";
-import { getLolTracking, getTftTracking } from "../storage.js";
+import { GAME_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
+import { getLolTracking, getTftTracking } from '../storage.js';
 
 // === Rank normalization constants ===
 // The goal is to turn a tier/division/LP tuple into a single comparable number.
@@ -31,14 +31,14 @@ const DIV_OFFSET = {
 export function standardizeRankLp(rank) {
     if (!rank) return null;
 
-    const tier = typeof rank.tier === "string" ? rank.tier.toUpperCase() : null;
-    const div = typeof rank.rank === "string" ? rank.rank.toUpperCase() : null;
+    const tier = typeof rank.tier === 'string' ? rank.tier.toUpperCase() : null;
+    const div = typeof rank.rank === 'string' ? rank.rank.toUpperCase() : null;
     const lp = Number(rank.lp);
 
     if (!tier || !Number.isFinite(lp)) return null;
 
     // Handle Master, Grandmaster, Challenger
-    if (["MASTER", "GRANDMASTER", "CHALLENGER"].includes(tier)) {
+    if (['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier)) {
         return MASTER_PLUS_BASE + lp;
     }
 
@@ -63,7 +63,7 @@ export function toRankSnapshot(entries,
 
     const rows = Array.isArray(entries) ? entries : [];
     const normalizedRows = rows.map((entry) => {
-        if (!entry || typeof entry !== "object") return entry;
+        if (!entry || typeof entry !== 'object') return entry;
         const queueType = normalizeQueueType(entry.queueType);
         return queueType === entry.queueType ? entry : { ...entry, queueType };
     });
@@ -86,7 +86,7 @@ export function toRankSnapshot(entries,
     }
 
 function normalizeQueueType(queueType) {
-    if (typeof queueType !== "string") return queueType;
+    if (typeof queueType !== 'string') return queueType;
     return queueType.trim().toUpperCase();
 }
 

@@ -6,22 +6,22 @@
 // === Discord dropdown choices ===
 // Keep the display list in a single place so commands can reuse it consistently.
 export const REGION_CHOICES = [
-    { name: "NA", value: "NA" },
-    { name: "EUW", value: "EUW" },
-    { name: "EUNE", value: "EUNE" },
-    { name: "KR", value: "KR" },
-    { name: "BR", value: "BR" },
-    { name: "LAN", value: "LAN" },
-    { name: "LAS", value: "LAS" },
-    { name: "OCE", value: "OCE" },
-    { name: "JP", value: "JP" },
-    { name: "RU", value: "RU" },
-    { name: "TR", value: "TR" },
-    { name: "VN", value: "VN" },
-    { name: "SG", value: "SG" },
-    { name: "PH", value: "PH" },
-    { name: "TH", value: "TH" },
-    { name: "TW", value: "TW" },
+    { name: 'NA', value: 'NA' },
+    { name: 'EUW', value: 'EUW' },
+    { name: 'EUNE', value: 'EUNE' },
+    { name: 'KR', value: 'KR' },
+    { name: 'BR', value: 'BR' },
+    { name: 'LAN', value: 'LAN' },
+    { name: 'LAS', value: 'LAS' },
+    { name: 'OCE', value: 'OCE' },
+    { name: 'JP', value: 'JP' },
+    { name: 'RU', value: 'RU' },
+    { name: 'TR', value: 'TR' },
+    { name: 'VN', value: 'VN' },
+    { name: 'SG', value: 'SG' },
+    { name: 'PH', value: 'PH' },
+    { name: 'TH', value: 'TH' },
+    { name: 'TW', value: 'TW' },
 ];
 
 // === Routing map ===

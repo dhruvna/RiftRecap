@@ -4,19 +4,19 @@ import { getKnownGuildIds, loadDb, updateGuildRecapLastSentYmdByIdInStore } from
 import { GAME_TYPES, defaultRankedQueueForGame } from '../constants/queues.js';
 import { hoursForMode, parseRecapMode } from '../constants/recap.js';
 import { buildRecapEmbed, computeRecapRows } from '../utils/recap.js';
-import config from "../config.js";
+import config from '../config.js';
 
 // === Date helpers ===
 // Use local dates for daily scheduling (matching users' expectations).
 export function getLocalYmd(d = new Date()) {
     const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
 }
 
 // Calculate cutoff timestamp for recap aggregation.
-export function getRecapCutoffTimestamp({ now, hours}) {
+export function getRecapCutoffTimestamp({ now, hours }) {
     return now.getTime() - hours * 60 * 60 * 1000;
 }
 
@@ -164,5 +164,5 @@ export async function startRecapAutoposter(client, { fireHour, fireMinute, pollI
 
     // Run immediately and then continue polling; firing logic allows catch-up after fire minute.
     await tick();
-    setInterval(() => tick().catch((e) => console.error("Recap autopost tick failed:", e)), POLL_INTERVAL_MS);
+    setInterval(() => tick().catch((e) => console.error('Recap autopost tick failed:', e)), POLL_INTERVAL_MS);
 }

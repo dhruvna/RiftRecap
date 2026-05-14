@@ -1,6 +1,6 @@
-import { createCanvas, loadImage } from "@napi-rs/canvas";
-import { getTftChampionImageById, getTftItemImageById, getTftTraitImageById } from "../riot.js";
-import { fileURLToPath } from "node:url";
+import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { getTftChampionImageById, getTftItemImageById, getTftTraitImageById } from '../riot.js';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_TILE_SIZE = 76;
 const DEFAULT_PADDING = 10;
@@ -15,11 +15,11 @@ const STAR_ICON_SPACING = 3;
 const IMAGE_CACHE_MAX_SIZE = 512;
 
 const COST_STAR_PATHS = {
-    1: "assets/1CostStar.svg",
-    2: "assets/2CostStar.svg",
-    3: "assets/3CostStar.svg",
-    4: "assets/4CostStar.svg",
-    5: "assets/5CostStar.svg",
+    1: 'assets/1CostStar.svg',
+    2: 'assets/2CostStar.svg',
+    3: 'assets/3CostStar.svg',
+    4: 'assets/4CostStar.svg',
+    5: 'assets/5CostStar.svg',
 };
 
 const starAssetCache = new Map();
@@ -101,11 +101,11 @@ function getUnitTierColor(unit) {
     // tier means star level
     // rarity seems to be a binary version of cost? 0, 1, 2, 4, 6, 7 
     const rarity = Number(unit?.rarity ?? 0);
-    if (rarity >= 6) return "#f18b2f";
-    if (rarity === 4) return "#9a4de0";
-    if (rarity === 2) return "#2f97e8";
-    if (rarity === 1) return "#3ca56a";
-    return "#656a74";
+    if (rarity >= 6) return '#f18b2f';
+    if (rarity === 4) return '#9a4de0';
+    if (rarity === 2) return '#2f97e8';
+    if (rarity === 1) return '#3ca56a';
+    return '#656a74';
 }
 
 function normalizeUnits(units, maxUnits) {
@@ -119,8 +119,8 @@ function normalizeUnits(units, maxUnits) {
         const tierB = Number(b?.tier ?? 0);
         if (tierB !== tierA) return tierB - tierA; // higher star tiers first
 
-        const idA = String(a?.character_id ?? "");
-        const idB = String(b?.character_id ?? "");
+        const idA = String(a?.character_id ?? '');
+        const idB = String(b?.character_id ?? '');
         return idA.localeCompare(idB); // deterministic L->R order on ties
     });
     return sortedUnits.slice(0, maxUnits);
@@ -137,8 +137,8 @@ function normalizeTraits(traits, maxTraits = 8) {
             const styleA = Number(a?.style ?? 0);
             const styleB = Number(b?.style ?? 0);
             if (styleB !== styleA) return styleB - styleA;
-            const nameA = String(a?.name ?? "");
-            const nameB = String(b?.name ?? "");
+            const nameA = String(a?.name ?? '');
+            const nameB = String(b?.name ?? '');
             return nameA.localeCompare(nameB);
         });
     return activeTraits.slice(0, maxTraits);
@@ -194,12 +194,12 @@ function getTraitTierColor(trait) {
     // 4 = gold  
     // 5 = prismatic
     const style = Number(trait?.style ?? 0);
-    if (style >= 5) return "#c4fdc9";
-    if (style === 4) return "#DBC66F";
-    if (style === 3) return "#FEAF76";
-    if (style === 2) return "#ACC5CA";
-    if (style === 1) return "#CD7B46";
-    return "#7b808e"; 
+    if (style >= 5) return '#c4fdc9';
+    if (style === 4) return '#DBC66F';
+    if (style === 3) return '#FEAF76';
+    if (style === 2) return '#ACC5CA';
+    if (style === 1) return '#CD7B46';
+    return '#7b808e'; 
 }
 
 function drawRoundedRect(ctx, x, y, width, height, radius) {
@@ -218,13 +218,13 @@ function drawMonochromeTraitIcon(ctx, traitImage, x, y, size) {
 
     try {
         const offscreen = createCanvas(size, size);
-        const offscreenCtx = offscreen.getContext("2d");
+        const offscreenCtx = offscreen.getContext('2d');
 
         offscreenCtx.drawImage(traitImage, 0, 0, size, size);
-        offscreenCtx.globalCompositeOperation = "source-atop";
-        offscreenCtx.fillStyle = "#000";
+        offscreenCtx.globalCompositeOperation = 'source-atop';
+        offscreenCtx.fillStyle = '#000';
         offscreenCtx.fillRect(0, 0, size, size);
-        offscreenCtx.globalCompositeOperation = "source-over";
+        offscreenCtx.globalCompositeOperation = 'source-over';
 
         ctx.drawImage(offscreen, x, y, size, size);
     } catch {
@@ -270,17 +270,17 @@ export async function buildUnitStripImage(units, options = {}) {
     const traitRowOffsetX = 0; // traits are left-aligned within their section
 
     const canvas = createCanvas(width, height);
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext('2d');
     const backgroundGradient = ctx.createLinearGradient(0, 0, 0, height);
-    backgroundGradient.addColorStop(0, "rgba(15, 17, 26, 0.92)");
-    backgroundGradient.addColorStop(1, "rgba(8, 10, 15, 0.92)");
+    backgroundGradient.addColorStop(0, 'rgba(15, 17, 26, 0.92)');
+    backgroundGradient.addColorStop(1, 'rgba(8, 10, 15, 0.92)');
     ctx.fillStyle = backgroundGradient;
     ctx.fillRect(0, 0, width, height);
 
     let unitGridStartY = 0;
 
     if (normalizedTraits.length > 0) {
-        ctx.fillStyle = "rgba(11, 13, 20, 0.92)";
+        ctx.fillStyle = 'rgba(11, 13, 20, 0.92)';
         drawRoundedRect(ctx, padding / 2, padding / 2, width - padding, traitSectionHeight - padding / 2, 8);
         ctx.fill();
         
@@ -298,7 +298,7 @@ export async function buildUnitStripImage(units, options = {}) {
                 drawMonochromeTraitIcon(ctx, traitImage, iconX + 2, iconY + 2, traitIconSize - 4);
             }
 
-            ctx.strokeStyle = "#000";
+            ctx.strokeStyle = '#000';
             ctx.lineWidth = 2;
             drawRoundedRect(ctx, iconX + 1, iconY + 1, traitIconSize - 2, traitIconSize - 2, 5);
             ctx.stroke();
@@ -328,7 +328,7 @@ export async function buildUnitStripImage(units, options = {}) {
         drawTierStars(ctx, starImage, unit?.tier, x, y, cardWidth);
 
         const portraitY = y + STAR_ROW_HEIGHT;
-        ctx.fillStyle = "rgba(14, 16, 23, 0.96)";
+        ctx.fillStyle = 'rgba(14, 16, 23, 0.96)';
         drawRoundedRect(ctx, x, portraitY, cardWidth, portraitHeight, 6);
         ctx.fill();
 
@@ -336,13 +336,13 @@ export async function buildUnitStripImage(units, options = {}) {
             ctx.drawImage(champImage, x + 3, portraitY + 3, cardWidth - 6, portraitHeight - 5);
         } else {
             // if no image, put the unit id as text
-            ctx.fillStyle = "#fff";
-            ctx.font = "10px sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
             const textX = x + cardWidth / 2;
             const textY = portraitY + portraitHeight / 2;
-            const text = String(unit?.character_id ?? "Unknown").toUpperCase();
+            const text = String(unit?.character_id ?? 'Unknown').toUpperCase();
             ctx.fillText(text, textX, textY, cardWidth - 10);
         }
 
@@ -366,5 +366,5 @@ export async function buildUnitStripImage(units, options = {}) {
         ctx.stroke();
     }
 
-    return canvas.toBuffer("image/png");
+    return canvas.toBuffer('image/png');
 }
