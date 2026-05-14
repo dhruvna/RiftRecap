@@ -6,6 +6,7 @@ import {
     resetGuildAccountProgressInStore,
     updateGuildTftConfigInStore,
 } from '../storage.js';
+import { withGuildCommand } from '../utils/withGuildCommand.js';
 
 function parseCutoffDateOrNull(input) {
     if (!input) return null;
@@ -55,16 +56,7 @@ export default {
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
-    async execute(interaction) {
-        const guildId = interaction.guildId;
-        if (!guildId) {
-            await interaction.reply({
-                content: 'This command can only be used within a server.',
-                ephemeral: true,
-            });
-            return;
-        }
-
+    execute: withGuildCommand(async (interaction, { guildId }) => {
         const confirm = interaction.options.getBoolean('confirm', true);
         if (!confirm) {
         await interaction.reply({
@@ -117,5 +109,5 @@ export default {
                 `${clearMatchCursor ? ", plus 'lastMatchId' and 'lastMatchAt'." : ". (Kept 'lastMatchId' and 'lastMatchAt' to avoid replaying old matches.)"}`,
             ephemeral: true,
         });
-    },
+    }, { commandName: 'resetranks' }),
 };

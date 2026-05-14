@@ -14,6 +14,7 @@ import {
 const ALL_LEADERBOARD_QUEUE_CHOICES = allLeaderboardQueueChoices();
 import { getRankSnapshotForQueue } from '../utils/rankSnapshot.js';
 import { formatRankWithLp, formatWinrate, medalForIndex } from '../utils/presentation.js';
+import { withGuildCommand } from '../utils/withGuildCommand.js';
 
 // === Ranking constants ===
 // Tier ordering (low -> high) used to compute a sortable score.
@@ -83,14 +84,7 @@ export default {
 
   // === Command handler ===
   // Build and send a leaderboard embed for the requested queue.
-  async execute(interaction) {
-    const guildId = interaction.guildId;
-    if (!guildId) {
-      await interaction.reply({ content: 'This command can only be used inside a server (not DMs).', ephemeral: true });
-      return;
-    }
-
-    await interaction.deferReply();
+  execute: withGuildCommand(async (interaction, { guildId }) => {
     const queueType = interaction.options.getString('queue') ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
 
     if (process.env.NODE_ENV !== 'production') {
@@ -152,5 +146,5 @@ export default {
         .setFooter({ text: `Showing top ${shown.length} of ${ranked.length} ranked account(s)` });
         
     await interaction.editReply({ embeds: [embed] });
-  },
+  }, { defer: true, ephemeral: false, commandName: 'leaderboard' }),
 };

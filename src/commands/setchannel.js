@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, PermissionFlagsBits, ChannelType } from 'discord.js';
 import { updateGuildChannelAndQueueConfigInStore } from '../storage.js';
 import { DEFAULT_ANNOUNCE_QUEUES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
+import { withGuildCommand } from '../utils/withGuildCommand.js';
 
 const ANNOUNCE_QUEUE_PRESETS = Object.freeze({
     RANKED_TFT_AND_LOL: DEFAULT_ANNOUNCE_QUEUES,
@@ -38,26 +39,13 @@ export default {
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
-    async execute(interaction) {
-        const guildId = interaction.guildId;
-        if (!guildId) {
-            await interaction.reply({ 
-                content: 'This command can only be used in a server.', 
-                ephemeral: true 
-            });
-        return;
-        }
+    execute: withGuildCommand(async (interaction, { guildId }) => {
 
         const channel = interaction.options.getChannel('channel', true);
         if (!channel.isTextBased()) {
-            await interaction.reply({ 
-                content: 'Please select a text-based channel.', 
-                ephemeral: true 
-            });
+            await interaction.editReply('Please select a text-based channel.');
             return;
         }
-
-        await interaction.deferReply({ ephemeral: true });
         
         const presetName = interaction.options.getString('queue_preset') ?? 'RANKED_TFT_AND_LOL';
         const selectedQueues = ANNOUNCE_QUEUE_PRESETS[presetName] ?? DEFAULT_ANNOUNCE_QUEUES;
@@ -77,5 +65,5 @@ export default {
             `Match result announcements will be sent to ${channel}.\n` +
                 `Queue filter: **${queueFilterLabel}**`
         );
-    },
+    }, { defer: true, ephemeral: true, commandName: 'setchannel' }),
 };

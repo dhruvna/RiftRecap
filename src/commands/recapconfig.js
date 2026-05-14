@@ -10,9 +10,8 @@ import {
   modeLabel,
   resolveRecapModeOrError,
 } from '../constants/recap.js';
-
 import config from '../config.js';
-
+import { withGuildCommand } from '../utils/withGuildCommand.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -24,10 +23,7 @@ export default {
     .addBooleanOption((opt) => opt.setName('enabled').setDescription('Enable/disable recap autopost for queue+mode.').setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
-  async execute(interaction) {
-    const guildId = interaction.guildId;
-    if (!guildId) return interaction.reply({ content: 'This command can only be used inside a server.', ephemeral: true });
-
+  execute: withGuildCommand(async (interaction, { guildId }) => {
     const wantsStatus = interaction.options.getBoolean('status') ?? false;
     const enabled = interaction.options.getBoolean('enabled');
     const rawMode = interaction.options.getString('mode');
@@ -97,5 +93,5 @@ export default {
       content: `✅ Saved recap config: ${updated.enabled ? 'Enabled' : 'Disabled'} • ${updated.game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} / ${queueLabelForGame(updated.game ?? GAME_TYPES.TFT, updated.queue)} • ${modeLabel(updated.mode)} • posts at **${scheduleText}**`,
       ephemeral: true,
     });
-  },
+  }, { commandName: 'recapconfig' }),
 };

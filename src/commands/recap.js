@@ -5,6 +5,7 @@ import {
   buildRecapEmbed,
   computeRecapRows,
 } from '../utils/recap.js';
+import { withGuildCommand } from '../utils/withGuildCommand.js';
 import {
     GAME_TYPES,
     allRecapQueueChoices,
@@ -33,16 +34,8 @@ export default {
       opt.setName('mode').setDescription('Daily or weekly recap').setRequired(false).addChoices(...RECAP_COMMAND_MODE_CHOICES)
     ),
 
-    async execute(interaction) {
-        const guildId = interaction.guildId;
-        if (!guildId) {
-            await interaction.reply({ content: 'This command can only be used inside a server.', ephemeral: true });
-            return;
-        }
-
+    execute: withGuildCommand(async (interaction, { guildId }) => {
         /* ---------- POST RECAP ---------- */
-        await interaction.deferReply();
-
         const rawMode = interaction.options.getString('mode');
         const { ok: modeOk, mode, error: modeError } = resolveRecapModeOrError(rawMode, { allowNull: true });
         if (!modeOk) {
@@ -75,5 +68,5 @@ export default {
         );
         const embed = buildRecapEmbed({ rows, mode, game, queue, hours });
         await interaction.editReply({ embeds: [embed] });
-    },
+    }, { defer: true, ephemeral: false, commandName: 'recap' }),
 };

@@ -18,6 +18,7 @@ import {
 } from '../storage.js';
 import { LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
+import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -33,30 +34,18 @@ export default {
             opt.setName('region').setDescription('Region like NA, EUW, KR').setRequired(true).addChoices(...REGION_CHOICES)
         ),
 
-    async execute(interaction) {
-        // 1. Ensure command is run in a server only
-        const guildId = interaction.guildId;
-        if (!guildId) {
-            await interaction.reply({ content: 'This command can only be used in a server (not DMs).', ephemeral: true });
-            return;
-        }
+    execute: withGuildCommand(async (interaction, { guildId }) => {
 
-        // 2. Pull user inputs from disc command
+        // 1. Pull user inputs from disc command
         const gameName = interaction.options.getString('gamename', true);
         const tagLine = interaction.options.getString('tagline', true);
         const regionInput = interaction.options.getString('region', true);
 
-        // 3. Normalize platform + get regional routing 
+        // 2. Normalize platform + get regional routing 
         const { platform, regional, region } = resolveRegion(regionInput);
-        
-        // 4. Defer reply in case of Riot API delay
-        await interaction.deferReply({ ephemeral: true });
 
-        // 5. Gather TFT + LoL registration snapshots via shared helper
-        let tftSnapshot;
-        let lolSnapshot;
-        try {
-            tftSnapshot = await getRegistrationSnapshot({
+        // 3. Gather TFT + LoL registration snapshots via shared helper
+        const tftSnapshot = await getRegistrationSnapshot({
                 gameType: 'TFT',
                 regional,
                 platform,
@@ -71,7 +60,7 @@ export default {
                 ]),
                 getMatchTimestamp: (match) => match?.info?.game_datetime ?? 0,
             });
-            lolSnapshot = await getRegistrationSnapshot({
+            const lolSnapshot = await getRegistrationSnapshot({
                 gameType: 'LOL',
                 regional,
                 platform,
@@ -90,35 +79,11 @@ export default {
                     return Number(match?.info?.gameCreation ?? 0);
                 },
             });
-        } catch (err) {
-            const status = err?.status;
-            console.error(
-                `[register] getAccountByRiotId failed status=${status ?? 'unknown'} endpoint=${err?.endpoint ?? 'unknown'} gameName=${gameName} tagLine=${tagLine} region=${region}`,
-                err?.responseText ? { responseText: err.responseText } : err
-            );
-
-            if (status === 404) {
-                await interaction.editReply("Couldn't find that Riot ID. Please double-check spelling and try again.");
-                return;
-            }
-
-            if (status === 401 || status === 403) {
-                await interaction.editReply('Riot API key/config issue. Please try again later.');
-                return;
-            }
-
-            if (status === 429) {
-                await interaction.editReply('Riot API rate limited, try again shortly.');
-                return;
-            }
-
-            await interaction.editReply('Temporary Riot API failure. Please try again shortly.');
-            return;
-        }
+    
         const { account: tftAccount, ...tftState } = tftSnapshot;
         const { account: lolAccount, ...lolState } = lolSnapshot;
 
-        // 9. Build stored record
+        // 4. Build stored record
         const stored = {
             key: makeAccountKey({ gameName: tftAccount.gameName, tagLine: tftAccount.tagLine, platform }),
             gameName: tftAccount.gameName,
@@ -148,15 +113,26 @@ export default {
             },
         };
 
-        // 10. Upsert into storage
+        // 5. Upsert into storage
         const { existed } = await upsertGuildAccountInStore(guildId, stored);
 
-        // 11. Confirm to user
+        // 6. Confirm to user
         if (existed) {
             await interaction.editReply(`**${stored.gameName}#${stored.tagLine}** is already registered in this server.`);
             return;
         }
     
         await interaction.editReply(`Successfully registered **${stored.gameName}#${stored.tagLine}** for this server.`);
-    },
+    }, {
+        defer: true,
+        ephemeral: true,
+        commandName: 'register',
+        onError: async (interaction, err) => {
+            console.error(
+                `[register] getAccountByRiotId failed status=${err?.status ?? 'unknown'} endpoint=${err?.endpoint ?? 'unknown'}`,
+                err?.responseText ? { responseText: err.responseText } : err
+            );
+            await respondToCommandError(interaction, err, { commandName: 'register' });
+        },
+    }),
 };

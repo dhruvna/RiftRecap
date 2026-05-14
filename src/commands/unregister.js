@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from 'discord.js';
 
 import { removeGuildAccountByKey } from '../storage.js';
 import { respondWithAccountChoices } from '../utils/autocomplete.js';
+import { withGuildCommand } from '../utils/withGuildCommand.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -24,17 +25,7 @@ export default {
         }        
     },
     
-    async execute(interaction) {
-        const guildId = interaction.guildId;
-        if (!guildId) {
-            await interaction.reply({
-                content: 'This command can only be used inside a server (not DMs).',
-                ephemeral: true,
-            });
-            return;
-        }
-
-        await interaction.deferReply({ ephemeral: true });
+    execute: withGuildCommand(async (interaction, { guildId }) => {
 
         const key = interaction.options.getString('account', true);
 
@@ -48,5 +39,5 @@ export default {
         await interaction.editReply(
             `Successfully unregistered **${removed.gameName}#${removed.tagLine}** from this server.`
         );
-    },
+    }, { defer: true, ephemeral: true, commandName: 'unregister' }),
 };

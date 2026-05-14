@@ -4,6 +4,7 @@ import { GAME_TYPES, TRACKING_GAME_CHOICES, queueLabelForGame, rankedQueueChoice
 import { getLolTracking, getTftTracking, loadDb } from '../storage.js';
 import { respondWithAccountChoices } from '../utils/autocomplete.js';
 import { formatRankLine, formatWinrate } from '../utils/presentation.js';
+import { withGuildCommand } from '../utils/withGuildCommand.js';
 
 /* Add a section for a specific queue type to the fields array 
    - A header field with the rank line
@@ -86,18 +87,8 @@ export default {
         await respondWithAccountChoices(interaction);
     },
     
-    async execute(interaction) {
-        // 1. Make sure command is run in server/guild only
-        const guildId = interaction.guildId;
-        if (!guildId) {
-            await interaction.reply({ content: 'This command can only be used inside a server (not DMs).', ephemeral: true, });
-            return;
-        }   
-
-        // 2. Defer reply in case of Riot API delays
-        await interaction.deferReply({ ephemeral: true });
-
-        // 3. Determine selected account
+    execute: withGuildCommand(async (interaction, { guildId }) => {
+        // 1. Determine selected account
         const key = interaction.options.getString('account', true);
 
         const db = await loadDb();
@@ -112,7 +103,7 @@ export default {
 
         const selectedGame = interaction.options.getString('game') ?? 'BOTH';
         
-        // 4. Pull out separate tracked rank snapshots for each game
+        // 2. Pull out separate tracked rank snapshots for each game
         const tftTracking = getTftTracking(stored);
         const lolTracking = getLolTracking(stored);
         
@@ -121,7 +112,7 @@ export default {
             [GAME_TYPES.LOL]: lolTracking.lastRankByQueue ?? {},
         };
 
-        // 5. Build embed fields
+        // 3. Build embed fields
         const embeds = [];
 
         for (const definition of QUEUE_DEFINITIONS) {
@@ -138,7 +129,7 @@ export default {
                 })
             );
         }
-        // 6. If no ranked entries, show unranked message
+        // 4. If no ranked entries, show unranked message
         if (embeds.length === 0) {
             const gameSuffix = selectedGame === 'BOTH' ? '' : ` ${selectedGame === 'LOL' ? 'LoL' : 'TFT'}`;
             embeds.push(
@@ -148,10 +139,10 @@ export default {
             );
         }
         
-        //7. Send reply with embeds (one main reply + up to 9 follow-ups if multiple queues)
+        // 5. Send reply with embeds (one main reply + up to 9 follow-ups if multiple queues)
         await interaction.editReply({ embeds: [embeds[0]] });
         for (let i = 1; i < embeds.length && i < 10; i++) {
                 await interaction.followUp({ embeds: [embeds[i]], ephemeral: true });
         }
-    },
+    }, { defer: true, ephemeral: true, commandName: 'rank' }),
 };
