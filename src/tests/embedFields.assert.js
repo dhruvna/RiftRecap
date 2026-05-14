@@ -12,7 +12,7 @@ async function runEmbedSnapshotAssertions() {
     matchId: "TFT-1",
     queueType: TFT_QUEUE_TYPES.RANKED,
     delta: 31,
-    afterRank: { tier: "GOLD", rank: "II", leaguePoints: 74 },
+    afterRank: { tier: "Gold", rank: "II", leaguePoints: 74 },
     participant: { units: [], traits: [] },
     gameMs: 1700000000000,
   });
@@ -22,8 +22,8 @@ async function runEmbedSnapshotAssertions() {
     tftJson.fields.map(({ name, value, inline }) => ({ name, value, inline })),
     [
       { name: "Placement", value: "2nd", inline: true },
-      { name: "LP Change", value: "+31 LP", inline: true },
-      { name: "Rank", value: "Gold II 74 LP", inline: true },
+      { name: "LP Change", value: "+31", inline: true },
+      { name: "Rank", value: "Gold II — 74 LP", inline: true },
     ],
   );
 
@@ -32,7 +32,7 @@ async function runEmbedSnapshotAssertions() {
     matchId: "LOL-1",
     queueType: LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     delta: 20,
-    afterRank: { tier: "PLATINUM", rank: "IV", leaguePoints: 22 },
+    afterRank: { tier: "Platinum", rank: "IV", leaguePoints: 22 },
     participant: {
       win: true,
       kills: 8,
@@ -56,8 +56,8 @@ async function runEmbedSnapshotAssertions() {
       { name: "K/D/A", value: "8/2/10", inline: true },
       { name: "Damage", value: "24,500", inline: true },
       { name: "CS/min", value: "6.0 CS/min", inline: true },
-      { name: "Rank", value: "Platinum IV 22 LP", inline: true },
-      { name: "LP Win", value: "+20 LP", inline: true },
+      { name: "Rank", value: "Platinum IV — 22 LP", inline: true },
+      { name: "LP Win", value: "+20", inline: true },
       { name: "Duration", value: "30:00", inline: true },
     ],
   );

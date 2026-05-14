@@ -259,14 +259,6 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
 }
 
 const LOL_ROLE_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
-const DISCORD_EMBED_FIELD_VALUE_LIMIT = 1024;
-
-function truncateForDiscordField(value, maxLength = DISCORD_EMBED_FIELD_VALUE_LIMIT) {
-    const text = String(value ?? "");
-    if (text.length <= maxLength) return text;
-    if (maxLength <= 1) return text.slice(0, maxLength);
-    return `${text.slice(0, maxLength - 1)}…`;
-}
 
 function normalizeLolRoleKey(role) {
     const normalized = normalizeText(role).toUpperCase();
@@ -277,32 +269,6 @@ function normalizeLolRoleKey(role) {
     if (["BOTTOM", "BOT", "ADC"].includes(normalized)) return "BOTTOM";
     if (["UTILITY", "SUPPORT", "SUP"].includes(normalized)) return "UTILITY";
     return null;
-}
-
-function getChampionImageKeyFromUrl(imageUrl) {
-    const text = String(imageUrl ?? "").trim();
-    if (!text) return null;
-
-    const fileName = text.split("/").pop();
-    if (!fileName) return null;
-
-    const key = fileName.replace(/\.png$/i, "").trim();
-    return key || null;
-}
-
-function safeChampionLabel(participant) {
-    const championName = String(participant?.championName ?? "").trim();
-    if (championName) return championName;
-
-    const imageKey = getChampionImageKeyFromUrl(participant?.championIconUrl);
-    if (imageKey) return imageKey;
-
-    const championId = participant?.championId;
-    if (championId !== null && championId !== undefined && String(championId).trim() !== "") {
-        return `ID ${String(championId).trim()}`;
-    }
-
-    return "—";
 }
 
 function buildRoleSlotsForSide(rosterByRole = {}) {
@@ -490,16 +456,6 @@ export async function buildLolMatchResultEmbed({
 
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const model = await buildLolLiveTeamPresentationModel({ account, activeGame });
-    const redSideLine = truncateForDiscordField(model.sides.red.map((slot) => `${slot.role}: ${safeChampionLabel({
-        championName: slot?.champion?.name,
-        championId: slot?.champion?.id,
-        championIconUrl: slot?.champion?.iconUrl,
-    })}`).join(" | "));
-    const blueSideLine = truncateForDiscordField(model.sides.blue.map((slot) => `${slot.role}: ${safeChampionLabel({
-        championName: slot?.champion?.name,
-        championId: slot?.champion?.id,
-        championIconUrl: slot?.champion?.iconUrl,
-    })}`).join(" | "));
 
     const files = [];
     const blueIconUrls = model.sides.blue.map((slot) => slot?.champion?.iconUrl ?? null);
