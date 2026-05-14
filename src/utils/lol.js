@@ -297,14 +297,19 @@ function safeChampionLabel(participant) {
 
 function buildRoleSlotsForSide(rosterByRole = {}) {
     const normalizedRoleMap = {};
+    const overflowParticipants = [];
     for (const [rawRole, entries] of Object.entries(rosterByRole ?? {})) {
+        const list = Array.isArray(entries) ? entries : [];
         const normalizedRole = normalizeLolRoleKey(rawRole);
-        if (!normalizedRole) continue;
-        normalizedRoleMap[normalizedRole] = Array.isArray(entries) ? entries : [];
+        if (!normalizedRole) {
+            overflowParticipants.push(...list);
+            continue;
+        }
+        normalizedRoleMap[normalizedRole] = list;
     }
 
     return LOL_ROLE_ORDER.map((role) => {
-        const participant = normalizedRoleMap[role]?.[0] ?? null;
+        const participant = normalizedRoleMap[role]?.shift?.() ?? overflowParticipants.shift() ?? null;
         const spellIds = [Number(participant?.spell1Id), Number(participant?.spell2Id)].filter(Number.isFinite);
         const runeIds = Array.isArray(participant?.runeIds)
             ? participant.runeIds.map((id) => Number(id)).filter(Number.isFinite)
