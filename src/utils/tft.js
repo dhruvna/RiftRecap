@@ -17,6 +17,7 @@ import {
 import {
   formatRankAndLpFields,
   normalizeEmbedTimestamp,
+  resolveLiveGamePresentation,
   resolveMatchResultPresentation,
 } from './matchEmbedShared.js';
 
@@ -57,6 +58,39 @@ export function placementToOrdinal(placement) {
 
 // === Embed construction ===
 // Build the Discord embed used for match announcements.
+
+export async function buildTftLiveGameEmbed({ account, activeGame }) {
+    const queueId = Number(activeGame?.gameQueueConfigId ?? activeGame?.gameQueueId ?? activeGame?.queueId ?? 0) || null;
+    const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
+    const queueLabel = queueLabelForGame(GAME_TYPES.TFT, queueType);
+    const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
+
+    const presentation = resolveLiveGamePresentation({
+        queueLabel,
+        riotId,
+        game: GAME_TYPES.TFT,
+    });
+
+    const embed = new EmbedBuilder()
+        .setColor(presentation.color)
+        .setTitle(presentation.title)
+        .setTimestamp(new Date())
+        .addFields(
+            { name: 'Queue', value: queueLabel, inline: true },
+            { name: 'Riot ID', value: riotId, inline: true },
+        );
+    try {
+        const thumbUrl = await getTftRegaliaThumbnailUrl({
+            queueType,
+            tier: null,
+        });
+        if (thumbUrl) embed.setThumbnail(thumbUrl);
+    } catch {
+    }
+
+    return { embed, files: [] };
+}
+
 export async function buildMatchResultEmbed({ 
     account, 
     placement,

@@ -13,6 +13,14 @@ export function getLolInGameDedupeKey(tracking = {}) {
     return null;
 }
 
+export function getTftInGameDedupeKey(tracking = {}) {
+    if (tracking?.activeGameId != null) return `gid:${String(tracking.activeGameId)}`;
+    const start = tracking?.activeGameStartTime;
+    const queue = tracking?.activeQueueId;
+    if (start != null && queue != null) return `start:${String(start)}:queue:${String(queue)}`;
+    return null;
+}
+
 export function getLolFinishedMatchDedupeKey({ match, queueType }) {
     const gameId = match?.info?.gameId;
     if (gameId != null) return `gid:${String(gameId)}`;

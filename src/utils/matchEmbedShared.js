@@ -7,6 +7,10 @@ export const MATCH_RESULT_COLORS = Object.freeze({
   NEUTRAL: 0x5865f2,
 });
 
+export const LIVE_GAME_COLORS = Object.freeze({
+  DEFAULT: 0x6a5cff,
+});
+
 export function normalizeEmbedTimestamp(gameMs) {
   const value = Number(gameMs);
   if (Number.isFinite(value) && value > 0) return new Date(value);
@@ -55,5 +59,14 @@ export function resolveMatchResultPresentation({ didWin, queueLabel, riotId, gam
   return {
     color: MATCH_RESULT_COLORS.NEUTRAL,
     title: game === GAME_TYPES.TFT ? `${queueLabel} Result for ${riotId}` : `${queueLabel} • Result • ${riotId}`,
+  };
+}
+
+export function resolveLiveGamePresentation({ queueLabel, riotId, game }) {
+  return {
+    color: LIVE_GAME_COLORS.DEFAULT,
+    title: game === GAME_TYPES.TFT
+      ? `${queueLabel} Game in Progress for ${riotId}`
+      : `${queueLabel} Game in Progress for ${riotId}`,
   };
 }

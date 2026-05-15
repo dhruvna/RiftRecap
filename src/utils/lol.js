@@ -11,6 +11,7 @@ import { GAME_TYPES, resolveLolQueueContext } from '../constants/queues.js';
 import {
     formatRankAndLpFields,
     normalizeEmbedTimestamp,
+    resolveLiveGamePresentation,
     resolveMatchResultPresentation,
     resolveQueuePresentation,
 } from './matchEmbedShared.js';
@@ -413,9 +414,15 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const blueIconUrls = model.sides.blue.map((participant) => participant?.championIconUrl ?? null);
     const redIconUrls = model.sides.red.map((participant) => participant?.championIconUrl ?? null);
 
+    const presentation = resolveLiveGamePresentation({
+        queueLabel: model.queueLabel,
+        riotId: model.trackedPlayer.riotId,
+        game: GAME_TYPES.LOL,
+    });
+
     const embed = new EmbedBuilder()
-        .setColor(0x6a5cff)
-        .setTitle(`${model.queueLabel} Game in Progress for ${model.trackedPlayer.riotId}`)
+        .setColor(presentation.color)
+        .setTitle(presentation.title)
         .setTimestamp(new Date());
 
     try {

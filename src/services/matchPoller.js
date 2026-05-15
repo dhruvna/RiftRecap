@@ -21,6 +21,7 @@ import {
 
 import {
     buildMatchResultEmbed,
+    buildTftLiveGameEmbed,
     detectQueueMetaFromMatch,
     normalizePlacement,
  } from '../utils/tft.js';
@@ -39,9 +40,7 @@ import {
     DEFAULT_ANNOUNCE_QUEUES,
     GAME_TYPES,
     LOL_QUEUE_TYPES,
-    mapRiotLolQueueType,
-    resolveLolQueueContext, 
-    RANKED_QUEUES_BY_GAME,
+    resolveLolQueueContext,
     TFT_QUEUE_TYPES,
     isRankedQueueForGame,
 } from '../constants/queues.js';
@@ -55,6 +54,7 @@ import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
     getLolFinishedMatchDedupeKey,
     getLolInGameDedupeKey,
+    getTftInGameDedupeKey,
     probeSpectatorState,
 } from './matchPoller/spectatorState.js';
 import { detectUnseenMatchIds } from './matchPoller/matchDiscovery.js';
@@ -588,32 +588,51 @@ export async function startMatchPoller(client) {
                         });
                     }
                     if (canPollTft && tftSpectatorState) {
-                        const nextTftTracking = {
+                        const nextTftTrackingPatch = {
                             ...tftTracking,
                             inGame: tftSpectatorState.inGame ?? false,
+                            lastSpectatorCheckAt: tftSpectatorState.lastSpectatorCheckAt ?? Date.now(),
                             activeGameId: tftSpectatorState.activeGameId ?? tftTracking?.activeGameId ?? null,
                             activeQueueId: tftSpectatorState.activeQueueId ?? tftTracking?.activeQueueId ?? null,
                             activeGameStartTime: tftSpectatorState.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
                         };
+                        const nextTftTracking = { ...tftTracking, ...nextTftTrackingPatch };
                         const wasTftInGame = tftTracking?.inGame === true;
                         const isTftInGame = nextTftTracking.inGame === true;
+                        const previousTftInGameKey = tftTracking?.lastAnnouncedInGameKey ?? getTftInGameDedupeKey(tftTracking);
+                        const nextTftInGameKey = getTftInGameDedupeKey(nextTftTracking);
+
                         if (!wasTftInGame && isTftInGame) {
-                            logger.info(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=none`);
+                            logger.info(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=${nextTftInGameKey ?? 'none'}`);
+                            const shouldAnnounceTftLiveGame = !(previousTftInGameKey && nextTftInGameKey && previousTftInGameKey === nextTftInGameKey);
+                            if (shouldAnnounceTftLiveGame) {
+                                try {
+                                    await announceGameMatchToDiscord({
+                                        buildEmbed: buildTftLiveGameEmbed,
+                                        channel,
+                                        guildId,
+                                        channelId: channelIdForGuild,
+                                        account,
+                                        activeGame: tftSpectatorState.activeGame,
+                                    });
+                                    nextTftTrackingPatch.lastAnnouncedInGameKey = nextTftInGameKey;
+                                    nextTftTrackingPatch.lastAnnouncedActiveGameId = nextTftTrackingPatch.activeGameId ?? null;
+                                    nextTftTrackingPatch.lastInGameAnnouncementAt = Date.now();
+                                } catch (err) {
+                                    logger.warn(`[match-poller] TFT live announce failed guild=${guildId} account=${account.key}: ${err?.message ?? err}`);
+                                }
+                            }
                         }
                         if (wasTftInGame && !isTftInGame) {
                             logger.info(`[match-poller] match ended guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT}`);
+                            nextTftTrackingPatch.lastAnnouncedInGameKey = null;
+                            nextTftTrackingPatch.lastAnnouncedActiveGameId = null;
                         }
                         stageTrackingUpsert({
                             guildId,
                             account,
                             gameKey: 'tft',
-                            trackingPatch: {
-                                inGame: tftSpectatorState.inGame ?? false,
-                                lastSpectatorCheckAt: tftSpectatorState.lastSpectatorCheckAt ?? Date.now(),
-                                activeGameId: tftSpectatorState.activeGameId ?? tftTracking?.activeGameId ?? null,
-                                activeQueueId: tftSpectatorState.activeQueueId ?? tftTracking?.activeQueueId ?? null,
-                                activeGameStartTime: tftSpectatorState.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
-                            },
+                            trackingPatch: nextTftTrackingPatch,
                         });
                     }
 
@@ -812,6 +831,13 @@ export async function startMatchPoller(client) {
                             activeGameId: tftSpectatorState?.activeGameId ?? tftTracking?.activeGameId ?? null,
                             activeQueueId: tftSpectatorState?.activeQueueId ?? tftTracking?.activeQueueId ?? null,
                             activeGameStartTime: tftSpectatorState?.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
+                            lastAnnouncedInGameKey: (tftSpectatorState?.inGame ?? false)
+                                ? (tftTracking?.lastAnnouncedInGameKey ?? getTftInGameDedupeKey({
+                                    activeGameId: tftSpectatorState?.activeGameId,
+                                    activeQueueId: tftSpectatorState?.activeQueueId,
+                                    activeGameStartTime: tftSpectatorState?.activeGameStartTime,
+                                }))
+                                : null,
                         },
                     });
             } catch (err) {
