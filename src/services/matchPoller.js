@@ -613,7 +613,7 @@ export async function startMatchPoller(client) {
                             const shouldAnnounceTftLiveGame = !(previousTftInGameKey && nextTftInGameKey && previousTftInGameKey === nextTftInGameKey);
                             if (shouldAnnounceTftLiveGame) {
                                 try {
-                                    await announceGameMatchToDiscord({
+                                    const sentMessage = await announceGameMatchToDiscord({
                                         buildEmbed: buildTftLiveGameEmbed,
                                         channel,
                                         guildId,
@@ -621,6 +621,16 @@ export async function startMatchPoller(client) {
                                         account,
                                         activeGame: tftSpectatorState.activeGame,
                                     });
+                                    const computedTftLiveKey = getTftInGameDedupeKey({
+                                        activeGameId: tftSpectatorState?.activeGameId ?? null,
+                                        activeGameStartTime: tftSpectatorState?.activeGameStartTime ?? null,
+                                        activeQueueId: tftSpectatorState?.activeQueueId ?? null,
+                                    });
+                                    if (sentMessage) {
+                                        nextTftTrackingPatch.liveAnnouncementMessageId = sentMessage.id;
+                                        nextTftTrackingPatch.liveAnnouncementChannelId = sentMessage.channelId ?? channelIdForGuild;
+                                        nextTftTrackingPatch.liveAnnouncementGameKey = computedTftLiveKey;
+                                    }
                                     nextTftTrackingPatch.lastAnnouncedInGameKey = nextTftInGameKey;
                                     nextTftTrackingPatch.lastAnnouncedActiveGameId = nextTftTrackingPatch.activeGameId ?? null;
                                     nextTftTrackingPatch.lastInGameAnnouncementAt = Date.now();
