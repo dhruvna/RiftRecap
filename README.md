@@ -11,7 +11,7 @@ A Discord bot built with **Node.js**, **discord.js**, and the **Riot Games API**
 - `/leaderboard`
 - `/recap`
 - `/recapconfig`
-- Full recap-oriented helper pipeline and constants
+- Full recap-oriented helper pipeline and canonical queue helpers (`gameFromQueue`, `defaultRankedQueueForGame`, `queueLabel`, `isRankedQueue`, `queueChoicesForRecap`)
 - LoL data is supported for `/rank` and automated match-result posts.
 
 ## Command reference

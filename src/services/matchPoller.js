@@ -42,7 +42,7 @@ import {
     LOL_QUEUE_TYPES,
     resolveLolQueueContext,
     TFT_QUEUE_TYPES,
-    isRankedQueueForGame,
+    isRankedQueue,
 } from '../constants/queues.js';
 
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
@@ -233,7 +233,7 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
             queueId: lolSpectatorState?.activeGame?.gameQueueConfigId ?? lolSpectatorState?.activeQueueId ?? null,
         });
         const queueType = queueContext?.queueType ?? LOL_QUEUE_TYPES.UNKNOWN;
-        const isRankedLiveQueue = isRankedQueueForGame(GAME_TYPES.LOL, queueType);
+        const isRankedLiveQueue = isRankedQueue(GAME_TYPES.LOL, queueType);
         const isAllowedByGuildQueueConfig = !announceQueues || announceQueues.includes(queueType);
         const shouldAnnounceBasedOnQueue = (!config.liveAnnounceRankedOnly || isRankedLiveQueue) && isAllowedByGuildQueueConfig;
 
@@ -709,7 +709,7 @@ export async function startMatchPoller(client) {
                         
                         const meta = detectQueueMetaFromMatch(match);
                         const queueType = meta.queueType || TFT_QUEUE_TYPES.RANKED;
-                        const isRanked = isRankedQueueForGame(GAME_TYPES.TFT, queueType);
+                        const isRanked = isRankedQueue(GAME_TYPES.TFT, queueType);
                         const normPlacement = normalizePlacement({ placement, queueType }); 
                         const gameMs = Number(match?.info?.game_datetime ?? 0) || Date.now();
 

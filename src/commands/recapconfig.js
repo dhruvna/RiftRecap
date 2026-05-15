@@ -1,9 +1,8 @@
 // src/commands/recapconfig.js
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { loadDb, getGuildRecapConfigs, updateGuildRecapConfigsInStore } from '../storage.js';
-import { GAME_TYPES, allRecapQueueChoices, queueLabelForGame, resolveGameFromQueue } from '../constants/queues.js';
+import { GAME_TYPES, ALL_RECAP_QUEUE_CHOICES, queueLabel, gameFromQueue } from '../constants/queues.js';
 
-const ALL_RECAP_QUEUE_CHOICES = allRecapQueueChoices();
 import {
   RECAP_MODE_CHOICES,
   formatRecapScheduleTime,
@@ -41,7 +40,7 @@ export default {
         const sentText = cfg.mode === 'BOTH'
           ? `daily ${sentByMode.DAILY ?? '—'}, weekly ${sentByMode.WEEKLY ?? '—'}`
           : (sentByMode[cfg.mode] ?? cfg.lastSentYmd ?? '—');
-        return `**${index + 1}. ${cfg.id}** • ${cfg.enabled ? 'Enabled' : 'Disabled'} • ${cfg.game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} • ${queueLabelForGame(cfg.game ?? GAME_TYPES.TFT, cfg.queue)} • ${modeLabel(cfg.mode)} • lastSent: ${sentText}`;
+        return `**${index + 1}. ${cfg.id}** • ${cfg.enabled ? 'Enabled' : 'Disabled'} • ${cfg.game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} • ${queueLabel(cfg.game ?? GAME_TYPES.TFT, cfg.queue)} • ${modeLabel(cfg.mode)} • lastSent: ${sentText}`;
       });
       
       return interaction.reply({
@@ -65,7 +64,7 @@ export default {
       });
     }
 
-    const targetGame = resolveGameFromQueue(rawQueue);
+    const targetGame = gameFromQueue(rawQueue);
     const targetIdx = recapConfigs.findIndex((cfg) => cfg?.queue === rawQueue && cfg?.mode === mode);
     const existing = targetIdx >= 0 ? recapConfigs[targetIdx] : null;
 
@@ -90,7 +89,7 @@ export default {
     const scheduleText = formatRecapScheduleTime(config.recapAutopostHour, config.recapAutopostMinute);
 
     return interaction.reply({
-      content: `✅ Saved recap config: ${updated.enabled ? 'Enabled' : 'Disabled'} • ${updated.game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} / ${queueLabelForGame(updated.game ?? GAME_TYPES.TFT, updated.queue)} • ${modeLabel(updated.mode)} • posts at **${scheduleText}**`,
+      content: `✅ Saved recap config: ${updated.enabled ? 'Enabled' : 'Disabled'} • ${updated.game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} / ${queueLabel(updated.game ?? GAME_TYPES.TFT, updated.queue)} • ${modeLabel(updated.mode)} • posts at **${scheduleText}**`,
       ephemeral: true,
     });
   }, { commandName: 'recapconfig' }),

@@ -10,8 +10,8 @@ import { buildUnitStripImage } from './unitStrip.js';
 import {
   GAME_TYPES,
   TFT_QUEUE_TYPES,
-  isRankedQueueForGame,
-  queueLabelForGame,
+  isRankedQueue,
+  queueLabel,
   queueTypeFromQueueId,
 } from '../constants/queues.js';
 import {
@@ -33,7 +33,7 @@ export function getQueueIdFromMatch(match) {
 export function detectQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromMatch(match);
     const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
-    return { queueId, queueType, label: queueLabelForGame(GAME_TYPES.TFT, queueType) };
+    return { queueId, queueType, label: queueLabel(GAME_TYPES.TFT, queueType) };
 }
 
 // Normalize placement for queue-specific differences (like Double Up).
@@ -62,7 +62,7 @@ export function placementToOrdinal(placement) {
 export async function buildTftLiveGameEmbed({ account, activeGame }) {
     const queueId = Number(activeGame?.gameQueueConfigId ?? activeGame?.gameQueueId ?? activeGame?.queueId ?? 0) || null;
     const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
-    const queueLabel = queueLabelForGame(GAME_TYPES.TFT, queueType);
+    const queueLabel = queueLabel(GAME_TYPES.TFT, queueType);
     const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
 
     const presentation = resolveLiveGamePresentation({
@@ -98,12 +98,12 @@ export async function buildMatchResultEmbed({
     gameMs,
  }) {
     const matchUrl = getMatchUrl({ game: GAME_TYPES.TFT, matchId });
-    const queueLabel = queueLabelForGame(GAME_TYPES.TFT, queueType);
+    const queueLabel = queueLabel(GAME_TYPES.TFT, queueType);
 
     const p = typeof placement === 'number' ? placement : null;
     const d = typeof delta === 'number' ? delta : 0;
 
-    const isRanked = isRankedQueueForGame(GAME_TYPES.TFT, queueType);
+    const isRanked = isRankedQueue(GAME_TYPES.TFT, queueType);
     
     const isWin = p !== null && p <= 4;
     const isLoss = p !== null && p >= 5;

@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getTftRegaliaThumbnailUrl, getProfileUrl } from '../riot.js';
-import { GAME_TYPES, TRACKING_GAME_CHOICES, queueLabelForGame, rankedQueueChoicesByGame } from '../constants/queues.js';
+import { GAME_TYPES, TRACKING_GAME_CHOICES, queueLabel, queueChoicesForRecap } from '../constants/queues.js';
 import { getLolTracking, getTftTracking, loadDb } from '../storage.js';
 import { respondWithAccountChoices } from '../utils/autocomplete.js';
 import { formatRankLine, formatWinrate } from '../utils/presentation.js';
@@ -39,8 +39,8 @@ function buildQueueEntry(lastRankByQueue, queueType, gameType) {
 }
 
 const QUEUE_DEFINITIONS = [
-    ...rankedQueueChoicesByGame(GAME_TYPES.TFT).map((choice) => ({ gameType: GAME_TYPES.TFT, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === 'BOTH' || selectedGame === 'TFT' })),
-    ...rankedQueueChoicesByGame(GAME_TYPES.LOL).map((choice) => ({ gameType: GAME_TYPES.LOL, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === 'BOTH' || selectedGame === 'LOL' })),
+    ...queueChoicesForRecap(GAME_TYPES.TFT).map((choice) => ({ gameType: GAME_TYPES.TFT, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === 'BOTH' || selectedGame === 'TFT' })),
+    ...queueChoicesForRecap(GAME_TYPES.LOL).map((choice) => ({ gameType: GAME_TYPES.LOL, queueType: choice.value, enabledBySelectedGame: (selectedGame) => selectedGame === 'BOTH' || selectedGame === 'LOL' })),
 ];
 
 async function buildQueueEmbed({ account, label, entry }) {
@@ -124,7 +124,7 @@ export default {
             embeds.push(
                 await buildQueueEmbed({
                     account: stored,
-                    label: queueLabelForGame(definition.gameType, definition.queueType),
+                    label: queueLabel(definition.gameType, definition.queueType),
                     entry,
                 })
             );

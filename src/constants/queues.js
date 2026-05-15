@@ -130,38 +130,6 @@ export function queueTypeFromQueueId(queueId, game = GAME_TYPES.TFT) {
     return mapped ?? (game === GAME_TYPES.LOL ? LOL_QUEUE_TYPES.UNKNOWN : TFT_QUEUE_TYPES.UNKNOWN);
 }
 
-export function resolveGameFromQueue(queueType) {
-    return gameFromQueue(queueType);
-}
-
-export function defaultRankedQueueByGame(game = GAME_TYPES.TFT) {
-    return defaultRankedQueueForGame(game);
-}
-
-export function queueLabelForGame(game, queueType) {
-    return queueLabel(game, queueType);
-}
-
-export function isRankedQueueForGame(game, queueType) {
-    return isRankedQueue(game, queueType);
-}
-
-export function rankedQueueChoicesByGame(game = GAME_TYPES.TFT) {
-    return queueChoicesForRecap(game);
-}
-
-export function allRecapQueueChoices() {
-    return [...ALL_RECAP_QUEUE_CHOICES];
-}
-
-export function allLeaderboardQueueChoices() {
-    return [...ALL_LEADERBOARD_QUEUE_CHOICES];
-}
-
-export function validRecapQueuesSet() {
-    return new Set(VALID_RECAP_QUEUES);
-}
-
 export function mapRiotLolQueueType(queueType) {
     if (!queueType) return null;
     if (Object.values(LOL_QUEUE_TYPES).includes(queueType)) return queueType;
@@ -175,7 +143,7 @@ export function resolveLolQueueContext({ match = null, queueId = null, rawQueueT
     const queueType = mappedFromRawQueueType ?? mappedFromQueueId;
     return {
         queueType,
-        queueLabel: queueLabelForGame(GAME_TYPES.LOL, queueType),
-        isRanked: isRankedQueueForGame(GAME_TYPES.LOL, queueType),
+        queueLabel: queueLabel(GAME_TYPES.LOL, queueType),
+        isRanked: isRankedQueue(GAME_TYPES.LOL, queueType),
     };
 }

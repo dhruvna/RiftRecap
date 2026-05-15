@@ -8,14 +8,11 @@ import {
 import { withGuildCommand } from '../utils/withGuildCommand.js';
 import {
     GAME_TYPES,
-    allRecapQueueChoices,
-    defaultRankedQueueByGame,
-    resolveGameFromQueue,
-    validRecapQueuesSet,
+    ALL_RECAP_QUEUE_CHOICES,
+    defaultRankedQueueForGame,
+    gameFromQueue,
+    VALID_RECAP_QUEUES,
 } from '../constants/queues.js';
-
-const ALL_RECAP_QUEUE_CHOICES = allRecapQueueChoices();
-const VALID_RECAP_QUEUES = validRecapQueuesSet();
 import { RECAP_COMMAND_MODE_CHOICES, hoursForMode, resolveRecapModeOrError } from '../constants/recap.js';
 
 /* -------------------- Command -------------------- */
@@ -50,9 +47,9 @@ export default {
             );
             return;
         }
-
-        const queue = rawQueue ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
-        const game = resolveGameFromQueue(queue);
+        
+        const queue = rawQueue ?? defaultRankedQueueForGame(GAME_TYPES.TFT);
+        const game = gameFromQueue(queue);
         const hours = hoursForMode(mode);
         const cutoff = Date.now() - hours * 60 * 60 * 1000;
 

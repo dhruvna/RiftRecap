@@ -1,4 +1,4 @@
-import { GAME_TYPES, isRankedQueueForGame, queueLabelForGame } from '../constants/queues.js';
+import { GAME_TYPES, isRankedQueue, queueLabel } from '../constants/queues.js';
 import { formatDelta, formatRankWithLp } from './presentation.js';
 
 export const MATCH_RESULT_COLORS = Object.freeze({
@@ -20,7 +20,7 @@ export function normalizeEmbedTimestamp(gameMs) {
 export function resolveQueuePresentation({ game, queueType, queueId = null, queueResolver = null }) {
   const resolved = typeof queueResolver === 'function'
     ? queueResolver({ queueId, queueType })
-    : { queueType, queueLabel: queueLabelForGame(game, queueType), isRanked: isRankedQueueForGame(game, queueType) };
+    : { queueType, queueLabel: queueLabel(game, queueType), isRanked: isRankedQueue(game, queueType) };
 
   return {
     queueId,

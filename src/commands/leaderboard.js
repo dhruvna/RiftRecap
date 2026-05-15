@@ -5,13 +5,12 @@ import { listGuildAccounts } from '../storage.js';
 
 import { 
   GAME_TYPES, 
-  allLeaderboardQueueChoices,
-  defaultRankedQueueByGame,
-  queueLabelForGame,
-  resolveGameFromQueue,
+  ALL_LEADERBOARD_QUEUE_CHOICES,
+  defaultRankedQueueForGame,
+  queueLabel,
+  gameFromQueue,
 } from '../constants/queues.js';
 
-const ALL_LEADERBOARD_QUEUE_CHOICES = allLeaderboardQueueChoices();
 import { getRankSnapshotForQueue } from '../utils/rankSnapshot.js';
 import { formatRankWithLp, formatWinrate, medalForIndex } from '../utils/presentation.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
@@ -85,14 +84,14 @@ export default {
   // === Command handler ===
   // Build and send a leaderboard embed for the requested queue.
   execute: withGuildCommand(async (interaction, { guildId }) => {
-    const queueType = interaction.options.getString('queue') ?? defaultRankedQueueByGame(GAME_TYPES.TFT);
+    const queueType = interaction.options.getString('queue') ?? defaultRankedQueueForGame(GAME_TYPES.TFT);
 
     if (process.env.NODE_ENV !== 'production') {
       const validQueueTypes = new Set(ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => choice.value));
       console.assert(validQueueTypes.has(queueType), `[leaderboard] Unexpected queue type: ${queueType}`);
     }
     
-    const game = resolveGameFromQueue(queueType);
+    const game = gameFromQueue(queueType);
     const limit = interaction.options.getInteger('limit') ?? 15;
 
     const accounts = await listGuildAccounts(guildId);
@@ -122,7 +121,7 @@ export default {
     // Limit output so the embed stays readable.
     const shown = ranked.slice(0, limit);
     
-    const queueLabelForGameText = queueLabelForGame(game, queueType);
+    const queueLabelText = queueLabel(game, queueType);
 
     // Build the human-readable lines shown in the embed.
     const lines = shown.map((r, i) => {
@@ -141,7 +140,7 @@ export default {
 
     // Build and send the embed.
     const embed = new EmbedBuilder()
-        .setTitle(`${game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} Leaderboard — ${queueLabelForGameText}`)
+        .setTitle(`${game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} Leaderboard — ${queueLabelText}`)
         .setDescription(lines.join('\n'))
         .setFooter({ text: `Showing top ${shown.length} of ${ranked.length} ranked account(s)` });
         
