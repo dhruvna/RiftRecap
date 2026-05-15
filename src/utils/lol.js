@@ -30,51 +30,17 @@ function normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
 }
 
-function normalizeRole(position) {
-    const role = normalizeText(position).toUpperCase();
-    return role || 'UNKNOWN';
-}
-
 function normalizeTeamSide(teamId) {
     return Number(teamId) === 200 ? 'RED' : 'BLUE';
 }
 
-const LOL_POSITION_ORDER = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT'];
-
-function normalizeTeamPosition(position) {
-    const role = normalizeText(position).toUpperCase();
-
-    if (['TOP'].includes(role)) return 'TOP';
-    if (['JUNGLE', 'JGL'].includes(role)) return 'JUNGLE';
-    if (['MIDDLE', 'MID'].includes(role)) return 'MID';
-    if (['BOTTOM', 'BOT', 'ADC'].includes(role)) return 'ADC';
-    if (['UTILITY', 'SUPPORT', 'SUP'].includes(role)) return 'SUPPORT';
-
-    return normalizeRole(position);
-}
-
-function sortRosterByPositionOrder(rosterByRole = {}) {
-    const sortedRoster = {};
-
-    for (const role of LOL_POSITION_ORDER) {
-        if (Array.isArray(rosterByRole[role])) sortedRoster[role] = rosterByRole[role];
-    }
-
-    for (const [role, entries] of Object.entries(rosterByRole)) {
-        if (!(role in sortedRoster)) sortedRoster[role] = entries;
-    }
-
-    return sortedRoster;
-}
-
 function buildNormalizedTeamRosters(participants) {
     if (!Array.isArray(participants) || participants.length === 0) {
-        return { BLUE: {}, RED: {} };
+        return { BLUE: [], RED: [] };
     }
 
     const rosters = participants.reduce((accumulator, participant) => {
         const side = normalizeTeamSide(participant?.teamId);
-        const role = normalizeTeamPosition(participant?.teamPosition ?? participant?.individualPosition ?? participant?.lane);
         const entry = {
             puuid: participant?.puuid ?? null,
             summonerName: participant?.summonerName ?? null,
@@ -83,16 +49,21 @@ function buildNormalizedTeamRosters(participants) {
             championName: participant?.championName ?? null,
             spell1Id: participant?.spell1Id ?? null,
             spell2Id: participant?.spell2Id ?? null,
+            runeIds: Array.isArray(participant?.runeIds)
+                ? participant.runeIds.map((id) => Number(id)).filter(Number.isFinite)
+                : [],
         };
 
-        if (!accumulator[side][role]) accumulator[side][role] = [];
-        accumulator[side][role].push(entry);
+        accumulator[side].push(entry);
         return accumulator;
 
-    }, { BLUE: {}, RED: {} });
+    }, { BLUE: [], RED: [] });
 
-    rosters.BLUE = sortRosterByPositionOrder(rosters.BLUE);
-    rosters.RED = sortRosterByPositionOrder(rosters.RED);
+    const stableSort = (left, right) =>
+        String(left?.summonerName ?? left?.riotId ?? left?.puuid ?? '')
+            .localeCompare(String(right?.summonerName ?? right?.riotId ?? right?.puuid ?? ''), undefined, { sensitivity: 'base' });
+    rosters.BLUE.sort(stableSort);
+    rosters.RED.sort(stableSort);
 
     return rosters;
 
@@ -216,14 +187,12 @@ async function buildLolGameDto({
         championImagesById,
     });
 
-    const teamRostersBySideRole = buildNormalizedTeamRosters(participants);
+    const teamRostersBySide = buildNormalizedTeamRosters(participants);
     for (const side of ['BLUE', 'RED']) {
-        for (const role of Object.keys(teamRostersBySideRole[side])) {
-            teamRostersBySideRole[side][role] = teamRostersBySideRole[side][role].map((entry) => ({
-                ...entry,
-                championIconUrl: championImagesById.get(String(entry?.championId ?? '')) ?? null,
-            }));
-        }
+        teamRostersBySide[side] = teamRostersBySide[side].map((entry) => ({
+            ...entry,
+            championIconUrl: championImagesById.get(String(entry?.championId ?? '')) ?? null,
+        }));
     }
 
     const spellIds = [Number(trackedParticipant?.spell1Id), Number(trackedParticipant?.spell2Id)].filter(Number.isFinite);
@@ -248,7 +217,7 @@ async function buildLolGameDto({
             matchId: matchId ?? null,
             matchUrl: context.matchUrl,
         },
-        rosters: { bySideRole: teamRostersBySideRole },
+        rosters: { bySide: teamRostersBySide },
         display: {
             championDisplay: context.championDisplay,
             championId: trackedParticipant?.championId ?? null,
@@ -265,7 +234,7 @@ async function buildLolGameDto({
  * @property {{ riotId: string, puuid: (string|null), participantFound: boolean, participant: Object|null }} trackedPlayer
  * @property {string} queueLabel
  * @property {(number|null)} gameStartEpochSeconds
- * @property {{ BLUE: Record<string, Array<Object>>, RED: Record<string, Array<Object>> }} teamRostersBySideRole
+ * @property {{ BLUE: Array<Object>, RED: Array<Object> }} teamRostersBySide
  * @property {{ championDisplay: (string|null), championId: (number|null), championIconUrl: (string|null), championImageKey: (string|null), spellIds: Array<number>, spellSummary: string }} display
  */
 
@@ -288,61 +257,9 @@ export async function buildLolLiveGameViewModel({ account, activeGame }) {
         trackedPlayer: dto.trackedPlayer,
         queueLabel: dto.queue.queueLabel,
         gameStartEpochSeconds: dto.game.gameStartEpochSeconds,
-        teamRostersBySideRole: dto.rosters.bySideRole,
+        teamRostersBySide: dto.rosters.bySide,
         display: dto.display,
     };
-}
-
-const LOL_ROLE_ORDER = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
-
-function normalizeLolRoleKey(role) {
-    const normalized = normalizeText(role).toUpperCase();
-
-    if (['TOP'].includes(normalized)) return 'TOP';
-    if (['JUNGLE', 'JGL'].includes(normalized)) return 'JUNGLE';
-    if (['MIDDLE', 'MID'].includes(normalized)) return 'MIDDLE';
-    if (['BOTTOM', 'BOT', 'ADC'].includes(normalized)) return 'BOTTOM';
-    if (['UTILITY', 'SUPPORT', 'SUP'].includes(normalized)) return 'UTILITY';
-    return null;
-}
-
-function buildRoleSlotsForSide(rosterByRole = {}) {
-    const normalizedRoleMap = {};
-    const overflowParticipants = [];
-    for (const [rawRole, entries] of Object.entries(rosterByRole ?? {})) {
-        const list = Array.isArray(entries) ? entries : [];
-        const normalizedRole = normalizeLolRoleKey(rawRole);
-        if (!normalizedRole) {
-            overflowParticipants.push(...list);
-            continue;
-        }
-        normalizedRoleMap[normalizedRole] = list;
-        console.log(normalizedRoleMap);
-    }
-
-    return LOL_ROLE_ORDER.map((role) => {
-        const participant = normalizedRoleMap[role]?.shift?.() ?? overflowParticipants.shift() ?? null;
-        const spellIds = [Number(participant?.spell1Id), Number(participant?.spell2Id)].filter(Number.isFinite);
-        const runeIds = Array.isArray(participant?.runeIds)
-            ? participant.runeIds.map((id) => Number(id)).filter(Number.isFinite)
-            : [];
-
-        return {
-            role,
-            champion: {
-                id: participant?.championId ?? null,
-                name: participant?.championName ?? null,
-                iconUrl: participant?.championIconUrl ?? null,
-            },
-            spellIds,
-            runeIds,
-            player: participant ? {
-                puuid: participant?.puuid ?? null,
-                summonerName: participant?.summonerName ?? null,
-                riotId: participant?.riotId ?? null,
-            } : null,
-        };
-    });
 }
 
 export async function buildLolLiveTeamPresentationModel({ account, activeGame, identity = null }) {
@@ -365,8 +282,8 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
         gameStartTime: activeGame?.gameStartTime,
     });
 
-    const red = buildRoleSlotsForSide(dto.rosters.bySideRole?.RED);
-    const blue = buildRoleSlotsForSide(dto.rosters.bySideRole?.BLUE);
+    const red = dto.rosters.bySide?.RED ?? [];
+    const blue = dto.rosters.bySide?.BLUE ?? [];
 
     const tracked = dto.trackedPlayer?.participant ?? null;
 
@@ -375,7 +292,6 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
             ...dto.trackedPlayer,
             metadata: tracked ? {
                 teamId: tracked?.teamId ?? null,
-                role: normalizeLolRoleKey(tracked?.teamPosition ?? tracked?.individualPosition ?? tracked?.lane),
                 championId: tracked?.championId ?? null,
                 spellIds: [Number(tracked?.spell1Id), Number(tracked?.spell2Id)].filter(Number.isFinite),
                 runeIds: Array.isArray(tracked?.runeIds)
@@ -494,8 +410,8 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const model = await buildLolLiveTeamPresentationModel({ account, activeGame });
 
     const files = [];
-    const blueIconUrls = model.sides.blue.map((slot) => slot?.champion?.iconUrl ?? null);
-    const redIconUrls = model.sides.red.map((slot) => slot?.champion?.iconUrl ?? null);
+    const blueIconUrls = model.sides.blue.map((participant) => participant?.championIconUrl ?? null);
+    const redIconUrls = model.sides.red.map((participant) => participant?.championIconUrl ?? null);
 
     const embed = new EmbedBuilder()
         .setColor(0x6a5cff)
