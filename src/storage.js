@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_ANNOUNCE_QUEUES } from './constants/queues.js';
+import logger from './utils/logger.js';
 import {
     DEFAULT_RECAP_CONFIG_ID,
     TRACKED_GAMES,
@@ -155,7 +156,7 @@ async function loadDbFromDisk() {
         const raw = await fs.readFile(DATA_PATH, 'utf-8');
         parsed = JSON.parse(raw);
     } catch (error) {
-        console.error('[loadDb] Failed reading/parsing registrations.json', error);
+        logger.error('load_db_parse_failed', { service: 'storage', event: 'load_db_parse_failed', error });
         throw error;
     }
 

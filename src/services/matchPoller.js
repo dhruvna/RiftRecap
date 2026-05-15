@@ -49,6 +49,7 @@ import {
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import { sleep } from '../utils/utils.js';
 import config from '../config.js';
+import logger from '../utils/logger.js';
 
 import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
@@ -123,7 +124,7 @@ function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, g
 async function announceGameMatchToDiscord({ buildEmbed, ...context }) {
     const { channel, guildId, channelId } = context;
     if (!channel) {
-        console.log(
+        logger.info(
             `[match-poller] no channel for guild=${guildId} (channelId=${channelId ?? 'null'})`
         );
         return null;
@@ -170,11 +171,11 @@ function reduceLolLiveState({
         const nextDedupeKey = getLolInGameDedupeKey(nextTracking);
         const sameLolGame = Boolean(nextDedupeKey) && nextDedupeKey === previousDedupeKey;
         if (!sameLolGame) {
-            console.log(`[match-poller] match started guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL} dedupeKey=${nextDedupeKey ?? 'none'}`);
+            logger.info(`[match-poller] match started guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL} dedupeKey=${nextDedupeKey ?? 'none'}`);
         }
     }
     if (wasLolInGame && !isLolInGame) {
-        console.log(`[match-poller] match ended guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL}`);
+        logger.info(`[match-poller] match ended guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL}`);
     }
 
     if (wasLolInGame || !isLolInGame) {
@@ -236,7 +237,7 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
         const shouldAnnounceBasedOnQueue = (!config.liveAnnounceRankedOnly || isRankedLiveQueue) && isAllowedByGuildQueueConfig;
 
         if (!shouldAnnounceBasedOnQueue) {
-            console.log(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=queue_gated queue=${queueType} rankedOnly=${config.liveAnnounceRankedOnly} ranked=${isRankedLiveQueue} allowed=${isAllowedByGuildQueueConfig}`);
+            logger.debug(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=queue_gated queue=${queueType} rankedOnly=${config.liveAnnounceRankedOnly} ranked=${isRankedLiveQueue} allowed=${isAllowedByGuildQueueConfig}`);
             return {
                 lolSpectatorState,
                 trackingPatch: liveTransitionDecision.nextTrackingPatch,
@@ -261,7 +262,7 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
             liveTransitionDecision.nextTrackingPatch.liveAnnouncementGameKey = liveAnnouncementGameKey ?? null;
         }
     } else if (liveTransitionDecision.debugReason) {
-        console.log(
+        logger.debug(
             `[match-poller] skip live announce guild=${guildId} account=${account.key} reason=${liveTransitionDecision.debugReason}`
         );
     }
@@ -341,7 +342,7 @@ async function processUnseenLolMatches({
         }
         const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
         if (!shouldAnnounce) {
-            console.log(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`);
+            logger.info(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`);
             lastProcessedLolMatchId = matchId;
             lastProcessedLolMatchAt = gameMs;
             continue;
@@ -407,7 +408,7 @@ async function processUnseenLolMatches({
             }
         }
         if (isRanked) {
-            console.log(`[match-poller] NEW LoL match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} delta=${delta}`);
+            logger.info(`[match-poller] NEW LoL match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} delta=${delta}`);
         }
         lastProcessedLolMatchId = matchId;
         lastProcessedLolMatchAt = gameMs;
@@ -495,7 +496,7 @@ export async function startMatchPoller(client) {
                         try {
                             channel = await client.channels.fetch(channelIdForGuild);
                         } catch (err) {
-                            console.error(`Error fetching channel ${channelIdForGuild} for guild ${guildId}:`, err);
+                            logger.error('fetch_channel_failed', { service: 'match-poller', event: 'fetch_channel_failed', guildId, channelId: channelIdForGuild, error: err });
                             channel = null;
                         }
                         channelCache.set(channelIdForGuild, channel);
@@ -534,7 +535,7 @@ export async function startMatchPoller(client) {
 
                                 lolTracking.lastRankByQueue = refreshedLol;
                             } catch (err) {
-                                console.error(
+                                logger.error(
                                     `Error refreshing LoL rank for account ${account.key} (guild=${guildId}):`,
                                     err
                                 );
@@ -554,7 +555,7 @@ export async function startMatchPoller(client) {
                                 });
                                 tftTracking.lastRankByQueue = refreshed;
                             } catch (err) {
-                                console.error(
+                                logger.error(
                                     `Error refreshing rank for account ${account.key} (guild=${guildId}):`,
                                     err
                                 );
@@ -597,10 +598,10 @@ export async function startMatchPoller(client) {
                         const wasTftInGame = tftTracking?.inGame === true;
                         const isTftInGame = nextTftTracking.inGame === true;
                         if (!wasTftInGame && isTftInGame) {
-                            console.log(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=none`);
+                            logger.info(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=none`);
                         }
                         if (wasTftInGame && !isTftInGame) {
-                            console.log(`[match-poller] match ended guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT}`);
+                            logger.info(`[match-poller] match ended guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT}`);
                         }
                         stageTrackingUpsert({
                             guildId,
@@ -723,7 +724,7 @@ export async function startMatchPoller(client) {
                             gameMs < seasonCutoffMs;
 
                         if (isBeforeSeasonCutoff) {
-                            console.log(
+                            logger.info(
                                 `[match-poller] skipping stale pre-cutoff match guild=${guildId} account=${account.key} match=${matchId} gameMs=${gameMs} cutoffMs=${seasonCutoffMs}`
                             );
                             lastProcessedMatchId = matchId;
@@ -765,7 +766,7 @@ export async function startMatchPoller(client) {
 
                         const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
                         if (!shouldAnnounce) {
-                            console.log(
+                            logger.info(
                                 `[match-poller] skipping announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`
                             );
                             lastProcessedMatchId = matchId;
@@ -773,7 +774,7 @@ export async function startMatchPoller(client) {
                             continue;
                         }
                     
-                        console.log(
+                        logger.info(
                             `[match-poller] NEW match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} place=${normPlacement} delta=${delta}`
                         );
 
@@ -814,7 +815,7 @@ export async function startMatchPoller(client) {
                         },
                     });
             } catch (err) {
-                console.error(
+                logger.error(
                     `Error polling matches for account ${account.key} (guild=${guildId}):`,
                     err
                 );
@@ -834,6 +835,6 @@ export async function startMatchPoller(client) {
     // Run immediately, then schedule future ticks.
     await tick();
     setInterval(() => {
-        tick().catch((error) => console.error('Match poll tick failed: ', error));
+        tick().catch((error) => logger.error('match_poll_tick_failed', { service: 'match-poller', event: 'tick_failed', error }));
     }, Math.max(10, intervalSeconds) * 1000);
 }

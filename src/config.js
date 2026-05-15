@@ -18,6 +18,8 @@ import 'dotenv/config';
  * @property {number} recapAutopostMinute
  * @property {string} lolPostMatchAnnouncementStrategy
  * @property {boolean} liveAnnounceRankedOnly
+ * @property {boolean} debug
+ * @property {string} logLevel
  */
 
 // === Defaults and validation sets ===
@@ -99,6 +101,17 @@ function readRegion() {
     return normalized;
 }
 
+function readLogLevel() {
+    const raw = readEnv('LOG_LEVEL');
+    if (raw === undefined || raw === '') return 'info';
+    const normalized = String(raw).trim().toLowerCase();
+    const valid = new Set(['debug', 'info', 'warn', 'error']);
+    if (!valid.has(normalized)) {
+        throw new Error(`Environment variable LOG_LEVEL must be one of: ${[...valid].join(', ')}`);
+    }
+    return normalized;
+}
+
 function readLolPostMatchAnnouncementStrategy() {
     const raw = readEnv('LOL_POST_MATCH_ANNOUNCEMENT_STRATEGY') ?? 'edit';
     const normalized = String(raw).toLowerCase();
@@ -147,7 +160,10 @@ export const config = Object.freeze({
     liveAnnounceRankedOnly: readBool('LIVE_ANNOUNCE_RANKED_ONLY', {
         defaultValue: true,
     }),
-
+    debug: readBool('DEBUG', {
+        defaultValue: false,
+    }),
+    logLevel: readBool('DEBUG', { defaultValue: false }) ? 'debug' : readLogLevel(),
 });
 
 // Export a default for convenience so imports stay concise.

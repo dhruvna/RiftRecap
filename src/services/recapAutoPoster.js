@@ -5,6 +5,7 @@ import { GAME_TYPES, defaultRankedQueueForGame } from '../constants/queues.js';
 import { hoursForMode, parseRecapMode } from '../constants/recap.js';
 import { buildRecapEmbed, computeRecapRows } from '../utils/recap.js';
 import config from '../config.js';
+import logger from '../utils/logger.js';
 
 // === Date helpers ===
 // Use local dates for daily scheduling (matching users' expectations).
@@ -87,7 +88,7 @@ async function postRecapForConfig({
 
         if (!shouldFire) continue;
 
-        console.log(
+        logger.info(
             `[recap-autopost] firing guild=${guildId} config=${configId} mode=${mode} effectiveMode=${effectiveMode} game=${game} queue=${queue}`
         );
 
@@ -104,7 +105,7 @@ async function postRecapForConfig({
             [effectiveMode]: today,
         };
         const updated = await updateGuildRecapLastSentYmdByIdInStore(guildId, configId, today, effectiveMode);
-        console.log(`[recap-autopost] sent guild=${guildId} config=${configId} mode=${mode} effectiveMode=${effectiveMode} game=${game} queue=${queue} today=${today} stored=${updated}`);
+                logger.info(`[recap-autopost] sent guild=${guildId} config=${configId} mode=${mode} effectiveMode=${effectiveMode} game=${game} queue=${queue} today=${today} stored=${updated}`);
     }
 }
 
@@ -141,7 +142,7 @@ export async function startRecapAutoposter(client, { fireHour, fireMinute, pollI
             }
 
             if (!channel || !channel.isTextBased()) {
-                console.log(
+                logger.info(
                     `[recap-autopost] skip guild=${guildId} (channel not found or not text-based) channelId=${channelId}`
                 );
                 continue;
@@ -164,5 +165,5 @@ export async function startRecapAutoposter(client, { fireHour, fireMinute, pollI
 
     // Run immediately and then continue polling; firing logic allows catch-up after fire minute.
     await tick();
-    setInterval(() => tick().catch((e) => console.error('Recap autopost tick failed:', e)), POLL_INTERVAL_MS);
+    setInterval(() => tick().catch((e) => logger.error('recap_autopost_tick_failed', { service: 'recap-autopost', event: 'tick_failed', error: e })), POLL_INTERVAL_MS);
 }

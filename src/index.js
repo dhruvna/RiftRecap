@@ -9,6 +9,7 @@ import config from './config.js';
 import { TFT_QUEUE_TYPES } from './constants/queues.js';
 import { getRankSnapshotForQueue } from './utils/rankSnapshot.js';
 import { loadCommands } from './commands/loadCommands.js';
+import logger from './utils/logger.js';
 
 // === Configuration ===
 // Grab the token once so the login call is simple and we avoid reading config
@@ -30,7 +31,7 @@ client.commands = new Collection();
 // warned and skipped so the bot can continue starting up.
 const commands = await loadCommands({
     onInvalid(file) {
-        console.warn(` Command ${file} is missing data or execute()`);
+        logger.warn('invalid_command_module', { service: 'startup', event: 'command_invalid', file });
     },
 });
 
@@ -41,20 +42,18 @@ for (const command of commands) {
 
 // === Startup hook ===
 // Once the client is connected, we log concise diagnostics and spin up background services.
-const debugEnabled = (config.debug ?? String(process.env.LOG_LEVEL ?? '').toLowerCase() === 'debug');
+const debugEnabled = logger.isLevelEnabled('debug');
 /**
  * Bootstraps startup diagnostics and long-running services after Discord signals readiness.
  */
 client.once('clientReady', async () => {
-    console.log(`Logged in as ${client.user.tag}`);
+    logger.info('client_ready', { service: 'startup', event: 'client_ready', userTag: client.user.tag });
 
     try {
         const pruneResult = await pruneExpiredRecapEventsInStore();
-        console.log(
-            `[startup] recap prune didChange=${pruneResult?.didChange ?? false} prunedEvents=${pruneResult?.prunedEvents ?? 0} touchedAccounts=${pruneResult?.touchedAccounts ?? 0}`
-        );
+        logger.info('recap_prune_complete', { service: 'startup', event: 'recap_prune_complete', didChange: pruneResult?.didChange ?? false, prunedEvents: pruneResult?.prunedEvents ?? 0, touchedAccounts: pruneResult?.touchedAccounts ?? 0 });
     } catch (e) {
-        console.error('[startup] failed pruning recap events:', e);
+        logger.error('recap_prune_failed', { service: 'startup', event: 'recap_prune_failed', error: e });
     }
 
     // Load the database and log concise startup summary.
@@ -73,29 +72,23 @@ client.once('clientReady', async () => {
             totalRankedSnapshots += rankedSnapshots;
 
             if (debugEnabled) {
-                console.log(
-                    `[startup][debug] guild=${gid} channelId=${g?.channelId ?? 'null'} accounts=${accounts.length} rankedSnapshots=${rankedSnapshots} recapConfigs=${JSON.stringify(
-                        g?.recapConfigs ?? []
-                    )} tft=${JSON.stringify(g?.tft ?? null)}`
-                );
+                logger.debug('guild_startup_snapshot', { service: 'startup', event: 'guild_startup_snapshot', guildId: gid, channelId: g?.channelId ?? null, accounts: accounts.length, rankedSnapshots, recapConfigs: g?.recapConfigs ?? [], tft: g?.tft ?? null });
             }
         }
-        console.log(
-            `[startup] guilds=${guildEntries.length} totalAccounts=${totalAccounts} rankedSnapshots=${totalRankedSnapshots}`
-        );
+        logger.info('startup_summary', { service: 'startup', event: 'startup_summary', guilds: guildEntries.length, totalAccounts, rankedSnapshots: totalRankedSnapshots });
     } catch (e) {
-        console.error('[startup] failed reading db:', e);
+        logger.error('startup_db_read_failed', { service: 'startup', event: 'startup_db_read_failed', error: e });
     }
 
     // Start the background services that keep the bot up-to-date:
     // - match poller: periodic rank/match updates
     // - recap autoposter: scheduled recap messages
     startMatchPoller(client).catch((error) => {
-        console.error('[startup] match poller failed:', error);
+        logger.error('match_poller_failed', { service: 'startup', event: 'match_poller_failed', error });
     });
 
     startRecapAutoposter(client).catch((error) => {
-        console.error('[startup] recap autoposter failed:', error);
+        logger.error('recap_autoposter_failed', { service: 'startup', event: 'recap_autoposter_failed', error });
     });
 });
 
@@ -112,7 +105,7 @@ client.on('interactionCreate', async (interaction) => {
         try {
             await command.autocomplete(interaction);
         } catch (error) {
-            console.error(error);
+            logger.error('interaction_autocomplete_failed', { service: 'discord', event: 'interaction_autocomplete_failed', error, guildId: interaction.guildId ?? null });
         }
         return;
     }
@@ -126,7 +119,7 @@ client.on('interactionCreate', async (interaction) => {
         await command.execute(interaction);
     } catch (error) {
         // Catch command errors to keep the bot alive and respond gracefully.
-        console.error(error);
+        logger.error('interaction_execute_failed', { service: 'discord', event: 'interaction_execute_failed', error, guildId: interaction.guildId ?? null, commandName: interaction.commandName });
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({
                 content: 'Something wrong',
