@@ -52,7 +52,7 @@ import logger from '../utils/logger.js';
 
 import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
-    getTftFinishedMatchDedupeKey,
+    // getTftFinishedMatchDedupeKey,
     getLolFinishedMatchDedupeKey,
     getLolInGameDedupeKey,
     getTftInGameDedupeKey,
@@ -68,6 +68,14 @@ import {
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
 const MATCH_BACKFILL_LIMIT = 10;
+
+function getTftFinishedMatchDedupeKey({ match, queueType }) {
+    const stableGameId = match?.metadata?.match_id ?? match?.info?.game_id ?? null;
+    if (stableGameId) return `match:${stableGameId}`;
+    const gameStartMs = Number(match?.info?.game_datetime ?? 0) || null;
+    if (gameStartMs && queueType) return `fallback:${gameStartMs}:${queueType}`;
+    return null;
+}
 
 // === Riot fetch helpers ===
 // Wrap Riot calls so we always respect the rate limiter.
@@ -408,9 +416,6 @@ async function processUnseenLolMatches({
                 didAnnounceResult = Boolean(sentMessage);
             }
         }
-        if (isRanked) {
-            logger.info(`[match-poller] NEW LoL match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} delta=${delta}`);
-        }
         lastProcessedLolMatchId = matchId;
         lastProcessedLolMatchAt = gameMs;
     }
@@ -686,7 +691,7 @@ export async function startMatchPoller(client) {
                     let recapEvents = Array.isArray(tftTracking.recapEvents) ? tftTracking.recapEvents : [];
                     let lastProcessedMatchId = tftTracking.lastMatchId;
                     let lastProcessedMatchAt = Number(tftTracking.lastMatchAt ?? 0) || null;
-                    let shouldClearTftLiveAnnouncementTracking = false;
+                    // let shouldClearTftLiveAnnouncementTracking = false;
                     
                     const preparedMatches = [];
                     for (const matchId of orderedMatchIds) {
@@ -728,6 +733,8 @@ export async function startMatchPoller(client) {
                             );
                         },
                     });
+                    const newestFinishedMatchIndex = preparedMatches.length - 1;
+                    let shouldClearTftLiveAnnouncementTracking = false;
 
                     for (const [index, prepared] of preparedMatches.entries()) {
                         const {
@@ -815,10 +822,10 @@ export async function startMatchPoller(client) {
                             guildId,
                             channelId: channelIdForGuild,
                         };
-                        const strategy = config.lolPostMatchAnnouncementStrategy ?? 'edit';
+                        const strategy = config.tftPostMatchAnnouncementStrategy ?? 'edit';
                         const finishedMatchDedupeKey = getTftFinishedMatchDedupeKey({ match, queueType });
                         const trackedLiveKey = tftTracking?.liveAnnouncementGameKey ?? null;
-                        const shouldReconcileLiveMessage = isNewestFinishedTftMatch
+                        const shouldReconcileLiveMessage = index === newestFinishedMatchIndex
                             && trackedLiveKey != null
                             && finishedMatchDedupeKey != null
                             && trackedLiveKey === finishedMatchDedupeKey
@@ -856,8 +863,7 @@ export async function startMatchPoller(client) {
                             }
                         }
                         if (!didAnnounceResult) {
-                            const sentMessage = await announceGameMatchToDiscord(resultAnnouncementContext);
-                            didAnnounceResult = Boolean(sentMessage);
+                            await announceGameMatchToDiscord(resultAnnouncementContext);
                         }
 
                         lastProcessedMatchId = matchId;
@@ -879,13 +885,20 @@ export async function startMatchPoller(client) {
                             activeGameId: tftSpectatorState?.activeGameId ?? tftTracking?.activeGameId ?? null,
                             activeQueueId: tftSpectatorState?.activeQueueId ?? tftTracking?.activeQueueId ?? null,
                             activeGameStartTime: tftSpectatorState?.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
-                            lastAnnouncedInGameKey: (tftSpectatorState?.inGame ?? false)
-                                ? (tftTracking?.lastAnnouncedInGameKey ?? getTftInGameDedupeKey({
-                                    activeGameId: tftSpectatorState?.activeGameId,
-                                    activeQueueId: tftSpectatorState?.activeQueueId,
-                                    activeGameStartTime: tftSpectatorState?.activeGameStartTime,
-                                }))
-                                : null,
+                            // lastAnnouncedInGameKey: (tftSpectatorState?.inGame ?? false)
+                            //     ? (tftTracking?.lastAnnouncedInGameKey ?? getTftInGameDedupeKey({
+                            //         activeGameId: tftSpectatorState?.activeGameId,
+                            //         activeQueueId: tftSpectatorState?.activeQueueId,
+                            //         activeGameStartTime: tftSpectatorState?.activeGameStartTime,
+                            //     }))
+                            //     : null,
+                            // ...(shouldClearTftLiveAnnouncementTracking
+                            //     ? {
+                            //         liveAnnouncementMessageId: null,
+                            //         liveAnnouncementChannelId: null,
+                            //         liveAnnouncementGameKey: null,
+                            //     }
+                            //     : {}),
                             ...(shouldClearTftLiveAnnouncementTracking
                                 ? {
                                     liveAnnouncementMessageId: null,
