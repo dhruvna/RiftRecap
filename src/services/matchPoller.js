@@ -46,7 +46,6 @@ import {
 } from '../constants/queues.js';
 
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
-import { sleep } from '../utils/utils.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
 
@@ -68,6 +67,11 @@ import {
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
 const MATCH_BACKFILL_LIMIT = 10;
+const MATCH_POLLER_WORKER_COUNT = (() => {
+    const configured = Number(process.env.MATCH_POLLER_WORKERS ?? 5);
+    if (!Number.isFinite(configured)) return 5;
+    return Math.min(10, Math.max(3, Math.floor(configured)));
+})();
 
 // === Riot fetch helpers ===
 // Wrap Riot calls so we always respect the rate limiter.
@@ -433,17 +437,22 @@ async function processUnseenLolMatches({
 // Polls periodically for new matches and sends announcements.
 export async function startMatchPoller(client) {
     const intervalSeconds = config.matchPollIntervalSeconds;
-    const basePerAccountDelayMs = config.matchPollPerAccountDelayMs;
     const riotLimiter = createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 });
     const rankRefreshMinutes = config.rankRefreshIntervalMinutes;
     const rankRefreshMs = rankRefreshMinutes * 60 * 1000;
     let isTickRunning = false;
+    let tickStartedAtMs = 0;
+    let lastScheduledAccounts = 0;
 
     // One polling iteration. Split out to make the setInterval handler simple.
     const tick = async () => {
-        if (isTickRunning) return;
+        if (isTickRunning) {
+            logger.warn(`[match-poller] tick skipped reason=in_progress elapsedMs=${Date.now() - tickStartedAtMs} scheduledAccounts=${lastScheduledAccounts}`);
+            return;
+        }
 
         isTickRunning = true;
+        tickStartedAtMs = Date.now();
         try {
             const channelCache = new Map(); // channelId -> channel (cache per tick)
             const pendingUpsertsByGuild = new Map();
@@ -473,9 +482,10 @@ export async function startMatchPoller(client) {
                 return sum + accounts.length;
             }, 0);
 
-            const intervalMs = intervalSeconds * 1000;
-            const spreadDelayMs = totalAccounts > 0 ? Math.ceil(intervalMs / totalAccounts) : 0;
-            const perAccountDelayMs = Math.max(basePerAccountDelayMs, spreadDelayMs);
+            lastScheduledAccounts = totalAccounts;
+            let completedAccounts = 0;
+            logger.info(`[match-poller] tick start accountsScheduled=${totalAccounts} workers=${MATCH_POLLER_WORKER_COUNT}`);
+            const workItems = [];
 
             for (const guildId of guildIds) {
                 const guild = Object.freeze(db[guildId] ?? {});
@@ -484,16 +494,18 @@ export async function startMatchPoller(client) {
                 const guildTftConfig = getGuildTftConfig(db, guildId);
                 const seasonCutoffMs = Number(guildTftConfig?.seasonCutoffMs ?? 0);
                 const hasSeasonCutoff = Number.isFinite(seasonCutoffMs) && seasonCutoffMs > 0;
+                for (const account of accounts) {
+                    workItems.push({ guildId, guild, account, channelIdForGuild, seasonCutoffMs, hasSeasonCutoff });
+                }
+            }
 
+            const processAccountTick = async ({ guildId, guild, account, channelIdForGuild, seasonCutoffMs, hasSeasonCutoff }) => {
                 let channel = null;
                 if (channelIdForGuild) {
-                    if (channelCache.has(channelIdForGuild)) {
-                        channel = channelCache.get(channelIdForGuild);
-                    } else {
-                        // Cache the channel per tick to avoid repeated fetch calls.
-                        try {
-                            channel = await client.channels.fetch(channelIdForGuild);
-                        } catch (err) {
+                    if (channelCache.has(channelIdForGuild)) channel = channelCache.get(channelIdForGuild);
+                    else {
+                        try { channel = await client.channels.fetch(channelIdForGuild); }
+                        catch (err) {
                             logger.error('fetch_channel_failed', { service: 'match-poller', event: 'fetch_channel_failed', guildId, channelId: channelIdForGuild, error: err });
                             channel = null;
                         }
@@ -501,7 +513,9 @@ export async function startMatchPoller(client) {
                     }
                 }
 
-                for (const account of accounts) {
+                const stagedPatches = [];
+                const stagePatch = (gameKey, trackingPatch) => stagedPatches.push({ guildId, account, gameKey, trackingPatch });
+                try {
                     const lolIdentity = getLolIdentity(account);
                     const tftIdentity = getTftIdentity(account);
                     const lolTracking = getLolTracking(account);
@@ -513,23 +527,16 @@ export async function startMatchPoller(client) {
                         [GAME_TYPES.TFT]: null,
                     };
                     if (!account?.regional || !account?.platform || !account?.key) {
-                        await sleep(perAccountDelayMs);
-                        continue;
+                        return stagedPatches;
                     }
                     
-                    try {
-                        const now = Date.now();
+                    const now = Date.now();
                         if (canPollLol && shouldRefreshRank(account, now, rankRefreshMs, GAME_TYPES.LOL)) {
                             try {
                                 const refreshedLol = await refreshLolRankSnapshot({ riotLimiter, account });
                                 refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = refreshedLol;
 
-                                stageTrackingUpsert({
-                                    guildId,
-                                    account,
-                                    gameKey: 'lol',
-                                    trackingPatch: { lastRankByQueue: refreshedLol },
-                                });
+                                stagePatch('lol', { lastRankByQueue: refreshedLol });
 
                                 lolTracking.lastRankByQueue = refreshedLol;
                             } catch (err) {
@@ -545,12 +552,7 @@ export async function startMatchPoller(client) {
                                 const refreshed = await refreshRankSnapshot({ riotLimiter, account });
                                 refreshedRankSnapshotsByGame[GAME_TYPES.TFT] = refreshed;
 
-                                stageTrackingUpsert({
-                                    guildId,
-                                    account,
-                                    gameKey: 'tft',
-                                    trackingPatch: { lastRankByQueue: refreshed },
-                                });
+                                stagePatch('tft', { lastRankByQueue: refreshed });
                                 tftTracking.lastRankByQueue = refreshed;
                             } catch (err) {
                                 logger.error(
@@ -578,12 +580,7 @@ export async function startMatchPoller(client) {
                             announceQueues,
                         });
                         
-                        stageTrackingUpsert({
-                            guildId,
-                            account,
-                            gameKey: 'lol',
-                            trackingPatch: lolStateResult.trackingPatch,
-                        });
+                        stagePatch('lol', lolStateResult.trackingPatch);
                     }
                     if (canPollTft && tftSpectatorState) {
                         const nextTftTrackingPatch = {
@@ -636,12 +633,7 @@ export async function startMatchPoller(client) {
                             nextTftTrackingPatch.lastAnnouncedInGameKey = null;
                             nextTftTrackingPatch.lastAnnouncedActiveGameId = null;
                         }
-                        stageTrackingUpsert({
-                            guildId,
-                            account,
-                            gameKey: 'tft',
-                            trackingPatch: nextTftTrackingPatch,
-                        });
+                        stagePatch('tft', nextTftTrackingPatch);
                     }
 
                     if (canPollLol) {
@@ -659,18 +651,12 @@ export async function startMatchPoller(client) {
                         });
                         refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = lolMatchResult.rankSnapshot;
                         if (lolMatchResult.trackingPatch) {
-                            stageTrackingUpsert({
-                                guildId,
-                                account,
-                                gameKey: 'lol',
-                                trackingPatch: lolMatchResult.trackingPatch,
-                            });
+                            stagePatch('lol', lolMatchResult.trackingPatch);
                         }
                     }
 
                     if (!canPollTft) {
-                        await sleep(perAccountDelayMs);
-                        continue;
+                        return stagedPatches;
                     }
 
                     // Fetch unseen match IDs, respecting the backfill limit.
@@ -682,8 +668,7 @@ export async function startMatchPoller(client) {
                     });
                     
                     if (unseenMatchIds.length === 0) {
-                        await sleep(perAccountDelayMs);
-                        continue;
+                        return stagedPatches;
                     }
 
                     // Process matches from oldest to newest so deltas line up.
@@ -871,11 +856,7 @@ export async function startMatchPoller(client) {
                         lastProcessedMatchAt = gameMs;
                     }
 
-                    stageTrackingUpsert({
-                        guildId,
-                        account,
-                        gameKey: 'tft',
-                        trackingPatch: {
+                    stagePatch('tft', {
                             // Persist lastMatchId so we only announce new games.
                             lastMatchId: lastProcessedMatchId,
                             lastMatchAt: lastProcessedMatchAt,
@@ -886,20 +867,6 @@ export async function startMatchPoller(client) {
                             activeGameId: tftSpectatorState?.activeGameId ?? tftTracking?.activeGameId ?? null,
                             activeQueueId: tftSpectatorState?.activeQueueId ?? tftTracking?.activeQueueId ?? null,
                             activeGameStartTime: tftSpectatorState?.activeGameStartTime ?? tftTracking?.activeGameStartTime ?? null,
-                            // lastAnnouncedInGameKey: (tftSpectatorState?.inGame ?? false)
-                            //     ? (tftTracking?.lastAnnouncedInGameKey ?? getTftInGameDedupeKey({
-                            //         activeGameId: tftSpectatorState?.activeGameId,
-                            //         activeQueueId: tftSpectatorState?.activeQueueId,
-                            //         activeGameStartTime: tftSpectatorState?.activeGameStartTime,
-                            //     }))
-                            //     : null,
-                            // ...(shouldClearTftLiveAnnouncementTracking
-                            //     ? {
-                            //         liveAnnouncementMessageId: null,
-                            //         liveAnnouncementChannelId: null,
-                            //         liveAnnouncementGameKey: null,
-                            //     }
-                            //     : {}),
                             ...(shouldClearTftLiveAnnouncementTracking
                                 ? {
                                     liveAnnouncementMessageId: null,
@@ -907,21 +874,33 @@ export async function startMatchPoller(client) {
                                     liveAnnouncementGameKey: null,
                                 }
                                 : {}),
-                        },
                     });
-            } catch (err) {
+                } catch (err) {
                 logger.error(
                     `Error polling matches for account ${account.key} (guild=${guildId}):`,
                     err
                 );
-            }
-            await sleep(perAccountDelayMs);
-            }
-            }
+                }
+                return stagedPatches;
+            };
+
+            let cursor = 0;
+            const workerCount = Math.min(MATCH_POLLER_WORKER_COUNT, workItems.length || 1);
+            await Promise.all(Array.from({ length: workerCount }, async () => {
+                while (cursor < workItems.length) {
+                    const index = cursor++;
+                    const resultPatches = await processAccountTick(workItems[index]);
+                    for (const patch of resultPatches) {
+                        stageTrackingUpsert(patch);
+                    }
+                    completedAccounts += 1;
+                }
+            }));
             for (const [compoundKey, nextAccount] of pendingUpsertsByGuild.entries()) {
                 const [guildId] = compoundKey.split(':');
                 await upsertGuildAccountInStore(guildId, nextAccount);
             }
+            logger.info(`[match-poller] tick end accountsScheduled=${totalAccounts} accountsCompleted=${completedAccounts} durationMs=${Date.now() - tickStartedAtMs}`);
         } finally {
             isTickRunning = false;
         }        
