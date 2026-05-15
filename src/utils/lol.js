@@ -39,14 +39,42 @@ function normalizeTeamSide(teamId) {
     return Number(teamId) === 200 ? 'RED' : 'BLUE';
 }
 
+const LOL_POSITION_ORDER = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT'];
+
+function normalizeTeamPosition(position) {
+    const role = normalizeText(position).toUpperCase();
+
+    if (['TOP'].includes(role)) return 'TOP';
+    if (['JUNGLE', 'JGL'].includes(role)) return 'JUNGLE';
+    if (['MIDDLE', 'MID'].includes(role)) return 'MID';
+    if (['BOTTOM', 'BOT', 'ADC'].includes(role)) return 'ADC';
+    if (['UTILITY', 'SUPPORT', 'SUP'].includes(role)) return 'SUPPORT';
+
+    return normalizeRole(position);
+}
+
+function sortRosterByPositionOrder(rosterByRole = {}) {
+    const sortedRoster = {};
+
+    for (const role of LOL_POSITION_ORDER) {
+        if (Array.isArray(rosterByRole[role])) sortedRoster[role] = rosterByRole[role];
+    }
+
+    for (const [role, entries] of Object.entries(rosterByRole)) {
+        if (!(role in sortedRoster)) sortedRoster[role] = entries;
+    }
+
+    return sortedRoster;
+}
+
 function buildNormalizedTeamRosters(participants) {
     if (!Array.isArray(participants) || participants.length === 0) {
         return { BLUE: {}, RED: {} };
     }
 
-    return participants.reduce((rosters, participant) => {
+    const rosters = participants.reduce((accumulator, participant) => {
         const side = normalizeTeamSide(participant?.teamId);
-        const role = normalizeRole(participant?.teamPosition ?? participant?.individualPosition ?? participant?.lane);
+        const role = normalizeTeamPosition(participant?.teamPosition ?? participant?.individualPosition ?? participant?.lane);
         const entry = {
             puuid: participant?.puuid ?? null,
             summonerName: participant?.summonerName ?? null,
@@ -57,10 +85,17 @@ function buildNormalizedTeamRosters(participants) {
             spell2Id: participant?.spell2Id ?? null,
         };
 
-        if (!rosters[side][role]) rosters[side][role] = [];
-        rosters[side][role].push(entry);
-        return rosters;
+        if (!accumulator[side][role]) accumulator[side][role] = [];
+        accumulator[side][role].push(entry);
+        return accumulator;
+
     }, { BLUE: {}, RED: {} });
+
+    rosters.BLUE = sortRosterByPositionOrder(rosters.BLUE);
+    rosters.RED = sortRosterByPositionOrder(rosters.RED);
+
+    return rosters;
+
 }
 
 function resolveTrackedParticipant({ account, identity, participants }) {
@@ -282,6 +317,7 @@ function buildRoleSlotsForSide(rosterByRole = {}) {
             continue;
         }
         normalizedRoleMap[normalizedRole] = list;
+        console.log(normalizedRoleMap);
     }
 
     return LOL_ROLE_ORDER.map((role) => {

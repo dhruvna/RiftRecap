@@ -87,7 +87,7 @@ function assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, namesp
 
     // Canonical tracked-game namespace invariants.
     // NOTE: live-game detection fields are intentionally non-canonical and must not be required here.
-    if (typeof namespace.enabled !== 'boolean') throw new Error(`${context}.enabled must be boolean.`)
+    if (typeof namespace.enabled !== 'boolean') throw new Error(`${context}.enabled must be boolean.`);
     if (!(namespace.lastMatchId === null || typeof namespace.lastMatchId === 'string')) {
         throw new Error(`${context}.lastMatchId must be string|null.`);
     }
