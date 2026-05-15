@@ -74,7 +74,7 @@ export async function buildTftLiveGameEmbed({ account, activeGame }) {
     const embed = new EmbedBuilder()
         .setColor(presentation.color)
         .setTitle(presentation.title)
-        .setTimestamp(new Date())
+        .setTimestamp(new Date());
     try {
         const thumbUrl = await getTftRegaliaThumbnailUrl({
             queueType,

@@ -748,7 +748,6 @@ export async function startMatchPoller(client) {
                             isRanked,
                             gameMs,
                         } = prepared;
-                        const isNewestFinishedTftMatch = index === (preparedMatches.length - 1);
                         const isBeforeSeasonCutoff =
                             hasSeasonCutoff &&
                             Number.isFinite(gameMs) &&

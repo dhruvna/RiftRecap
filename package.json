@@ -10,9 +10,6 @@
     "unused": "eslint \"src/**/*.js\"",
     "unused:fix": "eslint \"src/**/*.js\" --fix",
     "knip": "knip --config knip.config.js",
-    "test:resolveChampionIcon": "node src/tests/resolveChampionIcon.assert.js",
-    "test:liveDraftImage": "node src/tests/liveDraftImage.assert.js",
-    "test:embedFields": "node src/tests/embedFields.assert.js",
     "knip:strict": "knip --config knip.config.js --include files,exports,duplicates"
   },
   "repository": {
