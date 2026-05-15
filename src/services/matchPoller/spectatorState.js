@@ -17,11 +17,19 @@ export function getTftInGameDedupeKey(tracking = {}) {
     // Canonical TFT game key source order:
     // 1) Stable game identifier from spectator-v5 (`gameId`).
     // 2) Deterministic fallback from spectator start timestamp + queue (`gameStartTime` + `gameQueueConfigId`).
-    if (tracking?.activeGameId != null) return `gid:${String(tracking.activeGameId)}`;
+    if (tracking?.activeGameId != null) return `gid:${normalizeTftGameIdentifier(tracking.activeGameId)}`;
     const start = tracking?.activeGameStartTime;
     const queue = tracking?.activeQueueId;
     if (start != null && queue != null) return `start:${String(start)}:queue:${String(queue)}`;
     return null;
+}
+
+export function normalizeTftGameIdentifier(gameId) {
+    const stable = String(gameId ?? '').trim();
+    if (!stable) return stable;
+    const suffixMatch = stable.match(/(?:^|_)(\d+)$/);
+    if (suffixMatch?.[1]) return suffixMatch[1];
+    return stable;
 }
 
 export function getLolFinishedMatchDedupeKey({ match, queueType }) {
@@ -37,7 +45,7 @@ export function getTftFinishedMatchDedupeKey({ match, queueType }) {
     // 1) Stable game identifier from match-v1 (`info.game_id`, then `metadata.match_id`).
     // 2) Deterministic fallback from match start timestamp + resolved queue (`info.game_datetime` + queueType).
     const gameId = match?.info?.game_id ?? match?.metadata?.match_id;
-    if (gameId != null) return `gid:${String(gameId)}`;
+    if (gameId != null) return `gid:${normalizeTftGameIdentifier(gameId)}`;
     const start = match?.info?.game_datetime;
     if (start != null && queueType != null) return `start:${String(start)}:queue:${String(queueType)}`;
     return null;
