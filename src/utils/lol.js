@@ -395,11 +395,9 @@ export async function buildLolMatchResultEmbed({
         { name: 'Damage', value: damageDealt.toLocaleString(), inline: true },  
         // if lane = UTILITY, show vision score instead of CS/min (and corresponding label as well)
         { name: lane === 'UTILITY' ? 'Vision Score' : 'CS/min', value: lane === 'UTILITY' ? visionScore.toString() : (csPerMinLabel ?? '—'), inline: true },
-        // { name: "CS/min", value: csPerMinLabel ?? "—", inline: true }, 
         { name: 'Rank', value: rankValue.slice(0, 1024), inline: true },
         { name: didWin ? 'LP Win' : 'LP Loss', value: lpChangeValue, inline: true },
         { name: 'Duration', value: duration, inline: true },
-        // { name: "Missing Pings", value: missingPings.toString(), inline: true },
         // { name: "Lane", value: lane, inline: true },
     );
 

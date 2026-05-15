@@ -39,7 +39,6 @@ export function resolveRecapModeOrError(rawMode, { allowNull = false } = {}) {
 }
 
 export function modeLabel(mode) {
-  // return parseRecapMode(mode) === "WEEKLY" ? "Weekly" : "Daily";
   const normalized = parseRecapMode(mode);
   if (normalized === 'WEEKLY') return 'Weekly';
   if (normalized === 'BOTH') return 'Daily + Weekly';

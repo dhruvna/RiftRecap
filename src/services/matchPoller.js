@@ -678,7 +678,6 @@ export async function startMatchPoller(client) {
                     let recapEvents = Array.isArray(tftTracking.recapEvents) ? tftTracking.recapEvents : [];
                     let lastProcessedMatchId = tftTracking.lastMatchId;
                     let lastProcessedMatchAt = Number(tftTracking.lastMatchAt ?? 0) || null;
-                    // let shouldClearTftLiveAnnouncementTracking = false;
                     
                     const preparedMatches = [];
                     for (const matchId of orderedMatchIds) {
