@@ -32,8 +32,7 @@ export function getQueueIdFromMatch(match) {
 export function detectQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromMatch(match);
     const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
-    const mode = queueType === TFT_QUEUE_TYPES.RANKED ? 'RANKED' : (queueType === TFT_QUEUE_TYPES.RANKED_DOUBLE_UP ? 'DOUBLE UP' : 'UNKNOWN');
-    return { queueId, mode, queueType, label: queueLabelForGame(GAME_TYPES.TFT, queueType) };
+    return { queueId, queueType, label: queueLabelForGame(GAME_TYPES.TFT, queueType) };
 }
 
 // Normalize placement for queue-specific differences (like Double Up).

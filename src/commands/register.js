@@ -16,7 +16,7 @@ import {
     makeAccountKey,
     upsertGuildAccountInStore,
 } from '../storage.js';
-import { LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
+import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
 import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
 
@@ -46,7 +46,7 @@ export default {
 
         // 3. Gather TFT + LoL registration snapshots via shared helper
         const tftSnapshot = await getRegistrationSnapshot({
-                gameType: 'TFT',
+                gameType: GAME_TYPES.TFT,
                 regional,
                 platform,
                 gameName,
@@ -61,7 +61,7 @@ export default {
                 getMatchTimestamp: (match) => match?.info?.game_datetime ?? 0,
             });
             const lolSnapshot = await getRegistrationSnapshot({
-                gameType: 'LOL',
+                gameType: GAME_TYPES.LOL,
                 regional,
                 platform,
                 gameName,
