@@ -1,6 +1,7 @@
 import { GAME_TYPES } from '../../constants/queues.js';
 import { getLolIdentity, getTftIdentity } from '../../storage.js';
 import { getLolActiveGameByPuuid, getTftActiveGameByPuuid } from '../../riot.js';
+import logger from '../../utils/logger.js';
 
 export const SPECTATOR_CHECK_COOLDOWN_MS = 0.5 * 60 * 1000;
 export const LIVE_ANNOUNCE_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
@@ -60,7 +61,13 @@ export async function probeSpectatorState({ riotLimiter, account, tracking, game
     const previousActiveGameStartTime = tracking?.activeGameStartTime;
 
     if (Number.isFinite(lastCheckedAt) && now - lastCheckedAt < SPECTATOR_CHECK_COOLDOWN_MS) {
-        console.log(`Skipping spectator check for account ${account.key} - cooldown in effect`);
+        logger.debug('spectator_probe_skipped_cooldown', {
+            service: 'match-poller',
+            event: 'spectator_probe_skipped_cooldown',
+            account: account.key,
+            game,
+            cooldownMs: SPECTATOR_CHECK_COOLDOWN_MS,
+        });
         return {
             inGame: wasInGame,
             lastSpectatorCheckAt: lastCheckedAt,
@@ -86,7 +93,15 @@ export async function probeSpectatorState({ riotLimiter, account, tracking, game
     const fetcher = game === GAME_TYPES.LOL ? getLolActiveGameByPuuid : getTftActiveGameByPuuid;
     try {
         const activeGame = await fetcher({ platform: account.platform, puuid: identity.puuid, limiter: riotLimiter });
-        console.log(`Probed spectator state for account ${account.key}: inGame=${Boolean(activeGame)}`);
+        logger.debug('spectator_probe_result', {
+            service: 'match-poller',
+            event: 'spectator_probe_result',
+            account: account.key,
+            game,
+            inGame: Boolean(activeGame),
+            activeGameId: activeGame?.gameId ?? null,
+            queue: activeGame?.gameQueueConfigId ?? null,
+        });
         return {
             inGame: Boolean(activeGame),
             lastSpectatorCheckAt: now,
@@ -97,7 +112,13 @@ export async function probeSpectatorState({ riotLimiter, account, tracking, game
         };
     } catch (err) {
         if (Number(err?.status) === 404) return { inGame: false, lastSpectatorCheckAt: now, activeGameId: null, activeQueueId: null, activeGameStartTime: null };
-        console.log(`Error probing spectator state for account ${account.key}`, err);
+        logger.warn('spectator_probe_failed', {
+            service: 'match-poller',
+            event: 'spectator_probe_failed',
+            account: account.key,
+            game,
+            error: err,
+        });
         return {
             inGame: wasInGame,
             lastSpectatorCheckAt: now,

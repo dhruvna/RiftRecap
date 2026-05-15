@@ -6,6 +6,7 @@ import {
   computeRecapRows,
 } from '../utils/recap.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
+import logger from '../utils/logger.js';
 import {
     GAME_TYPES,
     ALL_RECAP_QUEUE_CHOICES,
@@ -60,9 +61,16 @@ export default {
         }
 
         const rows = computeRecapRows(accounts, cutoff, queue, game);
-        console.log(
-            `[recap] guild=${guildId} mode=${mode} game=${game} queue=${queue} accounts=${accounts.length} cutoff=${new Date(cutoff).toISOString()}`
-        );
+        logger.info('recap_generated', {
+            service: 'recap-command',
+            event: 'recap_generated',
+            guildId,
+            mode,
+            game,
+            queue,
+            accounts: accounts.length,
+            cutoffIso: new Date(cutoff).toISOString(),
+        });
         const embed = buildRecapEmbed({ rows, mode, game, queue, hours });
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'recap' }),
