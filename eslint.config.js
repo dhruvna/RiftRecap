@@ -34,6 +34,17 @@ export default [
       'space-before-blocks': ['error', 'always'],
       'keyword-spacing': ['error', { 'before': true, 'after': true }],
       'semi': ['error', 'always'],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "ExportNamedDeclaration VariableDeclarator[id.name='config']",
+          message: 'Use default export only for config.',
+        },
+        {
+          selector: "ExportNamedDeclaration VariableDeclarator[id.name='logger']",
+          message: 'Use default export only for logger.',
+        },
+      ],
     },
   },
   {

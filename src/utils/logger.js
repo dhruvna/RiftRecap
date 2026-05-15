@@ -35,7 +35,7 @@ function write(level, message, meta = {}) {
   process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
-export const logger = {
+const logger = {
   isLevelEnabled(level) {
     return shouldLog(level);
   },

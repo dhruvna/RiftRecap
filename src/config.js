@@ -125,7 +125,7 @@ function readLolPostMatchAnnouncementStrategy() {
 // === Final config ===
 // Freeze the config so accidental mutations don't create confusing runtime bugs.
 /** @type {AppConfig} */
-export const config = Object.freeze({
+const config = Object.freeze({
     discordBotToken: requireString('DISCORD_BOT_TOKEN'),
     discordClientId: requireString('DISCORD_CLIENT_ID'),
     riotTftApiKey: requireString('RIOT_TFT_API_KEY'),
@@ -166,5 +166,4 @@ export const config = Object.freeze({
     logLevel: readBool('DEBUG', { defaultValue: false }) ? 'debug' : readLogLevel(),
 });
 
-// Export a default for convenience so imports stay concise.
 export default config;
