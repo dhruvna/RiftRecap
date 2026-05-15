@@ -5,7 +5,7 @@ import { listGuildAccounts } from '../storage.js';
 
 import { 
   GAME_TYPES, 
-  ALL_LEADERBOARD_QUEUE_CHOICES,
+  ALL_QUEUE_CHOICES,
   defaultRankedQueueForGame,
   queueLabel,
   gameFromQueue,
@@ -70,7 +70,7 @@ export default {
         .setName('queue')
         .setDescription('Which ladder? (TFT + LoL options)')
         .setRequired(false)
-        .addChoices(...ALL_LEADERBOARD_QUEUE_CHOICES)
+        .addChoices(...ALL_QUEUE_CHOICES)
     )
     .addIntegerOption((opt) =>
       opt
@@ -87,7 +87,7 @@ export default {
     const queueType = interaction.options.getString('queue') ?? defaultRankedQueueForGame(GAME_TYPES.TFT);
 
     if (process.env.NODE_ENV !== 'production') {
-      const validQueueTypes = new Set(ALL_LEADERBOARD_QUEUE_CHOICES.map((choice) => choice.value));
+      const validQueueTypes = new Set(ALL_QUEUE_CHOICES.map((choice) => choice.value));
       console.assert(validQueueTypes.has(queueType), `[leaderboard] Unexpected queue type: ${queueType}`);
     }
     

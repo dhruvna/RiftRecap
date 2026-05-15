@@ -73,30 +73,30 @@ export const DEFAULT_ANNOUNCE_QUEUES = [
     LOL_QUEUE_TYPES.RANKED_FLEX,
 ];
 
-export const TFT_RECAP_QUEUE_CHOICES = Object.freeze([
+export const TFT_QUEUE_CHOICES = Object.freeze([
     { name: 'Ranked TFT', value: TFT_QUEUE_TYPES.RANKED },
     { name: 'Double Up TFT', value: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP },
 ]);
 
-export const LOL_RECAP_QUEUE_CHOICES = Object.freeze([
+export const LOL_QUEUE_CHOICES = Object.freeze([
     { name: 'LoL Ranked Solo/Duo', value: LOL_QUEUE_TYPES.RANKED_SOLO_DUO },
     { name: 'LoL Ranked Flex', value: LOL_QUEUE_TYPES.RANKED_FLEX },
 ]);
 
-export const TFT_LEADERBOARD_QUEUE_CHOICES = TFT_RECAP_QUEUE_CHOICES;
-export const LOL_LEADERBOARD_QUEUE_CHOICES = LOL_RECAP_QUEUE_CHOICES;
+export const TFT_RECAP_QUEUE_CHOICES = TFT_QUEUE_CHOICES;
+export const LOL_RECAP_QUEUE_CHOICES = LOL_QUEUE_CHOICES;
+export const TFT_LEADERBOARD_QUEUE_CHOICES = TFT_QUEUE_CHOICES;
+export const LOL_LEADERBOARD_QUEUE_CHOICES = LOL_QUEUE_CHOICES;
 
-export const ALL_RECAP_QUEUE_CHOICES = Object.freeze([
-    ...TFT_RECAP_QUEUE_CHOICES,
-    ...LOL_RECAP_QUEUE_CHOICES,
+export const ALL_QUEUE_CHOICES = Object.freeze([
+    ...TFT_QUEUE_CHOICES,
+    ...LOL_QUEUE_CHOICES,
 ]);
 
-export const VALID_RECAP_QUEUES = new Set(ALL_RECAP_QUEUE_CHOICES.map((choice) => choice.value));
+export const ALL_RECAP_QUEUE_CHOICES = ALL_QUEUE_CHOICES;
+export const VALID_RECAP_QUEUES = new Set(ALL_QUEUE_CHOICES.map((choice) => choice.value));
 
-export const ALL_LEADERBOARD_QUEUE_CHOICES = Object.freeze([
-    ...TFT_LEADERBOARD_QUEUE_CHOICES,
-    ...LOL_LEADERBOARD_QUEUE_CHOICES,
-]);
+export const ALL_LEADERBOARD_QUEUE_CHOICES = ALL_QUEUE_CHOICES;
 
 export function defaultRankedQueueForGame(game) {
     return game === GAME_TYPES.LOL ? LOL_QUEUE_TYPES.RANKED_SOLO_DUO : TFT_QUEUE_TYPES.RANKED;
@@ -109,7 +109,7 @@ export function gameFromQueue(queueType) {
 }
 
 export function queueChoicesForRecap(game = GAME_TYPES.TFT) {
-    return game === GAME_TYPES.LOL ? LOL_RECAP_QUEUE_CHOICES : TFT_RECAP_QUEUE_CHOICES;
+    return game === GAME_TYPES.LOL ? LOL_QUEUE_CHOICES : TFT_QUEUE_CHOICES;
 }
 
 // === Queue helpers ===
