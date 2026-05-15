@@ -30,6 +30,8 @@ const DATA_PATH = process.env.DATA_PATH
 // Keep pure shape-normalization logic in ./storage/normalize.js.
 // Serialize write operations so RMW cycles don't collide.
 let writeQueue = Promise.resolve();
+let dbCache = null;
+let lastLoadedAt = null;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{17,20}$/;
 const RECAP_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -146,7 +148,7 @@ function assertCanonicalAccountShape(guildId, account, accountIndex) {
  * are non-canonical legacy data and are normalized away.
  */
 
-export async function loadDb() {
+async function loadDbFromDisk() {
     await ensureDataFile();
     let parsed;
     try {
@@ -169,6 +171,36 @@ export async function loadDb() {
     return parsed;
 }
 
+function setDbCache(nextDb, loadedAt = Date.now()) {
+    dbCache = nextDb;
+    lastLoadedAt = loadedAt;
+    return dbCache;
+}
+
+export function invalidateDbCache() {
+    dbCache = null;
+    lastLoadedAt = null;
+}
+
+export async function reloadDbFromDisk() {
+    const parsed = await loadDbFromDisk();
+    return setDbCache(parsed);
+}
+
+export function getDbCacheSnapshotMeta() {
+    return {
+        hasCache: dbCache !== null,
+        lastLoadedAt,
+    };
+}
+
+export async function loadDb() {
+    if (dbCache) {
+        return dbCache;
+    }
+    return reloadDbFromDisk();
+}
+
 // Queue-backed read-modify-write transaction.
 async function mutateDb(mutator) {
     return enqueueWrite(async () => {
@@ -176,6 +208,7 @@ async function mutateDb(mutator) {
         const result = await mutator(db);
         const didChange = result?.didChange ?? true;
         if (didChange) {
+            setDbCache(db);
             await writeDbAtomically(db);
         }
         return result;
