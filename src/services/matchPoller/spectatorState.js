@@ -29,6 +29,14 @@ export function getLolFinishedMatchDedupeKey({ match, queueType }) {
     return null;
 }
 
+export function getTftFinishedMatchDedupeKey({ match, queueType }) {
+    const gameId = match?.info?.game_id;
+    if (gameId != null) return `gid:${String(gameId)}`;
+    const start = match?.info?.game_datetime;
+    if (start != null && queueType != null) return `start:${String(start)}:queue:${String(queueType)}`;
+    return null;
+}
+
 export async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
     const now = Date.now();
     const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);

@@ -75,10 +75,6 @@ export async function buildTftLiveGameEmbed({ account, activeGame }) {
         .setColor(presentation.color)
         .setTitle(presentation.title)
         .setTimestamp(new Date())
-        .addFields(
-            { name: 'Queue', value: queueLabel, inline: true },
-            { name: 'Riot ID', value: riotId, inline: true },
-        );
     try {
         const thumbUrl = await getTftRegaliaThumbnailUrl({
             queueType,

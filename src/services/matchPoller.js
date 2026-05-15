@@ -52,6 +52,7 @@ import logger from '../utils/logger.js';
 
 import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
+    getTftFinishedMatchDedupeKey,
     getLolFinishedMatchDedupeKey,
     getLolInGameDedupeKey,
     getTftInGameDedupeKey,
@@ -685,7 +686,8 @@ export async function startMatchPoller(client) {
                     let recapEvents = Array.isArray(tftTracking.recapEvents) ? tftTracking.recapEvents : [];
                     let lastProcessedMatchId = tftTracking.lastMatchId;
                     let lastProcessedMatchAt = Number(tftTracking.lastMatchAt ?? 0) || null;
-
+                    let shouldClearTftLiveAnnouncementTracking = false;
+                    
                     const preparedMatches = [];
                     for (const matchId of orderedMatchIds) {
                         const match = await fetchMatch({
@@ -729,6 +731,7 @@ export async function startMatchPoller(client) {
 
                     for (const [index, prepared] of preparedMatches.entries()) {
                         const {
+                            match,
                             matchId,
                             me,
                             normPlacement,
@@ -736,6 +739,7 @@ export async function startMatchPoller(client) {
                             isRanked,
                             gameMs,
                         } = prepared;
+                        const isNewestFinishedTftMatch = index === (preparedMatches.length - 1);
                         const isBeforeSeasonCutoff =
                             hasSeasonCutoff &&
                             Number.isFinite(gameMs) &&
@@ -797,7 +801,7 @@ export async function startMatchPoller(client) {
                             `[match-poller] NEW match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} place=${normPlacement} delta=${delta}`
                         );
 
-                        await announceGameMatchToDiscord({
+                        const resultAnnouncementContext = {
                             buildEmbed: buildMatchResultEmbed,
                             channel,
                             account,
@@ -810,7 +814,51 @@ export async function startMatchPoller(client) {
                             gameMs,
                             guildId,
                             channelId: channelIdForGuild,
-                        });
+                        };
+                        const strategy = config.lolPostMatchAnnouncementStrategy ?? 'edit';
+                        const finishedMatchDedupeKey = getTftFinishedMatchDedupeKey({ match, queueType });
+                        const trackedLiveKey = tftTracking?.liveAnnouncementGameKey ?? null;
+                        const shouldReconcileLiveMessage = isNewestFinishedTftMatch
+                            && trackedLiveKey != null
+                            && finishedMatchDedupeKey != null
+                            && trackedLiveKey === finishedMatchDedupeKey
+                            && tftTracking?.liveAnnouncementMessageId
+                            && (tftTracking?.liveAnnouncementChannelId || channelIdForGuild);
+                        let didAnnounceResult = false;
+                        if (shouldReconcileLiveMessage) {
+                            const liveChannelId = tftTracking?.liveAnnouncementChannelId ?? channelIdForGuild;
+                            const liveChannel = liveChannelId
+                                ? (channel?.id === liveChannelId ? channel : await channel?.client?.channels?.fetch(liveChannelId).catch(() => null))
+                                : null;
+                            if (liveChannel) {
+                                const { embed, files } = await buildMatchResultEmbed(resultAnnouncementContext);
+                                try {
+                                    const liveMessage = await liveChannel.messages.fetch(tftTracking.liveAnnouncementMessageId);
+                                    if (strategy === 'delete_and_send') {
+                                        await liveMessage.delete().catch(() => null);
+                                        await liveChannel.send({ embeds: [embed], files });
+                                    } else {
+                                        await liveMessage.edit({ embeds: [embed], files });
+                                    }
+                                    didAnnounceResult = true;
+                                    shouldClearTftLiveAnnouncementTracking = true;
+                                } catch (err) {
+                                    const statusCode = Number(err?.status ?? err?.code ?? 0);
+                                    const isMissingMessage = statusCode === 404 || statusCode === 10008;
+                                    if (isMissingMessage) {
+                                        await liveChannel.send({ embeds: [embed], files });
+                                        didAnnounceResult = true;
+                                        shouldClearTftLiveAnnouncementTracking = true;
+                                    } else {
+                                        throw err;
+                                    }
+                                }
+                            }
+                        }
+                        if (!didAnnounceResult) {
+                            const sentMessage = await announceGameMatchToDiscord(resultAnnouncementContext);
+                            didAnnounceResult = Boolean(sentMessage);
+                        }
 
                         lastProcessedMatchId = matchId;
                         lastProcessedMatchAt = gameMs;
@@ -838,6 +886,13 @@ export async function startMatchPoller(client) {
                                     activeGameStartTime: tftSpectatorState?.activeGameStartTime,
                                 }))
                                 : null,
+                            ...(shouldClearTftLiveAnnouncementTracking
+                                ? {
+                                    liveAnnouncementMessageId: null,
+                                    liveAnnouncementChannelId: null,
+                                    liveAnnouncementGameKey: null,
+                                }
+                                : {}),
                         },
                     });
             } catch (err) {
