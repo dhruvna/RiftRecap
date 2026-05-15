@@ -13,14 +13,10 @@ import {
 } from '../storage.js';
 
 import {
-    getLolRankByPuuid,
     getLolMatch,
     getLolMatchIdsByPuuid,
-    getLolActiveGameByPuuid,
-    getTftActiveGameByPuuid,
     getTFTMatch,
     getTFTMatchIdsByPuuid,
-    getTFTRankByPuuid,
 } from '../riot.js';
 
 import {
@@ -37,7 +33,6 @@ import {
 
 import {
     computeRankSnapshotDeltas,
-    toRankSnapshot,
 } from '../utils/rankSnapshot.js';
 
 import {
@@ -55,100 +50,22 @@ import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import { sleep } from '../utils/utils.js';
 import config from '../config.js';
 
+import {
+    LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
+    getLolFinishedMatchDedupeKey,
+    getLolInGameDedupeKey,
+    probeSpectatorState,
+} from './matchPoller/spectatorState.js';
+import { detectUnseenMatchIds } from './matchPoller/matchDiscovery.js';
+import {
+    refreshLolRankSnapshot,
+    refreshRankSnapshot,
+    shouldRefreshRank,
+} from './matchPoller/rankRefresh.js';
+
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
 const MATCH_BACKFILL_LIMIT = 10;
-
-const SPECTATOR_CHECK_COOLDOWN_MS = 0.5 * 60 * 1000;
-const LIVE_ANNOUNCE_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
-
-function getLolInGameDedupeKey(tracking = {}) {
-    if (tracking?.activeGameId != null) return `gid:${String(tracking.activeGameId)}`;
-    const start = tracking?.activeGameStartTime;
-    const queue = tracking?.activeQueueId;
-    if (start != null && queue != null) return `start:${String(start)}:queue:${String(queue)}`;
-    return null;
-}
-
-function getLolFinishedMatchDedupeKey({ match, queueType }) {
-    const gameId = match?.info?.gameId;
-    if (gameId != null) return `gid:${String(gameId)}`;
-    const start = match?.info?.gameCreation;
-    if (start != null && queueType != null) return `start:${String(start)}:queue:${String(queueType)}`;
-    return null;
-}
-
-async function probeSpectatorState({ riotLimiter, account, tracking, game }) {
-    const now = Date.now();
-    const lastCheckedAt = Number(tracking?.lastSpectatorCheckAt ?? 0);
-    const wasInGame = tracking?.inGame === true;
-    const previousActiveGameId = tracking?.activeGameId;
-    const previousActiveQueueId = tracking?.activeQueueId;
-    const previousActiveGameStartTime = tracking?.activeGameStartTime;
-
-    if (Number.isFinite(lastCheckedAt) && now - lastCheckedAt < SPECTATOR_CHECK_COOLDOWN_MS) {
-        console.log(`Skipping spectator check for account ${account.key} - cooldown in effect`);
-        return {
-            inGame: wasInGame,
-            lastSpectatorCheckAt: lastCheckedAt,
-            activeGameId: previousActiveGameId,
-            activeQueueId: previousActiveQueueId,
-            activeGameStartTime: previousActiveGameStartTime,
-            activeGame: null,
-        };
-
-    }
-
-    const identity = game === GAME_TYPES.LOL ? getLolIdentity(account) : getTftIdentity(account);
-    if (!identity?.puuid) {
-        return {
-            inGame: false,
-            lastSpectatorCheckAt: now,
-            activeGameId: null,
-            activeQueueId: null,
-            activeGameStartTime: null,
-            activeGame: null,
-        };
-    }
-
-    const fetcher = game === GAME_TYPES.LOL ? getLolActiveGameByPuuid : getTftActiveGameByPuuid;
-    try {
-        const activeGame = await fetcher({ platform: account.platform, puuid: identity.puuid, limiter: riotLimiter });
-        console.log(`Probed spectator state for account ${account.key}: inGame=${Boolean(activeGame)}`);
-        return { 
-            inGame: Boolean(activeGame), 
-            lastSpectatorCheckAt: now,
-            activeGameId: activeGame?.gameId ?? null,
-            activeQueueId: activeGame?.gameQueueConfigId ?? null,
-            activeGameStartTime: activeGame?.gameStartTime ?? null,
-            activeGame,
-        };
-    } catch (err) {
-        if (Number(err?.status) === 404) return { inGame: false, lastSpectatorCheckAt: now, activeGameId: null, activeQueueId: null, activeGameStartTime: null };
-        console.log(`Error probing spectator state for account ${account.key}`, err);
-        return {
-            inGame: wasInGame,
-            lastSpectatorCheckAt: now,
-            activeGameId: previousActiveGameId,
-            activeQueueId: previousActiveQueueId,
-            activeGameStartTime: previousActiveGameStartTime,
-            activeGame: null,
-        };
-    }
-}
-
-// === Rank refresh logic ===
-// Determine whether cached rank data is stale enough to refresh.
-function shouldRefreshRank(account, now, maxAgeMs, gameType = GAME_TYPES.TFT) {
-    const tracking = gameType === GAME_TYPES.LOL ? getLolTracking(account) : getTftTracking(account);
-    if (!tracking?.lastRankByQueue) return true;
-    const entries = Object.values(tracking.lastRankByQueue);
-    if (entries.length === 0) return true;
-    return entries.some((entry) => {
-        const lastUpdatedAt = Number(entry?.lastUpdatedAt ?? 0);
-        return !Number.isFinite(lastUpdatedAt) || now - lastUpdatedAt >= maxAgeMs;
-    });
-}
 
 // === Riot fetch helpers ===
 // Wrap Riot calls so we always respect the rate limiter.
@@ -179,90 +96,6 @@ async function fetchMatchIds({ riotLimiter, account, count, start = 0, game }) {
         count,
         start,
         limiter: riotLimiter,
-    });
-}
-
-// === Match discovery ===
-// Build a list of match IDs that are newer than the last seen match.
-function collectUnseenMatchIds({ ids, lastMatchId, unseenMatchIds, limit }) {
-    let foundLast = false;
-
-    for (const id of ids) {
-        if (id === lastMatchId) {
-            foundLast = true;
-            break;
-        }
-        unseenMatchIds.push(id);
-        if (unseenMatchIds.length >= limit) {
-            break;
-        }
-    }
-
-    return { unseenMatchIds, foundLast };
-}
-
-async function detectUnseenMatchIds({ tracking, matchBackfillLimit, fetchMatchIdsByAccount }) {
-    // If we have never seen a match for this account, fetch just one ID to seed it.
-    if (!tracking?.lastMatchId) {
-        const ids = await fetchMatchIdsByAccount({ count: 1, start: 0 });
-        return Array.isArray(ids) ? ids.slice(0, 1) : [];
-    }
-
-    let unseenMatchIds = [];
-    let start = 0;
-    let foundLast = false;
-
-    while (unseenMatchIds.length < matchBackfillLimit && !foundLast) {
-        const remaining = matchBackfillLimit - unseenMatchIds.length;
-        const count = Math.min(20, remaining);
-        const ids = await fetchMatchIdsByAccount({ count, start });
-        if (!Array.isArray(ids) || ids.length === 0) {
-            break;
-        }
-
-        ({ unseenMatchIds, foundLast } = collectUnseenMatchIds({
-            ids,
-            lastMatchId: tracking.lastMatchId,
-            unseenMatchIds,
-            limit: matchBackfillLimit,
-        }));
-
-        if (foundLast || ids.length < count) {
-            break;
-        }
-
-        start += ids.length;
-    }
-
-    return unseenMatchIds;
-}
-
-// === Rank snapshot refresh ===
-// Convert Riot's raw league entries into our normalized snapshot format.
-async function refreshRankSnapshot({ riotLimiter, account }) {
-    const tftIdentity = getTftIdentity(account);
-    const entries = await getTFTRankByPuuid({
-        platform: account.platform,
-        puuid: tftIdentity.puuid,
-        limiter: riotLimiter,
-    });
-    return toRankSnapshot(entries);
-}
-
-async function refreshLolRankSnapshot({ riotLimiter, account }) {
-    const lolIdentity = getLolIdentity(account);
-    const entries = await getLolRankByPuuid({
-        platform: account.platform,
-        puuid: lolIdentity.puuid,
-        limiter: riotLimiter,
-    });
-    const normalizedEntries = (Array.isArray(entries) ? entries : []).map((entry) => {
-        const mappedQueueType = mapRiotLolQueueType(entry?.queueType);
-        return mappedQueueType ? { ...entry, queueType: mappedQueueType } : entry;
-    });
-
-    return toRankSnapshot(normalizedEntries, {
-        rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL]),
     });
 }
 
