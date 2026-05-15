@@ -11,7 +11,7 @@ import {
   GAME_TYPES,
   TFT_QUEUE_TYPES,
   isRankedQueue,
-  queueLabel,
+  queueLabel as formatQueueLabel,
   queueTypeFromQueueId,
 } from '../constants/queues.js';
 import {
@@ -33,7 +33,7 @@ export function getQueueIdFromMatch(match) {
 export function detectQueueMetaFromMatch(match) {
     const queueId = getQueueIdFromMatch(match);
     const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
-    return { queueId, queueType, label: queueLabel(GAME_TYPES.TFT, queueType) };
+    return { queueId, queueType, label: formatQueueLabel(GAME_TYPES.TFT, queueType) };
 }
 
 // Normalize placement for queue-specific differences (like Double Up).
@@ -62,11 +62,11 @@ export function placementToOrdinal(placement) {
 export async function buildTftLiveGameEmbed({ account, activeGame }) {
     const queueId = Number(activeGame?.gameQueueConfigId ?? activeGame?.gameQueueId ?? activeGame?.queueId ?? 0) || null;
     const queueType = queueTypeFromQueueId(queueId, GAME_TYPES.TFT);
-    const queueLabel = queueLabel(GAME_TYPES.TFT, queueType);
+    const queueLabelText = formatQueueLabel(GAME_TYPES.TFT, queueType);
     const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
 
     const presentation = resolveLiveGamePresentation({
-        queueLabel,
+        queueLabel: queueLabelText,
         riotId,
         game: GAME_TYPES.TFT,
     });
@@ -98,7 +98,7 @@ export async function buildMatchResultEmbed({
     gameMs,
  }) {
     const matchUrl = getMatchUrl({ game: GAME_TYPES.TFT, matchId });
-    const queueLabel = queueLabel(GAME_TYPES.TFT, queueType);
+    const queueLabelText = formatQueueLabel(GAME_TYPES.TFT, queueType);
 
     const p = typeof placement === 'number' ? placement : null;
     const d = typeof delta === 'number' ? delta : 0;
@@ -136,7 +136,7 @@ export async function buildMatchResultEmbed({
 
     const resultPresentation = resolveMatchResultPresentation({
         didWin: isWin ? true : (isLoss ? false : null),
-        queueLabel,
+        queueLabel: queueLabelText,
         riotId,
         game: GAME_TYPES.TFT,
     });
