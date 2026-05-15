@@ -17,6 +17,7 @@ import 'dotenv/config';
  * @property {number} recapAutopostHour
  * @property {number} recapAutopostMinute
  * @property {string} lolPostMatchAnnouncementStrategy
+ * @property {string} tftPostMatchAnnouncementStrategy
  * @property {boolean} liveAnnounceRankedOnly
  * @property {boolean} debug
  * @property {string} logLevel
@@ -122,6 +123,16 @@ function readLolPostMatchAnnouncementStrategy() {
     return normalized;
 }
 
+function readTftPostMatchAnnouncementStrategy() {
+    const raw = readEnv('TFT_POST_MATCH_ANNOUNCEMENT_STRATEGY') ?? 'edit';
+    const normalized = String(raw).toLowerCase();
+    const valid = new Set(['edit', 'delete_and_send']);
+    if (!valid.has(normalized)) {
+        throw new Error(`Environment variable TFT_POST_MATCH_ANNOUNCEMENT_STRATEGY must be one of: ${[...valid].join(', ')}`);
+    }
+    return normalized;
+}
+
 // === Final config ===
 // Freeze the config so accidental mutations don't create confusing runtime bugs.
 /** @type {AppConfig} */
@@ -157,6 +168,7 @@ const config = Object.freeze({
         max: 59,
     }),
     lolPostMatchAnnouncementStrategy: readLolPostMatchAnnouncementStrategy(),
+    tftPostMatchAnnouncementStrategy: readTftPostMatchAnnouncementStrategy(),
     liveAnnounceRankedOnly: readBool('LIVE_ANNOUNCE_RANKED_ONLY', {
         defaultValue: true,
     }),
