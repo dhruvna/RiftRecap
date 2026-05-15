@@ -52,7 +52,7 @@ import logger from '../utils/logger.js';
 
 import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
-    // getTftFinishedMatchDedupeKey,
+    getTftFinishedMatchDedupeKey,
     getLolFinishedMatchDedupeKey,
     getLolInGameDedupeKey,
     getTftInGameDedupeKey,
@@ -68,14 +68,6 @@ import {
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
 const MATCH_BACKFILL_LIMIT = 10;
-
-function getTftFinishedMatchDedupeKey({ match, queueType }) {
-    const stableGameId = match?.metadata?.match_id ?? match?.info?.game_id ?? null;
-    if (stableGameId) return `match:${stableGameId}`;
-    const gameStartMs = Number(match?.info?.game_datetime ?? 0) || null;
-    if (gameStartMs && queueType) return `fallback:${gameStartMs}:${queueType}`;
-    return null;
-}
 
 // === Riot fetch helpers ===
 // Wrap Riot calls so we always respect the rate limiter.
