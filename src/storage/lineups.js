@@ -8,6 +8,7 @@ const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
 
 const LINEUP_DELIMITER = '|';
 const RECENT_MATCH_IDS_LIMIT = 25;
+const SEEN_MATCH_IDS_LIMIT = 1000;
 
 const LOL_QUEUE_TYPES = {
     SOLO_DUO: 'RANKED_SOLO_5x5',
@@ -135,13 +136,17 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
             firstSeenAt: null,
             lastSeenAt: null,
             recentMatchIds: [],
+            seenMatchIds: [],
         };
 
         const now = Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
         const matchIdNormalized = typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
         const recent = Array.isArray(existing.recentMatchIds) ? existing.recentMatchIds : [];
+        const seen = Array.isArray(existing.seenMatchIds)
+            ? existing.seenMatchIds
+            : recent;
 
-        if (matchIdNormalized && recent.includes(matchIdNormalized)) {
+        if (matchIdNormalized && seen.includes(matchIdNormalized)) {
             return { recorded: false, reason: 'duplicate_match', didChange: false };
         }
 
@@ -158,8 +163,11 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         if (matchIdNormalized) {
             existing.recentMatchIds = [matchIdNormalized, ...recent.filter((id) => id !== matchIdNormalized)]
                 .slice(0, RECENT_MATCH_IDS_LIMIT);
+            existing.seenMatchIds = [matchIdNormalized, ...seen.filter((id) => id !== matchIdNormalized)]
+                .slice(0, SEEN_MATCH_IDS_LIMIT);
         } else {
             existing.recentMatchIds = recent.slice(0, RECENT_MATCH_IDS_LIMIT);
+            existing.seenMatchIds = seen.slice(0, SEEN_MATCH_IDS_LIMIT);
         }
 
         lineups[lineupKey] = existing;
