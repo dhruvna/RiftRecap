@@ -48,7 +48,7 @@ import {
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
-import { buildTierPromotionEmbed } from '../utils/matchEmbedShared.js'
+import { buildTierChangeEmbed } from '../utils/matchEmbedShared.js'
 
 import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
@@ -64,7 +64,6 @@ import {
     refreshRankSnapshot,
     shouldRefreshRank,
 } from './matchPoller/rankRefresh.js';
- 
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
@@ -290,6 +289,7 @@ async function processUnseenLolMatches({
     lolTracking,
     announceQueues,
     refreshedRankSnapshotsByGame,
+    rankSnapshotBeforeRefresh = null,
 }) {
     let shouldClearLiveAnnouncementTracking = false;
     const unseenLolMatchIds = await detectUnseenMatchIds({
@@ -304,7 +304,7 @@ async function processUnseenLolMatches({
     }
 
     const orderedLolMatchIds = [...unseenLolMatchIds].reverse();
-    const beforeLol = lolTracking.lastRankByQueue ?? {};
+    const beforeLol = rankSnapshotBeforeRefresh ?? lolTracking.lastRankByQueue ?? {};
     let afterLol = beforeLol;
     let lolRecapEvents = Array.isArray(lolTracking.recapEvents) ? lolTracking.recapEvents : [];
     let lastProcessedLolMatchId = lolTracking.lastMatchId;
@@ -415,7 +415,7 @@ async function processUnseenLolMatches({
                 didAnnounceResult = Boolean(sentMessage);
             }
             if (didAnnounceResult && isLatestRankedMatch) {
-                const embed = buildTierPromotionEmbed({
+                const tierChangeEmbed = buildTierChangeEmbed({
                     channel,
                     account,
                     game: GAME_TYPES.LOL,
@@ -423,7 +423,7 @@ async function processUnseenLolMatches({
                     beforeRank,
                     afterRank,
                 });
-                await channel.send({ embeds: [embed] });
+                if (tierChangeEmbed) await channel.send({ embeds: [tierChangeEmbed] });
             }
         }
         lastProcessedLolMatchId = matchId;
@@ -540,6 +540,8 @@ export async function startMatchPoller(client) {
                         [GAME_TYPES.LOL]: null,
                         [GAME_TYPES.TFT]: null,
                     };
+                    const lolRankSnapshotBeforeRefresh = { ...(lolTracking?.lastRankByQueue ?? {}) };
+                    const tftRankSnapshotBeforeRefresh = { ...(tftTracking?.lastRankByQueue ?? {}) };
                     if (!account?.regional || !account?.platform || !account?.key) {
                         return stagedPatches;
                     }
@@ -662,6 +664,7 @@ export async function startMatchPoller(client) {
                             lolTracking,
                             announceQueues,
                             refreshedRankSnapshotsByGame,
+                            rankSnapshotBeforeRefresh: lolRankSnapshotBeforeRefresh,
                         });
                         refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = lolMatchResult.rankSnapshot;
                         if (lolMatchResult.trackingPatch) {
@@ -687,7 +690,7 @@ export async function startMatchPoller(client) {
 
                     // Process matches from oldest to newest so deltas line up.
                     const orderedMatchIds = [...unseenMatchIds].reverse();
-                    const before = tftTracking.lastRankByQueue ?? {};
+                    const before = tftRankSnapshotBeforeRefresh ?? tftTracking.lastRankByQueue ?? {};
                     let after = before;
                     let recapEvents = Array.isArray(tftTracking.recapEvents) ? tftTracking.recapEvents : [];
                     let lastProcessedMatchId = tftTracking.lastMatchId;
@@ -867,7 +870,7 @@ export async function startMatchPoller(client) {
                             didAnnounceResult = true;
                         }
                         if (didAnnounceResult && isLatestRankedMatch) {
-                            embed = buildTierPromotionEmbed({
+                            const tierChangeEmbed = buildTierChangeEmbed({
                                 channel,
                                 account,
                                 game: GAME_TYPES.TFT,
@@ -875,7 +878,7 @@ export async function startMatchPoller(client) {
                                 beforeRank,
                                 afterRank,
                             });
-                            await channel.send({ embeds: [embed] });
+                            if (tierChangeEmbed) await channel.send({ embeds: [tierChangeEmbed] });
                         }
 
                         lastProcessedMatchId = matchId;

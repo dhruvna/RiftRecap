@@ -76,25 +76,38 @@ const TIER_PROGRESS_ORDER = Object.freeze(['IRON', 'BRONZE', 'SILVER', 'GOLD', '
 function tierProgressIndex(tier) {
     return typeof tier === 'string' ? TIER_PROGRESS_ORDER.indexOf(tier.toUpperCase()) : -1;
 }
-function didPromoteToNewTier({ beforeRank, afterRank }) {
+
+function findTierChange({ beforeRank, afterRank }) {
     if (!beforeRank?.tier || !afterRank?.tier) return false;
     const beforeTier = tierProgressIndex(beforeRank.tier);
     const afterTier = tierProgressIndex(afterRank.tier);
-    return beforeTier >= 0 && afterTier > beforeTier;
+    if (beforeTier >= 0 && afterTier > beforeTier) {
+      return "promote";
+    } else if (beforeTier >= 0 && afterTier >= 0 && afterTier < beforeTier) {
+      return "demote";
+    }
+    return false;
 }
 
-export function buildTierPromotionEmbed({ channel, account, game, queueType, beforeRank, afterRank }) {
-    if (!channel || !didPromoteToNewTier({ beforeRank, afterRank })) return;
+export function buildTierChangeEmbed({ channel, account, game, queueType, beforeRank, afterRank }) {
+    if (!channel || !findTierChange({ beforeRank, afterRank })) return;
     const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
+    const tierChange = findTierChange({ beforeRank, afterRank });
+    const color = tierChange === 'promote' ? 0xf5b642 : 0xf34e3c;
+    const title = tierChange === 'promote'
+        ? `✨ Rank Up! ✨`
+        : `😭🤣 Demotion 🤣😭`;
+    const description = tierChange === 'promote'
+        ? `**${riotId}** promoted in **${game.toUpperCase()}** (${queueType})`
+        : `**${riotId}** demoted in **${game.toUpperCase()}** (${queueType})`;
     const embed = new EmbedBuilder()
-        .setColor(0xf5b642)
-        .setTitle('✨ Rank Up! ✨')
-        .setDescription(`**${riotId}** promoted in **${game.toUpperCase()}** (${queueType})`)
+        .setColor(color)
+        .setTitle(title)
+        .setDescription(description)
         .addFields(
             { name: 'From', value: formatRankWithLp(beforeRank), inline: true },
             { name: 'To', value: formatRankWithLp(afterRank), inline: true },
         )
         .setTimestamp(new Date());
     return embed;
-    // await channel.send({ embeds: [embed] });
 }
