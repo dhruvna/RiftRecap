@@ -64,6 +64,7 @@ import {
     refreshRankSnapshot,
     shouldRefreshRank,
 } from './matchPoller/rankRefresh.js';
+import { buildLineupKey, isEligibleLolLineupSize, recordLolLineupResult } from '../storage/lineups.js';
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
@@ -221,6 +222,29 @@ function reduceLolLiveState({
 
 export { reduceLolLiveState };
 
+function normalizeRiotId(gameName, tagLine) {
+    const game = typeof gameName === 'string' ? gameName.trim().toLowerCase() : '';
+    const tag = typeof tagLine === 'string' ? tagLine.trim().toLowerCase() : '';
+    if (!game || !tag) return null;
+    return `${game}#${tag}`;
+}
+
+function buildRegisteredLolLookup(guild = {}) {
+    const byPuuid = new Map();
+    const byRiotId = new Map();
+    const accounts = Array.isArray(guild?.accounts) ? guild.accounts : [];
+    for (const registeredAccount of accounts) {
+        const identity = getLolIdentity(registeredAccount);
+        const canonicalMemberKey = registeredAccount?.key;
+        if (!canonicalMemberKey) continue;
+        const puuid = typeof identity?.puuid === 'string' ? identity.puuid.trim() : '';
+        if (puuid) byPuuid.set(puuid, canonicalMemberKey);
+        const normalizedId = normalizeRiotId(identity?.gameName, identity?.tagLine);
+        if (normalizedId) byRiotId.set(normalizedId, canonicalMemberKey);
+    }
+    return { byPuuid, byRiotId };
+}
+
 async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueues }) {
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
@@ -290,6 +314,7 @@ async function processUnseenLolMatches({
     announceQueues,
     refreshedRankSnapshotsByGame,
     rankSnapshotBeforeRefresh = null,
+    guild = null,
 }) {
     let shouldClearLiveAnnouncementTracking = false;
     const unseenLolMatchIds = await detectUnseenMatchIds({
@@ -304,6 +329,7 @@ async function processUnseenLolMatches({
     }
 
     const orderedLolMatchIds = [...unseenLolMatchIds].reverse();
+    const registeredLolLookup = buildRegisteredLolLookup(guild);
     const beforeLol = rankSnapshotBeforeRefresh ?? lolTracking.lastRankByQueue ?? {};
     let afterLol = beforeLol;
     let lolRecapEvents = Array.isArray(lolTracking.recapEvents) ? lolTracking.recapEvents : [];
@@ -327,6 +353,50 @@ async function processUnseenLolMatches({
     const newestFinishedLolMatchIndex = preparedLolMatches.length - 1;
     for (const [index, prepared] of preparedLolMatches.entries()) {
         const { matchId, me, participants, queueType, isRanked, gameMs, match } = prepared;
+        if (isRanked) {
+            const { byPuuid, byRiotId } = registeredLolLookup;
+            const lineupMemberKeys = [];
+            let trackedTeamId = null;
+            let didWin = null;
+            for (const participant of participants) {
+                const participantPuuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
+                const participantRiotId = normalizeRiotId(
+                    participant?.riotIdGameName ?? participant?.gameName,
+                    participant?.riotIdTagline ?? participant?.tagLine
+                );
+                const canonicalMemberKey = (participantPuuid && byPuuid.get(participantPuuid))
+                    || (participantRiotId && byRiotId.get(participantRiotId))
+                    || null;
+                if (!canonicalMemberKey) continue;
+                lineupMemberKeys.push(canonicalMemberKey);
+                if (trackedTeamId == null && Number.isFinite(participant?.teamId)) {
+                    trackedTeamId = participant.teamId;
+                    didWin = participant?.win === true;
+                }
+            }
+            const lineupKey = buildLineupKey(lineupMemberKeys);
+            const lineupSize = lineupKey ? lineupKey.split('|').length : 0;
+            const hasValidLineupSize = isEligibleLolLineupSize(queueType, lineupSize);
+            const shouldRecordLineup = Boolean(lineupKey) && hasValidLineupSize;
+            if (shouldRecordLineup && trackedTeamId != null) {
+                const teammateWithOutcome = participants.find(
+                    (participant) => Number(participant?.teamId) === Number(trackedTeamId) && typeof participant?.win === 'boolean'
+                );
+                if (teammateWithOutcome) {
+                    didWin = teammateWithOutcome.win === true;
+                }
+            }
+            if (shouldRecordLineup && typeof didWin === 'boolean') {
+                await recordLolLineupResult({
+                    guildId,
+                    queueType,
+                    lineupMemberKeys: lineupKey.split('|'),
+                    didWin,
+                    matchId,
+                    gameMs,
+                });
+            }
+        }
         const isLatestRankedMatch = index === latestLolRankedIndex;
         const isNewestFinishedLolMatch = index === newestFinishedLolMatchIndex;
         if (isLatestRankedMatch) {
@@ -665,6 +735,7 @@ export async function startMatchPoller(client) {
                             announceQueues,
                             refreshedRankSnapshotsByGame,
                             rankSnapshotBeforeRefresh: lolRankSnapshotBeforeRefresh,
+                            guild,
                         });
                         refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = lolMatchResult.rankSnapshot;
                         if (lolMatchResult.trackingPatch) {
