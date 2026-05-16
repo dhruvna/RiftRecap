@@ -24,10 +24,10 @@ export default {
         .addIntegerOption((opt) =>
             opt
                 .setName('limit')
-                .setDescription('Max lineups to show (default: 10)')
+                .setDescription('Max lineups to show (default: 10, can show up to 20 best lineups)',)
                 .setRequired(false)
                 .setMinValue(1)
-                .setMaxValue(25)
+                .setMaxValue(20)
         ),
 
     execute: withGuildCommand(async (interaction, { guildId }) => {
