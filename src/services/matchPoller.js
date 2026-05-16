@@ -48,7 +48,7 @@ import {
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
-import { buildTierChangeEmbed } from '../utils/matchEmbedShared.js'
+import { buildTierChangeEmbed } from '../utils/matchEmbedShared.js';
 
 import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,

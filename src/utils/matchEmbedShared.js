@@ -82,9 +82,9 @@ function findTierChange({ beforeRank, afterRank }) {
     const beforeTier = tierProgressIndex(beforeRank.tier);
     const afterTier = tierProgressIndex(afterRank.tier);
     if (beforeTier >= 0 && afterTier > beforeTier) {
-      return "promote";
+      return 'promote';
     } else if (beforeTier >= 0 && afterTier >= 0 && afterTier < beforeTier) {
-      return "demote";
+      return 'demote';
     }
     return false;
 }
@@ -95,8 +95,8 @@ export function buildTierChangeEmbed({ channel, account, game, queueType, before
     const tierChange = findTierChange({ beforeRank, afterRank });
     const color = tierChange === 'promote' ? 0xf5b642 : 0xf34e3c;
     const title = tierChange === 'promote'
-        ? `✨ Rank Up! ✨`
-        : `😭🤣 Demotion 🤣😭`;
+        ? '✨ Rank Up! ✨'
+        : '😭🤣 Demotion 🤣😭';
     const description = tierChange === 'promote'
         ? `**${riotId}** promoted in **${game.toUpperCase()}** (${queueType})`
         : `**${riotId}** demoted in **${game.toUpperCase()}** (${queueType})`;
