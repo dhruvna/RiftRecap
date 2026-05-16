@@ -64,7 +64,7 @@ import {
     refreshRankSnapshot,
     shouldRefreshRank,
 } from './matchPoller/rankRefresh.js';
-import { buildLineupKey, isEligibleLolLineupSize, recordLolLineupResult } from '../storage/lineups.js';
+import { getEligibleLineupMemberSets, recordLolLineupResult } from '../storage/lineups.js';
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
@@ -374,11 +374,9 @@ async function processUnseenLolMatches({
                     didWin = participant?.win === true;
                 }
             }
-            const lineupKey = buildLineupKey(lineupMemberKeys);
-            const lineupSize = lineupKey ? lineupKey.split('|').length : 0;
-            const hasValidLineupSize = isEligibleLolLineupSize(queueType, lineupSize);
-            const shouldRecordLineup = Boolean(lineupKey) && hasValidLineupSize;
-            if (shouldRecordLineup && trackedTeamId != null) {
+            const eligibleLineupMemberSets = getEligibleLineupMemberSets(queueType, lineupMemberKeys);
+            const shouldRecordAnyLineups = eligibleLineupMemberSets.length > 0;
+            if (shouldRecordAnyLineups && trackedTeamId != null) {
                 const teammateWithOutcome = participants.find(
                     (participant) => Number(participant?.teamId) === Number(trackedTeamId) && typeof participant?.win === 'boolean'
                 );
@@ -386,15 +384,17 @@ async function processUnseenLolMatches({
                     didWin = teammateWithOutcome.win === true;
                 }
             }
-            if (shouldRecordLineup && typeof didWin === 'boolean') {
-                await recordLolLineupResult({
-                    guildId,
-                    queueType,
-                    lineupMemberKeys: lineupKey.split('|'),
-                    didWin,
-                    matchId,
-                    gameMs,
-                });
+            if (shouldRecordAnyLineups && typeof didWin === 'boolean') {
+                for (const lineupMemberSet of eligibleLineupMemberSets) {
+                    await recordLolLineupResult({
+                        guildId,
+                        queueType,
+                        lineupMemberKeys: lineupMemberSet,
+                        didWin,
+                        matchId,
+                        gameMs,
+                    });
+                }
             }
         }
         const isLatestRankedMatch = index === latestLolRankedIndex;

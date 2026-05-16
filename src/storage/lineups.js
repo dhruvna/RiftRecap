@@ -113,6 +113,44 @@ export function isEligibleLolLineupSize(queueType, size) {
     return false;
 }
 
+function buildCombinations(values, targetSize, startIndex = 0, current = [], result = []) {
+    if (current.length === targetSize) {
+        result.push([...current]);
+        return result;
+    }
+
+    for (let index = startIndex; index < values.length; index += 1) {
+        current.push(values[index]);
+        buildCombinations(values, targetSize, index + 1, current, result);
+        current.pop();
+    }
+
+    return result;
+}
+
+export function getEligibleLineupMemberSets(queueType, lineupMemberKeys) {
+    const lineupKey = buildLineupKey(lineupMemberKeys);
+    if (!lineupKey) {
+        return [];
+    }
+
+    const canonicalMembers = lineupKey.split(LINEUP_DELIMITER);
+    const eligibleSizes = [];
+    for (const size of [2, 3, 5]) {
+        if (isEligibleLolLineupSize(queueType, size) && canonicalMembers.length >= size) {
+            eligibleSizes.push(size);
+        }
+    }
+
+    const allMemberSets = [];
+    for (const size of eligibleSizes) {
+        const combos = buildCombinations(canonicalMembers, size);
+        allMemberSets.push(...combos);
+    }
+
+    return allMemberSets;
+}
+
 export async function recordLolLineupResult({ guildId, queueType, lineupMemberKeys, didWin, matchId, gameMs }) {
     const lineupKey = buildLineupKey(lineupMemberKeys);
     const lineupSize = lineupKey ? lineupKey.split(LINEUP_DELIMITER).length : 0;
