@@ -7,9 +7,9 @@ const DEFAULT_QUEUE_TYPE = 'RANKED_FLEX_SR';
 
 function buildDummyAccounts() {
     return Array.from({ length: 5 }, (_, idx) => ({
-        key: `dummy${idx + 1}`,
-        gameName: `Dummy${idx + 1}`,
-        tagLine: 'TEST',
+        key: `dummy${idx + 5}`,
+        gameName: `Dummy${idx + 5}`,
+        tagLine: 'TEEHEE',
     }));
 }
 

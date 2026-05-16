@@ -17,6 +17,23 @@ const LOL_QUEUE_TYPES = {
 
 let writeQueue = Promise.resolve();
 let dbCache = null;
+let dbCacheFileMeta = null;
+
+async function getDbFileMeta() {
+    await ensureDataFile();
+    const stats = await fs.stat(LINEUPS_DATA_PATH);
+    return {
+        size: stats.size,
+        mtimeMs: stats.mtimeMs,
+    };
+}
+
+function isSameDbFileMeta(left, right) {
+    if (!left || !right) {
+        return false;
+    }
+    return left.size === right.size && left.mtimeMs === right.mtimeMs;
+}
 
 function enqueueWrite(operation) {
     const run = writeQueue.then(operation, operation);
@@ -52,11 +69,15 @@ async function loadDbFromDisk() {
     return parsed;
 }
 
-async function loadDb() {
-    if (dbCache) {
-        return dbCache;
+async function loadDb({ forceReload = false } = {}) {
+    if (!forceReload && dbCache) {
+        const currentMeta = await getDbFileMeta();
+        if (isSameDbFileMeta(dbCacheFileMeta, currentMeta)) {
+            return dbCache;
+        }
     }
     dbCache = await loadDbFromDisk();
+    dbCacheFileMeta = await getDbFileMeta();
     return dbCache;
 }
 
@@ -68,6 +89,7 @@ async function mutateDb(mutator) {
         if (didChange) {
             dbCache = db;
             await writeDbAtomically(db);
+            dbCacheFileMeta = await getDbFileMeta();
         }
         return result;
     });
@@ -214,12 +236,12 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
     });
 }
 
-export async function getGuildLineupStats(guildId) {
+export async function getGuildLineupStats(guildId, { forceReload = false } = {}) {
     if (!guildId || typeof guildId !== 'string') {
         return {};
     }
 
-    const db = await loadDb();
+    const db = await loadDb({ forceReload });
     const lineups = db?.[guildId]?.lineups;
     if (!lineups || typeof lineups !== 'object' || Array.isArray(lineups)) {
         return {};
