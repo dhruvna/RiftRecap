@@ -48,6 +48,7 @@ import {
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
+import { buildTierPromotionEmbed } from '../utils/matchEmbedShared.js'
 
 import {
     LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
@@ -63,6 +64,7 @@ import {
     refreshRankSnapshot,
     shouldRefreshRank,
 } from './matchPoller/rankRefresh.js';
+ 
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
@@ -339,6 +341,7 @@ async function processUnseenLolMatches({
             }
         }
         const deltas = computeRankSnapshotDeltas({ before: beforeLol, after: afterLol });
+        const beforeRank = isLatestRankedMatch ? (beforeLol?.[queueType] ?? null) : null;
         const afterRank = isLatestRankedMatch ? (afterLol?.[queueType] ?? null) : null;
         const delta = isLatestRankedMatch ? (deltas?.[queueType] ?? 0) : 0;
         if (isRanked) {
@@ -410,6 +413,17 @@ async function processUnseenLolMatches({
             if (!didAnnounceResult) {
                 const sentMessage = await announceGameMatchToDiscord(resultAnnouncementContext);
                 didAnnounceResult = Boolean(sentMessage);
+            }
+            if (didAnnounceResult && isLatestRankedMatch) {
+                const embed = buildTierPromotionEmbed({
+                    channel,
+                    account,
+                    game: GAME_TYPES.LOL,
+                    queueType,
+                    beforeRank,
+                    afterRank,
+                });
+                await channel.send({ embeds: [embed] });
             }
         }
         lastProcessedLolMatchId = matchId;
@@ -484,7 +498,7 @@ export async function startMatchPoller(client) {
 
             lastScheduledAccounts = totalAccounts;
             let completedAccounts = 0;
-            logger.info(`[match-poller] tick start accountsScheduled=${totalAccounts} workers=${MATCH_POLLER_WORKER_COUNT}`);
+            logger.debug(`[match-poller] tick start accountsScheduled=${totalAccounts} workers=${MATCH_POLLER_WORKER_COUNT}`);
             const workItems = [];
 
             for (const guildId of guildIds) {
@@ -763,7 +777,8 @@ export async function startMatchPoller(client) {
                         }
 
                         const deltas = computeRankSnapshotDeltas({ before, after });
-                        
+                        const beforeRank = isLatestRankedMatch ? (before?.[queueType] ?? null) : null;
+
                         const afterRank = isLatestRankedMatch ? (after?.[queueType] ?? null) : null;
                         const delta = isLatestRankedMatch ? (deltas?.[queueType] ?? 0) : 0;
                     
@@ -849,6 +864,18 @@ export async function startMatchPoller(client) {
                         }
                         if (!didAnnounceResult) {
                             await announceGameMatchToDiscord(resultAnnouncementContext);
+                            didAnnounceResult = true;
+                        }
+                        if (didAnnounceResult && isLatestRankedMatch) {
+                            embed = buildTierPromotionEmbed({
+                                channel,
+                                account,
+                                game: GAME_TYPES.TFT,
+                                queueType,
+                                beforeRank,
+                                afterRank,
+                            });
+                            await channel.send({ embeds: [embed] });
                         }
 
                         lastProcessedMatchId = matchId;
@@ -899,7 +926,7 @@ export async function startMatchPoller(client) {
                 const [guildId] = compoundKey.split(':');
                 await upsertGuildAccountInStore(guildId, nextAccount);
             }
-            logger.info(`[match-poller] tick end accountsScheduled=${totalAccounts} accountsCompleted=${completedAccounts} durationMs=${Date.now() - tickStartedAtMs}`);
+            logger.debug(`[match-poller] tick end accountsScheduled=${totalAccounts} accountsCompleted=${completedAccounts} durationMs=${Date.now() - tickStartedAtMs}`);
         } finally {
             isTickRunning = false;
         }        

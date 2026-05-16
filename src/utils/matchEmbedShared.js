@@ -1,5 +1,6 @@
 import { GAME_TYPES, isRankedQueue, queueLabel } from '../constants/queues.js';
 import { formatDelta, formatRankWithLp } from './presentation.js';
+import { EmbedBuilder } from 'discord.js';
 
 export const MATCH_RESULT_COLORS = Object.freeze({
   WIN: 0x2dcf71,
@@ -69,4 +70,31 @@ export function resolveLiveGamePresentation({ queueLabel, riotId, game }) {
       ? `${queueLabel} Game in Progress for ${riotId}`
       : `${queueLabel} Game in Progress for ${riotId}`,
   };
+}
+
+const TIER_PROGRESS_ORDER = Object.freeze(['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER']);
+function tierProgressIndex(tier) {
+    return typeof tier === 'string' ? TIER_PROGRESS_ORDER.indexOf(tier.toUpperCase()) : -1;
+}
+function didPromoteToNewTier({ beforeRank, afterRank }) {
+    if (!beforeRank?.tier || !afterRank?.tier) return false;
+    const beforeTier = tierProgressIndex(beforeRank.tier);
+    const afterTier = tierProgressIndex(afterRank.tier);
+    return beforeTier >= 0 && afterTier > beforeTier;
+}
+
+export function buildTierPromotionEmbed({ channel, account, game, queueType, beforeRank, afterRank }) {
+    if (!channel || !didPromoteToNewTier({ beforeRank, afterRank })) return;
+    const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
+    const embed = new EmbedBuilder()
+        .setColor(0xf5b642)
+        .setTitle('✨ Rank Up! ✨')
+        .setDescription(`**${riotId}** promoted in **${game.toUpperCase()}** (${queueType})`)
+        .addFields(
+            { name: 'From', value: formatRankWithLp(beforeRank), inline: true },
+            { name: 'To', value: formatRankWithLp(afterRank), inline: true },
+        )
+        .setTimestamp(new Date());
+    return embed;
+    // await channel.send({ embeds: [embed] });
 }
