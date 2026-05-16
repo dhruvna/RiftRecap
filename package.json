@@ -10,7 +10,8 @@
     "unused": "eslint \"src/**/*.js\"",
     "unused:fix": "eslint \"src/**/*.js\" --fix",
     "knip": "knip --config knip.config.js",
-    "knip:strict": "knip --config knip.config.js --include files,exports,duplicates"
+    "knip:strict": "knip --config knip.config.js --include files,exports,duplicates",
+    "test:lineups": "node src/tests/lineup-test-setup.js"
   },
   "repository": {
     "type": "git",
