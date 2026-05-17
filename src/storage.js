@@ -2,6 +2,7 @@
 // We rely on the filesystem to persist registrations and per-guild settings.
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { DEFAULT_ANNOUNCE_QUEUES } from './constants/queues.js';
 import logger from './utils/logger.js';
 import {
@@ -77,9 +78,24 @@ function assertCanonicalGuildShape(guildId, guild) {
     if (!Array.isArray(guild.announceQueues)) throw new Error(`${context} announceQueues must be an array.`);
     if (!guild.tft || typeof guild.tft !== 'object' || Array.isArray(guild.tft)) throw new Error(`${context} tft must be an object.`);
     if (!Array.isArray(guild.recapConfigs) || guild.recapConfigs.length === 0) throw new Error(`${context} recapConfigs must be a non-empty array.`);
+    if (!(guild.people === undefined || Array.isArray(guild.people))) throw new Error(`${context} people must be an array when present.`);
+    if (Array.isArray(guild.people)) {
+        for (let idx = 0; idx < guild.people.length; idx += 1) {
+            assertCanonicalPersonShape(guildId, guild.people[idx], idx);
+        }
+    }
     for (let idx = 0; idx < guild.accounts.length; idx += 1) {
         assertCanonicalAccountShape(guildId, guild.accounts[idx], idx);
     }
+}
+
+function assertCanonicalPersonShape(guildId, person, personIndex) {
+    const context = `[loadDb] Malformed guild record for ${guildId}: people[${personIndex}]`;
+    if (!person || typeof person !== 'object' || Array.isArray(person)) throw new Error(`${context} must be an object.`);
+    if (typeof person.personId !== 'string' || !person.personId.trim()) throw new Error(`${context}.personId must be a non-empty string.`);
+    if (typeof person.displayName !== 'string' || !person.displayName.trim()) throw new Error(`${context}.displayName must be a non-empty string.`);
+    if (!Array.isArray(person.aliases)) throw new Error(`${context}.aliases must be an array.`);
+    if (!Number.isFinite(person.createdAt)) throw new Error(`${context}.createdAt must be a number.`);
 }
 
 function assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, namespace) {
@@ -112,6 +128,9 @@ function assertCanonicalAccountShape(guildId, account, accountIndex) {
     }
     if (!account.trackedGames || typeof account.trackedGames !== 'object' || Array.isArray(account.trackedGames)) {
         throw new Error(`${context}.trackedGames must be an object.`);
+    }
+    if (!(account.personId === undefined || account.personId === null || typeof account.personId === 'string')) {
+        throw new Error(`${context}.personId must be string|null when present.`);
     }
 
     for (const gameKey of Object.values(TRACKED_GAMES)) {
@@ -240,6 +259,7 @@ function ensureGuildMutable(db, guildId) {
     if (!db[guildId]) {
         db[guildId] = {
             accounts: [],
+            people: [],
             channelId: null,
             announceQueues: [...DEFAULT_ANNOUNCE_QUEUES],
             tft: { seasonCutoffMs: null },
@@ -247,6 +267,17 @@ function ensureGuildMutable(db, guildId) {
         };
     }
     return db[guildId];
+}
+
+function ensureGuildPeopleMutable(guild) {
+    if (!Array.isArray(guild.people)) {
+        guild.people = [];
+    }
+    return guild.people;
+}
+
+function makePersonId() {
+    return `person_${crypto.randomUUID()}`;
 }
 
 export function getTrackedGameIdentity(account, gameKey) {
@@ -283,6 +314,62 @@ export async function listGuildAccounts(guildId) {
     const db = await loadDb();
     const guild = db?.[guildId];
     return guild?.accounts ?? [];
+}
+
+export async function listGuildPeople(guildId) {
+    const db = await loadDb();
+    const guild = db?.[guildId];
+    return Array.isArray(guild?.people) ? guild.people : [];
+}
+
+export async function createPersonInStore(guildId, { displayName }) {
+    if (typeof displayName !== 'string' || !displayName.trim()) {
+        throw new Error('[createPersonInStore] displayName must be a non-empty string.');
+    }
+    return mutateGuild(guildId, ({ guild }) => {
+        const people = ensureGuildPeopleMutable(guild);
+        const person = {
+            personId: makePersonId(),
+            displayName: displayName.trim(),
+            aliases: [],
+            createdAt: Date.now(),
+        };
+        people.push(person);
+        return { didChange: true, person };
+    }).then((result) => result?.person ?? null);
+}
+
+export async function linkAccountToPersonInStore(guildId, accountKey, personId) {
+    if (typeof accountKey !== 'string' || !accountKey.trim()) {
+        throw new Error('[linkAccountToPersonInStore] accountKey must be a non-empty string.');
+    }
+    if (typeof personId !== 'string' || !personId.trim()) {
+        throw new Error('[linkAccountToPersonInStore] personId must be a non-empty string.');
+    }
+    return mutateGuild(guildId, ({ guild }) => {
+        const people = ensureGuildPeopleMutable(guild);
+        const personExists = people.some((person) => person?.personId === personId);
+        if (!personExists) throw new Error(`[linkAccountToPersonInStore] personId "${personId}" not found in guild ${guildId}.`);
+
+        const account = guild.accounts.find((item) => item?.key === accountKey);
+        if (!account) throw new Error(`[linkAccountToPersonInStore] account "${accountKey}" not found in guild ${guildId}.`);
+        if (account.personId === personId) return { didChange: false, updated: false, account };
+        account.personId = personId;
+        return { didChange: true, updated: true, account };
+    }).then((result) => ({ updated: Boolean(result?.updated), account: result?.account ?? null }));
+}
+
+export async function unlinkAccountFromPersonInStore(guildId, accountKey) {
+    if (typeof accountKey !== 'string' || !accountKey.trim()) {
+        throw new Error('[unlinkAccountFromPersonInStore] accountKey must be a non-empty string.');
+    }
+    return mutateGuild(guildId, ({ guild }) => {
+        const account = guild.accounts.find((item) => item?.key === accountKey);
+        if (!account) throw new Error(`[unlinkAccountFromPersonInStore] account "${accountKey}" not found in guild ${guildId}.`);
+        if (account.personId === null || account.personId === undefined) return { didChange: false, updated: false, account };
+        account.personId = null;
+        return { didChange: true, updated: true, account };
+    }).then((result) => ({ updated: Boolean(result?.updated), account: result?.account ?? null }));
 }
 
 async function upsertGuildAccount(db, guildId, account) {
