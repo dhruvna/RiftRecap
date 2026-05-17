@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { LOL_QUEUE_TYPES } from '../constants/queues.js';
 
 const DEFAULT_LINEUPS_DATA_PATH = path.join(process.cwd(), 'user_data', 'lol_lineups.json');
 const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
@@ -9,11 +10,6 @@ const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
 const LINEUP_DELIMITER = '|';
 const RECENT_MATCH_IDS_LIMIT = 25;
 const SEEN_MATCH_IDS_LIMIT = 1500;
-
-const LOL_QUEUE_TYPES = {
-    SOLO_DUO: 'RANKED_SOLO_5x5',
-    FLEX: 'RANKED_FLEX_SR',
-};
 
 let writeQueue = Promise.resolve();
 let dbCache = null;
@@ -124,11 +120,11 @@ export function isEligibleLolLineupSize(queueType, size) {
         return false;
     }
 
-    if (queueType === LOL_QUEUE_TYPES.SOLO_DUO) {
+    if (queueType === LOL_QUEUE_TYPES.RANKED_SOLO_DUO) {
         return size === 2;
     }
 
-    if (queueType === LOL_QUEUE_TYPES.FLEX) {
+    if (queueType === LOL_QUEUE_TYPES.RANKED_FLEX) {
         return size === 2 || size === 3 || size === 5;
     }
 
@@ -192,7 +188,6 @@ export function getEligibleLineupMemberSets(queueType, lineupMemberKeys) {
         const combos = buildCombinations(canonicalMembers, size);
         allMemberSets.push(...combos);
     }
-
     return allMemberSets;
 }
 

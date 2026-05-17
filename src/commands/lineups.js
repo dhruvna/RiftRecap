@@ -16,7 +16,7 @@ export default {
         .addIntegerOption((opt) =>
             opt
                 .setName('min_games')
-                .setDescription('Minimum games played for a lineup to be included (default: 3)')
+                .setDescription('Minimum games played for a lineup to be included')
                 .setRequired(false)
                 .setMinValue(1)
                 .setMaxValue(100)
@@ -31,7 +31,7 @@ export default {
         ),
 
     execute: withGuildCommand(async (interaction, { guildId }) => {
-        const minGames = interaction.options.getInteger('min_games') ?? 3;
+        const minGames = interaction.options.getInteger('min_games') ?? 1;
         const limit = interaction.options.getInteger('limit') ?? 10;
 
         const stats = await getGuildLineupStats(guildId);
