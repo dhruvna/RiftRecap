@@ -391,6 +391,60 @@ export async function upsertGuildAccountInStore(guildId, account) {
     });
 }
 
+export async function upsertGuildAccountAndLinkPersonInStore(guildId, {
+    account,
+    personLink = null,
+    allowReassign = false,
+} = {}) {
+    if (!account || typeof account !== 'object') {
+        throw new Error('[upsertGuildAccountAndLinkPersonInStore] account is required.');
+    }
+
+    return mutateGuild(guildId, async ({ db, guild }) => {
+        const { existed } = await upsertGuildAccount(db, guildId, account);
+        const target = guild.accounts.find((item) => item?.key === account.key);
+        if (!target) throw new Error(`[upsertGuildAccountAndLinkPersonInStore] account "${account.key}" not found after upsert.`);
+
+        let linkedPersonId = target.personId ?? null;
+        let reassignBlocked = false;
+
+        if (personLink?.mode === 'existing') {
+            const people = ensureGuildPeopleMutable(guild);
+            const personExists = people.some((person) => person?.personId === personLink.personId);
+            if (!personExists) throw new Error(`[upsertGuildAccountAndLinkPersonInStore] personId "${personLink.personId}" not found in guild ${guildId}.`);
+
+            if (target.personId && target.personId !== personLink.personId && !allowReassign) {
+                reassignBlocked = true;
+            } else {
+                target.personId = personLink.personId;
+                linkedPersonId = target.personId;
+            }
+        }
+
+        if (personLink?.mode === 'new') {
+            const displayName = String(personLink.displayName ?? '').trim();
+            if (!displayName) throw new Error('[upsertGuildAccountAndLinkPersonInStore] displayName is required when personLink.mode is new.');
+
+            if (target.personId && !allowReassign) {
+                reassignBlocked = true;
+            } else {
+                const people = ensureGuildPeopleMutable(guild);
+                const person = {
+                    personId: makePersonId(),
+                    displayName,
+                    aliases: [],
+                    createdAt: Date.now(),
+                };
+                people.push(person);
+                target.personId = person.personId;
+                linkedPersonId = person.personId;
+            }
+        }
+
+        return { existed, account: target, linkedPersonId, reassignBlocked, didChange: true };
+    });
+}
+
 export async function removeGuildAccountByKey(guildId, key) {
     return mutateGuild(guildId, ({ guild }) => {
         if (!guild?.accounts?.length) return { removed: null, didChange: false };
