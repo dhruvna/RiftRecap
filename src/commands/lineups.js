@@ -59,13 +59,12 @@ export default {
 
         const lines = entries.map((entry, index) => {
             const pct = (entry.winRate * 100).toFixed(1);
-            return `${index + 1}. **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L, ${entry.games} games)`;
+            return `${index + 1}. **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`;
         });
 
         const embed = new EmbedBuilder()
-            .setTitle('Top LoL Lineups (This Server)')
+            .setTitle('Top LoL Lineups in This Server')
             .setDescription(lines.join('\n'))
-            .setFooter({ text: `guildId: ${guildId} • min games: ${minGames}` });
 
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'lineups' }),
