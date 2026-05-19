@@ -29,7 +29,6 @@ export default {
                 .setMinValue(1)
                 .setMaxValue(20)
         ),
-
     execute: withGuildCommand(async (interaction, { guildId }) => {
         const minGames = interaction.options.getInteger('min_games') ?? 1;
         const limit = interaction.options.getInteger('limit') ?? 10;

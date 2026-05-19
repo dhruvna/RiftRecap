@@ -246,6 +246,7 @@ function buildRegisteredLolLookup(guild = {}) {
 }
 
 async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueues }) {
+    const areLolAnnouncementsEnabledForAccount = account?.notifications?.lolAnnouncements !== false;
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
         previousTracking: lolTracking,
@@ -258,6 +259,12 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
     const shouldAnnounceLolLiveGame = liveTransitionDecision.shouldAnnounceLive === true;
 
     if (shouldAnnounceLolLiveGame && lolSpectatorState.activeGame) {
+        if (!areLolAnnouncementsEnabledForAccount) {
+            return {
+                lolSpectatorState,
+                trackingPatch: liveTransitionDecision.nextTrackingPatch,
+            };
+        }
         const queueContext = resolveLolQueueContext({
             queueId: lolSpectatorState?.activeGame?.gameQueueConfigId ?? lolSpectatorState?.activeQueueId ?? null,
         });
@@ -418,7 +425,8 @@ async function processUnseenLolMatches({
             const placement = me?.win ? 1 : 2;
             lolRecapEvents = buildRecapEvents({ recapEvents: lolRecapEvents, matchId, queueType, delta, placement, gameMs });
         }
-        const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
+        const shouldAnnounce = account?.notifications?.lolAnnouncements !== false
+            && (!announceQueues || announceQueues.includes(queueType));
         if (!shouldAnnounce) {
             logger.info(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`);
             lastProcessedLolMatchId = matchId;
@@ -686,7 +694,7 @@ export async function startMatchPoller(client) {
                         if (!wasTftInGame && isTftInGame) {
                             logger.info(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=${nextTftInGameKey ?? 'none'}`);
                             const shouldAnnounceTftLiveGame = !(previousTftInGameKey && nextTftInGameKey && previousTftInGameKey === nextTftInGameKey);
-                            if (shouldAnnounceTftLiveGame) {
+                            if (shouldAnnounceTftLiveGame && account?.notifications?.tftAnnouncements !== false) {
                                 try {
                                     const sentMessage = await announceGameMatchToDiscord({
                                         buildEmbed: buildTftLiveGameEmbed,
@@ -867,8 +875,8 @@ export async function startMatchPoller(client) {
                                 gameMs,
                             });
                         }
-
-                        const shouldAnnounce = !announceQueues || announceQueues.includes(queueType);
+                        const shouldAnnounce = account?.notifications?.tftAnnouncements !== false
+                            && (!announceQueues || announceQueues.includes(queueType));
                         if (!shouldAnnounce) {
                             logger.info(
                                 `[match-poller] skipping announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`

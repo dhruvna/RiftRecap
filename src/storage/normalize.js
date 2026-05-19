@@ -67,6 +67,10 @@ export function normalizeAccountTracking(account) {
     const normalizedAccount = {
         ...account,
         identity: normalizeAccountIdentity(account),
+        notifications: {
+            lolAnnouncements: account?.notifications?.lolAnnouncements !== false,
+            tftAnnouncements: account?.notifications?.tftAnnouncements !== false,
+        },
     };
 
     const trackedGames = account.trackedGames && typeof account.trackedGames === 'object' ? account.trackedGames : {};

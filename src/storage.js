@@ -132,6 +132,15 @@ function assertCanonicalAccountShape(guildId, account, accountIndex) {
     if (!(account.personId === undefined || account.personId === null || typeof account.personId === 'string')) {
         throw new Error(`${context}.personId must be string|null when present.`);
     }
+    if (account.notifications && (typeof account.notifications !== 'object' || Array.isArray(account.notifications))) {
+        throw new Error(`${context}.notifications must be an object when present.`);
+    }
+    if (account.notifications && !(account.notifications.lolAnnouncements === undefined || typeof account.notifications.lolAnnouncements === 'boolean')) {
+        throw new Error(`${context}.notifications.lolAnnouncements must be boolean when present.`);
+    }
+    if (account.notifications && !(account.notifications.tftAnnouncements === undefined || typeof account.notifications.tftAnnouncements === 'boolean')) {
+        throw new Error(`${context}.notifications.tftAnnouncements must be boolean when present.`);
+    }
 
     for (const gameKey of Object.values(TRACKED_GAMES)) {
         const identityNs = account.identity?.[gameKey];

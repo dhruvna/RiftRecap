@@ -73,6 +73,12 @@ export default {
                 .setName('confirm_reassign')
                 .setDescription('Required to reassign an already-linked account to another person')
                 .setRequired(false)
+        )
+        .addBooleanOption((opt) =>
+            opt
+                .setName('send_match_alerts')
+                .setDescription('Whether this account should post live/match alerts (default: true)')
+                .setRequired(false)
         ),
     
     async autocomplete(interaction) {
@@ -97,7 +103,7 @@ export default {
         const displayName = interaction.options.getString('display_name', false);
         const alias = interaction.options.getString('alias', false);
         const confirmReassign = interaction.options.getBoolean('confirm_reassign', false) === true;
-
+        const sendMatchAlerts = interaction.options.getBoolean('send_match_alerts', false);
         let desiredPersonLink = null;
         let desiredDisplayName = null;
 
@@ -182,6 +188,10 @@ export default {
                     lastRankByQueue: lolState.lastRankByQueue,
                     recapEvents: [],
                 },
+            },
+            notifications: {
+                lolAnnouncements: sendMatchAlerts !== false,
+                tftAnnouncements: sendMatchAlerts !== false,
             },
         };
 
