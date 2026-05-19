@@ -362,10 +362,13 @@ async function processUnseenLolMatches({
         const { matchId, me, participants, queueType, isRanked, gameMs, match } = prepared;
         if (isRanked) {
             const { byPuuid, byRiotId } = registeredLolLookup;
+            const myTeamId = Number.isFinite(me?.teamId) ? Number(me.teamId) : null;
             const lineupMemberKeys = [];
-            let trackedTeamId = null;
             let didWin = null;
             for (const participant of participants) {
+                if (myTeamId != null && Number(participant?.teamId) !== myTeamId) {
+                    continue;
+                }
                 const participantPuuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
                 const participantRiotId = normalizeRiotId(
                     participant?.riotIdGameName ?? participant?.gameName,
@@ -376,16 +379,15 @@ async function processUnseenLolMatches({
                     || null;
                 if (!canonicalMemberKey) continue;
                 lineupMemberKeys.push(canonicalMemberKey);
-                if (trackedTeamId == null && Number.isFinite(participant?.teamId)) {
-                    trackedTeamId = participant.teamId;
-                    didWin = participant?.win === true;
+                if (didWin == null && typeof participant?.win === 'boolean') {
+                    didWin = participant.win === true;
                 }
             }
             const eligibleLineupMemberSets = getEligibleLineupMemberSets(queueType, lineupMemberKeys);
             const shouldRecordAnyLineups = eligibleLineupMemberSets.length > 0;
-            if (shouldRecordAnyLineups && trackedTeamId != null) {
+            if (shouldRecordAnyLineups && myTeamId != null) {
                 const teammateWithOutcome = participants.find(
-                    (participant) => Number(participant?.teamId) === Number(trackedTeamId) && typeof participant?.win === 'boolean'
+                    (participant) => Number(participant?.teamId) === myTeamId && typeof participant?.win === 'boolean'
                 );
                 if (teammateWithOutcome) {
                     didWin = teammateWithOutcome.win === true;
@@ -428,7 +430,11 @@ async function processUnseenLolMatches({
         const shouldAnnounce = account?.notifications?.lolAnnouncements !== false
             && (!announceQueues || announceQueues.includes(queueType));
         if (!shouldAnnounce) {
-            logger.info(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`);
+            if (account?.notifications?.lolAnnouncements === false) {
+                logger.info(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (announcements disabled)`);
+            } else {
+                logger.info(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`);
+            }
             lastProcessedLolMatchId = matchId;
             lastProcessedLolMatchAt = gameMs;
             continue;
