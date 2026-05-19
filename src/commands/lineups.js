@@ -63,7 +63,7 @@ export default {
 
         const embed = new EmbedBuilder()
             .setTitle('Top LoL Lineups in This Server')
-            .setDescription(lines.join('\n'))
+            .setDescription(lines.join('\n'));
 
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'lineups' }),

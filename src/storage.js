@@ -192,9 +192,26 @@ async function loadDbFromDisk() {
         throw new Error('[loadDb] registrations.json root must be an object keyed by guildId.');
     }
 
+    let didMigrateLegacyLastSent = false;
     for (const guildId of Object.keys(parsed)) {
         if (!isValidGuildId(guildId)) continue;
+        const guild = parsed[guildId];
+        if (Array.isArray(guild?.recapConfigs)) {
+            const currentConfigs = guild.recapConfigs;
+            const normalizedConfigs = currentConfigs.map((cfg, idx) =>
+                normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
+            );
+            const hadLegacyKey = currentConfigs.some((cfg) => cfg && typeof cfg === 'object' && 'lastSentYmd' in cfg);
+            const shapeChanged = JSON.stringify(currentConfigs) !== JSON.stringify(normalizedConfigs);
+            if (hadLegacyKey || shapeChanged) {
+                guild.recapConfigs = normalizedConfigs;
+                didMigrateLegacyLastSent = true;
+            }
+        }
         assertCanonicalGuildShape(guildId, parsed[guildId]);
+    }
+    if (didMigrateLegacyLastSent) {
+        await writeDbAtomically(parsed);
     }
 
     return parsed;
@@ -500,30 +517,13 @@ export async function updateGuildRecapConfigsInStore(guildId, patch) {
     }).then((result) => result?.recapConfigs ?? []);
 }
 
-export async function updateGuildRecapLastSentYmdInStore(guildId, lastSentYmd) {
-    return mutateGuild(guildId, ({ guild }) => {
-        const current = guild?.recapConfigs?.[0]?.lastSentYmd ?? null;
-        if (current === lastSentYmd) {
-            return { didChange: false, updated: false };
-        }
-        guild.recapConfigs[0].lastSentYmd = lastSentYmd;
-        return { didChange: true, updated: true };
-    }).then((result) => result?.updated ?? false);
-}
-
-export async function updateGuildRecapLastSentYmdByIdInStore(guildId, configId, lastSentYmd, mode = null) {
+export async function updateGuildRecapLastSentYmdByIdInStore(guildId, configId, lastSentYmd, mode) {
     return mutateGuild(guildId, ({ guild }) => {
         const recapConfigs = Array.isArray(guild?.recapConfigs) ? guild.recapConfigs : [];
         const idx = recapConfigs.findIndex((cfg) => cfg?.id === configId);
         if (idx < 0) return { didChange: false, updated: false };
-        const current = recapConfigs[idx]?.lastSentYmd ?? null;
-        // Mode keys are stored uppercased; null/empty mode updates the default lastSentYmd field.
-        const normalizedMode = typeof mode === 'string' ? mode.trim().toUpperCase() : null;
-        if (!normalizedMode) {
-            if (current === lastSentYmd) return { didChange: false, updated: false };
-            recapConfigs[idx].lastSentYmd = lastSentYmd;
-            return { didChange: true, updated: true };
-        }
+        const normalizedMode = typeof mode === 'string' ? mode.trim().toUpperCase() : '';
+        if (!normalizedMode) throw new Error('[updateGuildRecapLastSentYmdByIdInStore] mode is required.');
 
         const currentByMode = recapConfigs[idx]?.lastSentYmdByMode && typeof recapConfigs[idx].lastSentYmdByMode === 'object'
             ? recapConfigs[idx].lastSentYmdByMode

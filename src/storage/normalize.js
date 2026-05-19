@@ -29,17 +29,23 @@ export function normalizeAccountIdentity(account) {
 
 export function normalizeRecapConfig(config, fallbackId = DEFAULT_RECAP_CONFIG_ID) {
     const safe = config && typeof config === 'object' ? config : {};
+    const rawByMode =
+        safe.lastSentYmdByMode && typeof safe.lastSentYmdByMode === 'object'
+            ? safe.lastSentYmdByMode
+            : {};
+    const hasByModeValues = Object.keys(rawByMode).length > 0;
+    const legacyLastSentYmd = safe.lastSentYmd ?? null;
+    const migratedByMode = !hasByModeValues && legacyLastSentYmd
+        ? { DAILY: legacyLastSentYmd }
+        : rawByMode;
+
     return {
         id: typeof safe.id === 'string' && safe.id.trim() ? safe.id : fallbackId,
         enabled: Boolean(safe.enabled),
         mode: safe.mode ?? 'DAILY',
         game: safe.game ?? 'TFT',
         queue: safe.queue ?? 'RANKED_TFT',
-        lastSentYmd: safe.lastSentYmd ?? null,
-        lastSentYmdByMode:
-            safe.lastSentYmdByMode && typeof safe.lastSentYmdByMode === 'object'
-                ? safe.lastSentYmdByMode
-                : {},
+        lastSentYmdByMode: migratedByMode,
     };
 }
 

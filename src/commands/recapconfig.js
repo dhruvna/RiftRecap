@@ -39,7 +39,7 @@ export default {
         const sentByMode = cfg?.lastSentYmdByMode && typeof cfg.lastSentYmdByMode === 'object' ? cfg.lastSentYmdByMode : {};
         const sentText = cfg.mode === 'BOTH'
           ? `daily ${sentByMode.DAILY ?? '—'}, weekly ${sentByMode.WEEKLY ?? '—'}`
-          : (sentByMode[cfg.mode] ?? cfg.lastSentYmd ?? '—');
+          : (sentByMode[cfg.mode] ?? '—');
         return `**${index + 1}. ${cfg.id}** • ${cfg.enabled ? 'Enabled' : 'Disabled'} • ${cfg.game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} • ${queueLabel(cfg.game ?? GAME_TYPES.TFT, cfg.queue)} • ${modeLabel(cfg.mode)} • lastSent: ${sentText}`;
       });
       
@@ -75,7 +75,6 @@ export default {
       game: targetGame,
       mode,
       queue: rawQueue,
-      ...(enabled ? { lastSentYmd: null } : { lastSentYmd: existing?.lastSentYmd ?? null }),
     };
 
     if (targetIdx >= 0) {

@@ -76,8 +76,7 @@ async function postRecapForConfig({
     const effectiveModes = mode === 'BOTH' ? ['DAILY', 'WEEKLY'] : [mode];
 
     for (const effectiveMode of effectiveModes) {
-        const fallbackLastSent = recapConfig.lastSentYmd ?? null;
-        const lastSentYmd = lastSentYmdByMode[effectiveMode] ?? fallbackLastSent;
+        const lastSentYmd = lastSentYmdByMode[effectiveMode] ?? null;
         const { shouldFire } = shouldFireRecapAutopost({
             now,
             fireHour,
@@ -101,7 +100,7 @@ async function postRecapForConfig({
         await channel.send({ embeds: [embed] });
 
         recapConfig.lastSentYmdByMode = {
-            ...lastSentYmdByMode,
+            ...(recapConfig.lastSentYmdByMode ?? {}),
             [effectiveMode]: today,
         };
         const updated = await updateGuildRecapLastSentYmdByIdInStore(guildId, configId, today, effectiveMode);
