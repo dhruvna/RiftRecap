@@ -21,7 +21,7 @@ A Discord bot built with **Node.js**, **discord.js**, and the **Riot Games API**
 - `/rank` — show stored rank snapshots (supports TFT, LoL, or both).
 - `/leaderboard` — TFT leaderboard view for registered players.
 - `/recap` — TFT recap output from tracked matches.
-- `/recapconfig` — configure recap behavior/autopost settings.
+- `/recapconfig` — configure recap autopost entries by `(game queue, mode)` and view status.
 - `/resetranks confirm:true` — reset TFT rank snapshots + recap history for this server.
 - `/resetranks confirm:true before_date:YYYY-MM-DD` — date-scoped reset for accounts with latest tracked TFT match before that UTC date.
 - `/resetranks ... clear_match_cursor:true` — optionally wipe match cursor state.

@@ -223,7 +223,7 @@ function setDbCache(nextDb, loadedAt = Date.now()) {
     return dbCache;
 }
 
-export function invalidateDbCache() {
+function invalidateDbCache() {
     dbCache = null;
     lastLoadedAt = null;
 }
@@ -233,7 +233,7 @@ export async function reloadDbFromDisk() {
     return setDbCache(parsed);
 }
 
-export function getDbCacheSnapshotMeta() {
+function getDbCacheSnapshotMeta() {
     return {
         hasCache: dbCache !== null,
         lastLoadedAt,
