@@ -223,21 +223,9 @@ function setDbCache(nextDb, loadedAt = Date.now()) {
     return dbCache;
 }
 
-function invalidateDbCache() {
-    dbCache = null;
-    lastLoadedAt = null;
-}
-
 export async function reloadDbFromDisk() {
     const parsed = await loadDbFromDisk();
     return setDbCache(parsed);
-}
-
-function getDbCacheSnapshotMeta() {
-    return {
-        hasCache: dbCache !== null,
-        lastLoadedAt,
-    };
 }
 
 export async function loadDb() {
