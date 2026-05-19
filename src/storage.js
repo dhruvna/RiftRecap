@@ -74,6 +74,9 @@ function assertCanonicalGuildShape(guildId, guild) {
     const context = `[loadDb] Malformed guild record for ${guildId}:`;
     if (!guild || typeof guild !== 'object' || Array.isArray(guild)) throw new Error(`${context} expected object.`);
     if (!Array.isArray(guild.accounts)) throw new Error(`${context} accounts must be an array.`);
+    if (!guild.accountsByKey || typeof guild.accountsByKey !== 'object' || Array.isArray(guild.accountsByKey)) {
+        throw new Error(`${context} accountsByKey must be an object.`);
+    }
     if (!('channelId' in guild)) throw new Error(`${context} channelId is required.`);
     if (!Array.isArray(guild.announceQueues)) throw new Error(`${context} announceQueues must be an array.`);
     if (!guild.tft || typeof guild.tft !== 'object' || Array.isArray(guild.tft)) throw new Error(`${context} tft must be an object.`);
@@ -92,9 +95,10 @@ function assertCanonicalGuildShape(guildId, guild) {
 function assertCanonicalPersonShape(guildId, person, personIndex) {
     const context = `[loadDb] Malformed guild record for ${guildId}: people[${personIndex}]`;
     if (!person || typeof person !== 'object' || Array.isArray(person)) throw new Error(`${context} must be an object.`);
-    if (typeof person.personId !== 'string' || !person.personId.trim()) throw new Error(`${context}.personId must be a non-empty string.`);
+    if (typeof person.id !== 'string' || !person.id.trim()) throw new Error(`${context}.id must be a non-empty string.`);
     if (typeof person.displayName !== 'string' || !person.displayName.trim()) throw new Error(`${context}.displayName must be a non-empty string.`);
     if (!Array.isArray(person.aliases)) throw new Error(`${context}.aliases must be an array.`);
+    if (!(person.accountKeys === undefined || Array.isArray(person.accountKeys))) throw new Error(`${context}.accountKeys must be an array when present.`);
     if (!Number.isFinite(person.createdAt)) throw new Error(`${context}.createdAt must be a number.`);
 }
 
@@ -193,9 +197,14 @@ async function loadDbFromDisk() {
     }
 
     let didMigrateLegacyLastSent = false;
+    let didMigrateGuildShape = false;
     for (const guildId of Object.keys(parsed)) {
         if (!isValidGuildId(guildId)) continue;
         const guild = parsed[guildId];
+        const beforeShape = JSON.stringify({ accountsByKey: guild?.accountsByKey, people: guild?.people, accounts: guild?.accounts });
+        migrateGuildToPeopleFirstShape(guild);
+        const afterShape = JSON.stringify({ accountsByKey: guild?.accountsByKey, people: guild?.people, accounts: guild?.accounts });
+        if (beforeShape !== afterShape) didMigrateGuildShape = true;
         if (Array.isArray(guild?.recapConfigs)) {
             const currentConfigs = guild.recapConfigs;
             const normalizedConfigs = currentConfigs.map((cfg, idx) =>
@@ -210,7 +219,7 @@ async function loadDbFromDisk() {
         }
         assertCanonicalGuildShape(guildId, parsed[guildId]);
     }
-    if (didMigrateLegacyLastSent) {
+    if (didMigrateLegacyLastSent || didMigrateGuildShape) {
         await writeDbAtomically(parsed);
     }
 
@@ -273,6 +282,7 @@ function ensureGuildMutable(db, guildId) {
     if (!db[guildId]) {
         db[guildId] = {
             accounts: [],
+            accountsByKey: {},
             people: [],
             channelId: null,
             announceQueues: [...DEFAULT_ANNOUNCE_QUEUES],
@@ -288,6 +298,57 @@ function ensureGuildPeopleMutable(guild) {
         guild.people = [];
     }
     return guild.people;
+}
+
+function ensureGuildAccountIndexMutable(guild) {
+    if (!guild.accountsByKey || typeof guild.accountsByKey !== 'object' || Array.isArray(guild.accountsByKey)) {
+        guild.accountsByKey = {};
+    }
+    return guild.accountsByKey;
+}
+
+function migrateGuildToPeopleFirstShape(guild) {
+    ensureGuildPeopleMutable(guild);
+    ensureGuildAccountIndexMutable(guild);
+    const peopleById = new Map();
+    for (const person of guild.people) {
+        if (!person || typeof person !== 'object') continue;
+        if (typeof person.id !== 'string' || !person.id.trim()) {
+            const legacyId = typeof person.personId === 'string' ? person.personId.trim() : '';
+            person.id = legacyId || makePersonId();
+        }
+        person.id = person.id.trim();
+        person.personId = person.id;
+        if (!Array.isArray(person.aliases)) person.aliases = [];
+        if (!Array.isArray(person.accountKeys)) person.accountKeys = [];
+        if (!Number.isFinite(person.createdAt)) person.createdAt = Date.now();
+        peopleById.set(person.id, person);
+    }
+
+    const nextAccounts = [];
+    const nextAccountsByKey = {};
+    for (const account of Array.isArray(guild.accounts) ? guild.accounts : []) {
+        if (!account || typeof account !== 'object') continue;
+        if (typeof account.key !== 'string' || !account.key.trim()) continue;
+        const normalizedKey = account.key.trim();
+        account.key = normalizedKey;
+        nextAccounts.push(account);
+        nextAccountsByKey[normalizedKey] = account;
+
+        const linkedPersonId = typeof account.personId === 'string' && account.personId.trim() ? account.personId.trim() : null;
+        if (!linkedPersonId) continue;
+        let person = peopleById.get(linkedPersonId);
+        if (!person) {
+            person = { id: linkedPersonId, displayName: linkedPersonId, aliases: [], accountKeys: [], createdAt: Date.now() };
+            guild.people.push(person);
+            peopleById.set(linkedPersonId, person);
+        }
+        if (!person.accountKeys.includes(normalizedKey)) {
+            person.accountKeys.push(normalizedKey);
+        }
+    }
+    guild.accounts = nextAccounts;
+    guild.accountsByKey = nextAccountsByKey;
 }
 
 function makePersonId() {
@@ -336,6 +397,27 @@ export async function listGuildPeople(guildId) {
     return Array.isArray(guild?.people) ? guild.people : [];
 }
 
+export async function listAccountsForPerson(guildId, personId) {
+    const db = await loadDb();
+    const guild = db?.[guildId];
+    if (!guild) return [];
+    const person = Array.isArray(guild.people)
+        ? guild.people.find((item) => item?.id === personId || item?.personId === personId)
+        : null;
+    if (!person) return [];
+    const accountKeys = Array.isArray(person.accountKeys) ? person.accountKeys : [];
+    const index = guild.accountsByKey && typeof guild.accountsByKey === 'object' ? guild.accountsByKey : {};
+    return accountKeys
+        .map((key) => index[key] || guild.accounts?.find((account) => account?.key === key))
+        .filter(Boolean);
+}
+
+export async function listAllGuildAccounts(guildId) {
+    const db = await loadDb();
+    const guild = db?.[guildId];
+    return Array.isArray(guild?.accounts) ? guild.accounts : [];
+}
+
 export async function createPersonInStore(guildId, { displayName }) {
     if (typeof displayName !== 'string' || !displayName.trim()) {
         throw new Error('[createPersonInStore] displayName must be a non-empty string.');
@@ -343,11 +425,13 @@ export async function createPersonInStore(guildId, { displayName }) {
     return mutateGuild(guildId, ({ guild }) => {
         const people = ensureGuildPeopleMutable(guild);
         const person = {
-            personId: makePersonId(),
+            id: makePersonId(),
             displayName: displayName.trim(),
             aliases: [],
+            accountKeys: [],
             createdAt: Date.now(),
         };
+        person.personId = person.id;
         people.push(person);
         return { didChange: true, person };
     }).then((result) => result?.person ?? null);
@@ -362,13 +446,15 @@ export async function linkAccountToPersonInStore(guildId, accountKey, personId) 
     }
     return mutateGuild(guildId, ({ guild }) => {
         const people = ensureGuildPeopleMutable(guild);
-        const personExists = people.some((person) => person?.personId === personId);
+        const personExists = people.some((person) => person?.id === personId || person?.personId === personId);
         if (!personExists) throw new Error(`[linkAccountToPersonInStore] personId "${personId}" not found in guild ${guildId}.`);
 
         const account = guild.accounts.find((item) => item?.key === accountKey);
         if (!account) throw new Error(`[linkAccountToPersonInStore] account "${accountKey}" not found in guild ${guildId}.`);
         if (account.personId === personId) return { didChange: false, updated: false, account };
         account.personId = personId;
+        const person = people.find((item) => item?.id === personId || item?.personId === personId);
+        if (person && Array.isArray(person.accountKeys) && !person.accountKeys.includes(account.key)) person.accountKeys.push(account.key);
         return { didChange: true, updated: true, account };
     }).then((result) => ({ updated: Boolean(result?.updated), account: result?.account ?? null }));
 }
@@ -381,6 +467,9 @@ export async function unlinkAccountFromPersonInStore(guildId, accountKey) {
         const account = guild.accounts.find((item) => item?.key === accountKey);
         if (!account) throw new Error(`[unlinkAccountFromPersonInStore] account "${accountKey}" not found in guild ${guildId}.`);
         if (account.personId === null || account.personId === undefined) return { didChange: false, updated: false, account };
+        const people = ensureGuildPeopleMutable(guild);
+        const person = people.find((item) => item?.id === account.personId || item?.personId === account.personId);
+        if (person && Array.isArray(person.accountKeys)) person.accountKeys = person.accountKeys.filter((key) => key !== account.key);
         account.personId = null;
         return { didChange: true, updated: true, account };
     }).then((result) => ({ updated: Boolean(result?.updated), account: result?.account ?? null }));
@@ -388,12 +477,14 @@ export async function unlinkAccountFromPersonInStore(guildId, accountKey) {
 
 async function upsertGuildAccount(db, guildId, account) {
     const guild = ensureGuildMutable(db, guildId);
+    const accountsByKey = ensureGuildAccountIndexMutable(guild);
 
     const idx = guild.accounts.findIndex((a) => a.key === account.key);
     const existed = idx >= 0;
 
     if (existed) guild.accounts[idx] = { ...guild.accounts[idx], ...account };
     else guild.accounts.push(account);
+    accountsByKey[account.key] = existed ? guild.accounts[idx] : account;
 
     return { account, existed };
 }
@@ -424,7 +515,7 @@ export async function upsertGuildAccountAndLinkPersonInStore(guildId, {
 
         if (personLink?.mode === 'existing') {
             const people = ensureGuildPeopleMutable(guild);
-            const personExists = people.some((person) => person?.personId === personLink.personId);
+            const personExists = people.some((person) => person?.id === personLink.personId || person?.personId === personLink.personId);
             if (!personExists) throw new Error(`[upsertGuildAccountAndLinkPersonInStore] personId "${personLink.personId}" not found in guild ${guildId}.`);
 
             if (target.personId && target.personId !== personLink.personId && !allowReassign) {
@@ -444,14 +535,24 @@ export async function upsertGuildAccountAndLinkPersonInStore(guildId, {
             } else {
                 const people = ensureGuildPeopleMutable(guild);
                 const person = {
-                    personId: makePersonId(),
+                    id: makePersonId(),
                     displayName,
                     aliases: [],
+                    accountKeys: [],
                     createdAt: Date.now(),
                 };
+                person.personId = person.id;
                 people.push(person);
-                target.personId = person.personId;
-                linkedPersonId = person.personId;
+                target.personId = person.id;
+                linkedPersonId = person.id;
+            }
+        }
+
+        if (linkedPersonId) {
+            const person = guild.people.find((item) => item?.id === linkedPersonId || item?.personId === linkedPersonId);
+            if (person) {
+                if (!Array.isArray(person.accountKeys)) person.accountKeys = [];
+                if (!person.accountKeys.includes(target.key)) person.accountKeys.push(target.key);
             }
         }
 
@@ -465,6 +566,14 @@ export async function removeGuildAccountByKey(guildId, key) {
         const idx = guild.accounts.findIndex((a) => a.key === key);
         if (idx === -1) return { removed: null, didChange: false };
         const [removed] = guild.accounts.splice(idx, 1);
+        const accountsByKey = ensureGuildAccountIndexMutable(guild);
+        delete accountsByKey[key];
+        const people = ensureGuildPeopleMutable(guild);
+        for (const person of people) {
+            if (Array.isArray(person?.accountKeys)) {
+                person.accountKeys = person.accountKeys.filter((accountKey) => accountKey !== key);
+            }
+        }
         return { removed, didChange: true };
     }).then((result) => result?.removed ?? null);
 }
