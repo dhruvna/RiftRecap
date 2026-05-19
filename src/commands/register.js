@@ -14,17 +14,12 @@ import { REGION_CHOICES } from '../constants/regions.js';
 
 import {
     makeAccountKey,
-    upsertGuildAccountAndLinkPersonInStore,
+    upsertGuildAccountInStore,
 } from '../storage.js';
 import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
 import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
-import { respondWithPersonChoices } from '../utils/autocomplete.js';
-
-const PERSON_MODES = {
-    NEW: 'new',
-    EXISTING: 'existing',
-};
+import { respondWithAccountChoices } from '../utils/autocomplete.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -39,41 +34,6 @@ export default {
         .addStringOption((opt) =>
             opt.setName('region').setDescription('Region like NA, EUW, KR').setRequired(true).addChoices(...REGION_CHOICES)
         )
-        .addStringOption((opt) =>
-            opt
-                .setName('person_mode')
-                .setDescription('Link this account to a new or existing person record')
-                .setRequired(false)
-                .addChoices(
-                    { name: 'new', value: PERSON_MODES.NEW },
-                    { name: 'existing', value: PERSON_MODES.EXISTING },
-                )
-        )
-        .addStringOption((opt) =>
-            opt
-                .setName('person')
-                .setDescription('Existing person to link when person_mode=existing')
-                .setRequired(false)
-                .setAutocomplete(true)
-        )
-        .addStringOption((opt) =>
-            opt
-                .setName('display_name')
-                .setDescription('Display name to create when person_mode=new')
-                .setRequired(false)
-        )
-        .addStringOption((opt) =>
-            opt
-                .setName('alias')
-                .setDescription('Alias to create when person_mode=new (fallback for display_name)')
-                .setRequired(false)
-        )
-        .addBooleanOption((opt) =>
-            opt
-                .setName('confirm_reassign')
-                .setDescription('Required to reassign an already-linked account to another person')
-                .setRequired(false)
-        )
         .addBooleanOption((opt) =>
             opt
                 .setName('send_match_alerts')
@@ -83,10 +43,7 @@ export default {
     
     async autocomplete(interaction) {
         try {
-            await respondWithPersonChoices(interaction, {
-                modeOptionName: 'person_mode',
-                expectedMode: PERSON_MODES.EXISTING,
-            });
+            await respondWithAccountChoices(interaction);
         } catch (err) {
             console.error('Error during register autocomplete:', err);
             return interaction.respond([]);
@@ -98,29 +55,7 @@ export default {
         const gameName = interaction.options.getString('gamename', true);
         const tagLine = interaction.options.getString('tagline', true);
         const regionInput = interaction.options.getString('region', true);
-        const personMode = interaction.options.getString('person_mode', false);
-        const selectedPersonId = interaction.options.getString('person', false);
-        const displayName = interaction.options.getString('display_name', false);
-        const alias = interaction.options.getString('alias', false);
-        const confirmReassign = interaction.options.getBoolean('confirm_reassign', false) === true;
         const sendMatchAlerts = interaction.options.getBoolean('send_match_alerts', false);
-        let desiredPersonLink = null;
-        let desiredDisplayName = null;
-
-        if (personMode === PERSON_MODES.EXISTING) {
-            if (!selectedPersonId) {
-                await interaction.editReply('`person` is required when `person_mode` is `existing`.');
-                return;
-            }
-            desiredPersonLink = { mode: PERSON_MODES.EXISTING, personId: selectedPersonId };
-        } else if (personMode === PERSON_MODES.NEW) {
-            desiredDisplayName = (displayName ?? alias ?? '').trim();
-            if (!desiredDisplayName) {
-                await interaction.editReply('`display_name` (or `alias`) is required when `person_mode` is `new`.');
-                return;
-            }
-            desiredPersonLink = { mode: PERSON_MODES.NEW, displayName: desiredDisplayName };
-        }
 
         const { platform, regional, region } = resolveRegion(regionInput);
 
@@ -194,20 +129,8 @@ export default {
                 tftAnnouncements: sendMatchAlerts !== false,
             },
         };
-
-        const outcome = await upsertGuildAccountAndLinkPersonInStore(guildId, {
-            account: stored,
-            personLink: desiredPersonLink,
-            allowReassign: confirmReassign,
-        });
-
-        // 6. Confirm to user
-        if (outcome.reassignBlocked) {
-            await interaction.editReply(
-                'This account is already linked to a different person. Re-run with `confirm_reassign:true` to move it.'
-            );
-            return;
-        }
+        
+        const outcome = await upsertGuildAccountInStore(guildId, stored);
 
         if (outcome.existed) {
             await interaction.editReply(`**${stored.gameName}#${stored.tagLine}** is already registered in this server.`);
