@@ -83,11 +83,6 @@ export const LOL_QUEUE_CHOICES = Object.freeze([
     { name: 'LoL Ranked Flex', value: LOL_QUEUE_TYPES.RANKED_FLEX },
 ]);
 
-export const TFT_RECAP_QUEUE_CHOICES = TFT_QUEUE_CHOICES;
-export const LOL_RECAP_QUEUE_CHOICES = LOL_QUEUE_CHOICES;
-export const TFT_LEADERBOARD_QUEUE_CHOICES = TFT_QUEUE_CHOICES;
-export const LOL_LEADERBOARD_QUEUE_CHOICES = LOL_QUEUE_CHOICES;
-
 export const ALL_QUEUE_CHOICES = Object.freeze([
     ...TFT_QUEUE_CHOICES,
     ...LOL_QUEUE_CHOICES,

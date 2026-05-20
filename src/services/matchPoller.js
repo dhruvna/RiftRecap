@@ -118,13 +118,6 @@ function compareRecapEventsDesc(left, right) {
     return String(left?.matchId ?? '').localeCompare(String(right?.matchId ?? ''));
 }
 
-function findRecapInsertIndex(recapEvents = [], event = {}) {
-    for (let i = 0; i < recapEvents.length; i += 1) {
-        if (compareRecapEventsDesc(event, recapEvents[i]) < 0) return i;
-    }
-    return recapEvents.length;
-}
-
 function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, gameMs }) {
     const already = recapEvents.some((event) => event.matchId === matchId);
     if (already) return recapEvents;
@@ -235,7 +228,7 @@ function reduceLolLiveState({
     return { nextTrackingPatch, shouldAnnounceLive: true, debugReason: 'announce_live' };
 }
 
-export { buildRecapEvents, compareRecapEventsDesc, findRecapInsertIndex, reduceLolLiveState };
+export { buildRecapEvents, compareRecapEventsDesc, reduceLolLiveState };
 
 function normalizeRiotId(gameName, tagLine) {
     const game = typeof gameName === 'string' ? gameName.trim().toLowerCase() : '';
