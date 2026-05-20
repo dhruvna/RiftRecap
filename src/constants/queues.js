@@ -91,8 +91,6 @@ export const ALL_QUEUE_CHOICES = Object.freeze([
 export const ALL_RECAP_QUEUE_CHOICES = ALL_QUEUE_CHOICES;
 export const VALID_RECAP_QUEUES = new Set(ALL_QUEUE_CHOICES.map((choice) => choice.value));
 
-export const ALL_LEADERBOARD_QUEUE_CHOICES = ALL_QUEUE_CHOICES;
-
 export function defaultRankedQueueForGame(game) {
     return game === GAME_TYPES.LOL ? LOL_QUEUE_TYPES.RANKED_SOLO_DUO : TFT_QUEUE_TYPES.RANKED;
 }

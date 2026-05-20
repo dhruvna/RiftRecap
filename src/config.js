@@ -108,6 +108,10 @@ function readPostMatchAnnouncementStrategy(envName, defaultValue = 'edit') {
 
 // === Final config ===
 // Freeze the config so accidental mutations don't create confusing runtime bugs.
+const debugEnabled = readBool('DEBUG', {
+    defaultValue: false,
+});
+
 /** @type {AppConfig} */
 const config = Object.freeze({
     discordBotToken: requireString('DISCORD_BOT_TOKEN'),
@@ -149,10 +153,9 @@ const config = Object.freeze({
     liveAnnounceRankedOnly: readBool('LIVE_ANNOUNCE_RANKED_ONLY', {
         defaultValue: true,
     }),
-    debug: readBool('DEBUG', {
-        defaultValue: false,
-    }),
-    logLevel: readBool('DEBUG', { defaultValue: false }) ? 'debug' : readLogLevel(),
+    // DEBUG=true overrides LOG_LEVEL precedence.
+    debug: debugEnabled,
+    logLevel: debugEnabled ? 'debug' : readLogLevel(),
 });
 
 export default config;

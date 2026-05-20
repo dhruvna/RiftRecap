@@ -32,7 +32,6 @@ const DATA_PATH = process.env.DATA_PATH
 // Serialize write operations so RMW cycles don't collide.
 let writeQueue = Promise.resolve();
 let dbCache = null;
-let lastLoadedAt = null;
 const DISCORD_SNOWFLAKE_REGEX = /^\d{17,20}$/;
 const RECAP_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -184,9 +183,8 @@ async function loadDbFromDisk() {
     return parsed;
 }
 
-function setDbCache(nextDb, loadedAt = Date.now()) {
+function setDbCache(nextDb) {
     dbCache = nextDb;
-    lastLoadedAt = loadedAt;
     return dbCache;
 }
 
