@@ -9,13 +9,7 @@ This document archives the early project timeline and legacy TODO/backlog notes 
 - Patch notes / release changelog
 - `/lastmatch` command
 - Optional match history browsing
-
----
-
-## 2026-05 recap schema cleanup
-- Removed pre-mode recap compatibility branches in runtime rendering/scheduling paths.
-- Recap autopost status and scheduler now rely on `lastSentYmdByMode` as the canonical mode marker.
-- Added lightweight schema/scheduling tests to lock config normalization and firing behavior.
+- sometimes matches post twice?
 
 ---
 

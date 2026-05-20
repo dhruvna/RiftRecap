@@ -33,11 +33,6 @@ export function normalizeRecapConfig(config, fallbackId = DEFAULT_RECAP_CONFIG_I
         safe.lastSentYmdByMode && typeof safe.lastSentYmdByMode === 'object'
             ? safe.lastSentYmdByMode
             : {};
-    const hasByModeValues = Object.keys(rawByMode).length > 0;
-    const legacyLastSentYmd = safe.lastSentYmd ?? null;
-    const migratedByMode = !hasByModeValues && legacyLastSentYmd
-        ? { DAILY: legacyLastSentYmd }
-        : rawByMode;
 
     return {
         id: typeof safe.id === 'string' && safe.id.trim() ? safe.id : fallbackId,
@@ -45,7 +40,7 @@ export function normalizeRecapConfig(config, fallbackId = DEFAULT_RECAP_CONFIG_I
         mode: safe.mode ?? 'DAILY',
         game: safe.game ?? 'TFT',
         queue: safe.queue ?? 'RANKED_TFT',
-        lastSentYmdByMode: migratedByMode,
+        lastSentYmdByMode: rawByMode,
     };
 }
 

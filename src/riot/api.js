@@ -1,13 +1,9 @@
 import config from '../config.js';
-import { REGION_TO_ROUTES } from '../constants/regions.js';
+import { resolveRegionRoutes, normalizeRegionToShard } from '../constants/regions.js';
 import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 
 export function resolveRegion(regionMaybe) {
-    const fallback = config.defaultRegion;
-    const region = (regionMaybe || fallback).toUpperCase();
-    const routes = REGION_TO_ROUTES[region];
-    if (!routes) throw new Error(`Region routing not configured: ${region}`);
-    return { region, ...routes };
+    return resolveRegionRoutes(regionMaybe || config.defaultRegion);
 }
 
 const RIOT_TFT_API_KEY = config.riotTftApiKey;
@@ -111,10 +107,6 @@ export async function getLolMatchIdsByPuuid({
 export async function getLolMatch({ regional, matchId, limiter }) {
     const url = `https://${regional}.api.riotgames.com/lol/match/v5/matches/${encodeURIComponent(matchId)}`;
     return riotFetchJson(url, 'LOL', limiter);
-}
-
-function normalizeRegionToShard(region = 'NA') {
-    return String(region || 'NA').toLowerCase().replace(/\d+$/, '');
 }
 
 function encodeRiotIdPath({ gameName, tagLine }) {

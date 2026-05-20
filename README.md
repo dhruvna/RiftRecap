@@ -73,10 +73,9 @@ The data model is canonical in `registrations.json`. Migration support is a one-
 
 ## Known limitations
 - Some `resetranks` edge cases still need broader verification coverage.
-## Planned improvements
+## Active roadmap
 - `/season` command for looking up WR for the season, best champs, lp history 
 - track teammates played with, aka create sets of usernames, track winrate per set. then can list the best performing lineups/roles can be a further extension though it increases possibilities by a LOT. would probably need to store this in a separate file (lineups.json)
 - betting!?
-- X is IN GAME
 
 Historical timeline and archived notes are in [`docs/history.md`](docs/history.md).

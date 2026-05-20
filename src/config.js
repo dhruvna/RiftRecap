@@ -1,6 +1,7 @@
 // === Environment bootstrap ===
 // Load .env values into process.env early so all reads below are consistent.
 import 'dotenv/config';
+import { DEFAULT_REGION, SUPPORTED_REGIONS, normalizeRegion, isSupportedRegion } from './constants/regions.js';
 
 // === Configuration schema ===
 // Documenting the config shape keeps the rest of the app self-describing.
@@ -25,25 +26,7 @@ import 'dotenv/config';
 
 // === Defaults and validation sets ===
 // These constants centralize valid region values and fallback behavior.
-const DEFAULT_REGION = 'NA';
-const VALID_REGIONS = new Set([
-    'NA',
-    'EUW',
-    'EUNE',
-    'KR',
-    'BR',
-    'LAN',
-    'LAS',
-    'OCE',
-    'JP',
-    'RU',
-    'TR',
-    'VN',
-    'SG',
-    'PH',
-    'TH',
-    'TW',
-]);
+const VALID_REGIONS = new Set(SUPPORTED_REGIONS);
 
 // === Environment helpers ===
 // Small helpers give us consistent error messages and type conversions.
@@ -89,13 +72,13 @@ function readBool(name, { defaultValue = false } = {}) {
 }
 
 /**
- * Normalizes DEFAULT_REGION and rejects unsupported values to keep downstream API routing predictable.
+ * Uses canonical region utility and rejects unsupported values to keep downstream API routing predictable.
  */
 function readRegion() {
     const raw = readEnv('DEFAULT_REGION') ?? DEFAULT_REGION;
-    const normalized = String(raw).toUpperCase();
-    if (!VALID_REGIONS.has(normalized)) {
-    throw new Error(`Environment variable DEFAULT_REGION must be one of: ${[
+    const normalized = normalizeRegion(raw);
+    if (!isSupportedRegion(normalized)) {
+        throw new Error(`Environment variable DEFAULT_REGION must be one of: ${[
         ...VALID_REGIONS,
     ].join(', ')}`);
     }

@@ -47,3 +47,28 @@ export const REGION_TO_ROUTES = {
     TW:  { platform: 'tw2', regional: 'sea' },
     VN:  { platform: 'vn2', regional: 'sea' },
 };
+
+// Canonical region utility (normalization + route lookup) used across config and Riot API flows.
+export const DEFAULT_REGION = 'NA';
+export const SUPPORTED_REGIONS = Object.freeze(Object.keys(REGION_TO_ROUTES));
+const SUPPORTED_REGION_SET = new Set(SUPPORTED_REGIONS);
+
+export function normalizeRegion(regionMaybe = DEFAULT_REGION) {
+    return String(regionMaybe || DEFAULT_REGION).trim().toUpperCase();
+}
+
+export function isSupportedRegion(regionMaybe) {
+    return SUPPORTED_REGION_SET.has(normalizeRegion(regionMaybe));
+}
+
+export function resolveRegionRoutes(regionMaybe) {
+    const region = normalizeRegion(regionMaybe);
+    const routes = REGION_TO_ROUTES[region];
+    if (!routes) throw new Error(`Region routing not configured: ${region}`);
+    return { region, ...routes };
+}
+
+// LeagueOfGraphs shard formatter for region/platform-ish identifiers (e.g., NA1 -> na).
+export function normalizeRegionToShard(region = DEFAULT_REGION) {
+    return String(region || DEFAULT_REGION).toLowerCase().replace(/\d+$/, '');
+}

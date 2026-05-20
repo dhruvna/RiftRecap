@@ -3,6 +3,9 @@ import { getLolIdentity, getLolTracking, getTftIdentity, getTftTracking } from '
 import { getLolRankByPuuid, getTFTRankByPuuid } from '../../riot.js';
 import { toRankSnapshot } from '../../utils/rankSnapshot.js';
 
+// Hot-path constants for long-running polling: avoid rebuilding ranked queue lookup sets per account refresh.
+const LOL_RANKED_QUEUE_LOOKUP = new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL]);
+
 export function shouldRefreshRank(account, now, maxAgeMs, gameType = GAME_TYPES.TFT) {
     const tracking = gameType === GAME_TYPES.LOL ? getLolTracking(account) : getTftTracking(account);
     if (!tracking?.lastRankByQueue) return true;
@@ -37,6 +40,6 @@ export async function refreshLolRankSnapshot({ riotLimiter, account }) {
     });
 
     return toRankSnapshot(normalizedEntries, {
-        rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL]),
+        rankedQueues: LOL_RANKED_QUEUE_LOOKUP,
     });
 }

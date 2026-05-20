@@ -1,3 +1,5 @@
+import logger from './logger.js';
+
 function normalizeErrorMessage(error) {
     const status = error?.status;
     if (status === 404) return "Couldn't find that Riot ID. Please double-check spelling and try again.";
@@ -8,7 +10,13 @@ function normalizeErrorMessage(error) {
 
 export async function respondToCommandError(interaction, error, { commandName = 'command' } = {}) {
     const message = normalizeErrorMessage(error);
-    console.error(`[${commandName}] command failed`, error);
+    logger.error('guild_command_failed', {
+        service: 'commands',
+        event: 'guild_command_failed',
+        guildId: interaction?.guildId ?? null,
+        commandName,
+        error,
+    });
 
     if (interaction.deferred || interaction.replied) {
         await interaction.editReply(message);

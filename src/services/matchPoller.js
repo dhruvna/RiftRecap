@@ -75,6 +75,9 @@ const MATCH_POLLER_WORKER_COUNT = (() => {
     return Math.min(10, Math.max(3, Math.floor(configured)));
 })();
 
+// Hot-path constants for long-running polling: reuse immutable queue/ranked lookups to reduce per-iteration allocations.
+const DEFAULT_ANNOUNCE_QUEUES_SET = new Set(DEFAULT_ANNOUNCE_QUEUES);
+
 // === Riot fetch helpers ===
 // Wrap Riot calls so we always respect the rate limiter.
 async function fetchMatch({ riotLimiter, account, matchId, game }) {
@@ -109,21 +112,35 @@ async function fetchMatchIds({ riotLimiter, account, count, start = 0, game }) {
 
 // === Recap event buffer ===
 // Track a rolling window of recent ranked matches for recap summaries.
+function compareRecapEventsDesc(left, right) {
+    const byTimestamp = Number(right?.at ?? 0) - Number(left?.at ?? 0);
+    if (byTimestamp !== 0) return byTimestamp;
+    return String(left?.matchId ?? '').localeCompare(String(right?.matchId ?? ''));
+}
+
+function findRecapInsertIndex(recapEvents = [], event = {}) {
+    for (let i = 0; i < recapEvents.length; i += 1) {
+        if (compareRecapEventsDesc(event, recapEvents[i]) < 0) return i;
+    }
+    return recapEvents.length;
+}
+
 function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, gameMs }) {
     const already = recapEvents.some((event) => event.matchId === matchId);
     if (already) return recapEvents;
 
-    const nextEvents = [
-        ...recapEvents,
-        {
-            matchId,
-            at: gameMs,
-            queueType,
-            delta: Number(delta ?? 0),
-            placement: Number(placement ?? 0),
-        },
-    ];
-    return nextEvents.sort((a, b) => b.at - a.at).slice(0, 250);
+    const nextEvent = {
+        matchId,
+        at: gameMs,
+        queueType,
+        delta: Number(delta ?? 0),
+        placement: Number(placement ?? 0),
+    };
+    const insertIndex = findRecapInsertIndex(recapEvents, nextEvent);
+    const nextEvents = [...recapEvents];
+    nextEvents.splice(insertIndex, 0, nextEvent);
+    if (nextEvents.length > 250) nextEvents.length = 250;
+    return nextEvents;
 }
 
 // === Discord announcement ===
@@ -220,7 +237,7 @@ function reduceLolLiveState({
     return { nextTrackingPatch, shouldAnnounceLive: true, debugReason: 'announce_live' };
 }
 
-export { reduceLolLiveState };
+export { buildRecapEvents, compareRecapEventsDesc, findRecapInsertIndex, reduceLolLiveState };
 
 function normalizeRiotId(gameName, tagLine) {
     const game = typeof gameName === 'string' ? gameName.trim().toLowerCase() : '';
@@ -245,7 +262,7 @@ function buildRegisteredLolLookup(guild = {}) {
     return { byPuuid, byRiotId };
 }
 
-async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueues }) {
+async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null }) {
     const areLolAnnouncementsEnabledForAccount = account?.notifications?.lolAnnouncements !== false;
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
@@ -270,7 +287,7 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
         });
         const queueType = queueContext?.queueType ?? LOL_QUEUE_TYPES.UNKNOWN;
         const isRankedLiveQueue = isRankedQueue(GAME_TYPES.LOL, queueType);
-        const isAllowedByGuildQueueConfig = !announceQueues || announceQueues.includes(queueType);
+        const isAllowedByGuildQueueConfig = !announceQueueLookup || announceQueueLookup.has(queueType);
         const shouldAnnounceBasedOnQueue = (!config.liveAnnounceRankedOnly || isRankedLiveQueue) && isAllowedByGuildQueueConfig;
 
         if (!shouldAnnounceBasedOnQueue) {
@@ -318,7 +335,7 @@ async function processUnseenLolMatches({
     channel,
     lolIdentity,
     lolTracking,
-    announceQueues,
+    announceQueueLookup = null,
     refreshedRankSnapshotsByGame,
     rankSnapshotBeforeRefresh = null,
     guild = null,
@@ -428,7 +445,7 @@ async function processUnseenLolMatches({
             lolRecapEvents = buildRecapEvents({ recapEvents: lolRecapEvents, matchId, queueType, delta, placement, gameMs });
         }
         const shouldAnnounce = account?.notifications?.lolAnnouncements !== false
-            && (!announceQueues || announceQueues.includes(queueType));
+            && (!announceQueueLookup || announceQueueLookup.has(queueType));
         if (!shouldAnnounce) {
             if (account?.notifications?.lolAnnouncements === false) {
                 logger.info(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (announcements disabled)`);
@@ -668,6 +685,9 @@ export async function startMatchPoller(client) {
 
                     const announceQueues = guild?.announceQueues ?? DEFAULT_ANNOUNCE_QUEUES;
                     
+                    const announceQueueLookup = Array.isArray(announceQueues)
+                        ? (announceQueues === DEFAULT_ANNOUNCE_QUEUES ? DEFAULT_ANNOUNCE_QUEUES_SET : new Set(announceQueues))
+                        : null;
 
                     if (canPollLol) {
                         const lolStateResult = await pollLolAccountState({
@@ -677,7 +697,7 @@ export async function startMatchPoller(client) {
                             guildId,
                             channel,
                             channelIdForGuild,
-                            announceQueues,
+                            announceQueueLookup,
                         });
                         
                         stagePatch('lol', lolStateResult.trackingPatch);
@@ -746,7 +766,7 @@ export async function startMatchPoller(client) {
                             channel,
                             lolIdentity,
                             lolTracking,
-                            announceQueues,
+                            announceQueueLookup,
                             refreshedRankSnapshotsByGame,
                             rankSnapshotBeforeRefresh: lolRankSnapshotBeforeRefresh,
                             guild,
@@ -882,7 +902,7 @@ export async function startMatchPoller(client) {
                             });
                         }
                         const shouldAnnounce = account?.notifications?.tftAnnouncements !== false
-                            && (!announceQueues || announceQueues.includes(queueType));
+                            && (!announceQueueLookup || announceQueueLookup.has(queueType));
                         if (!shouldAnnounce) {
                             logger.info(
                                 `[match-poller] skipping announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`
