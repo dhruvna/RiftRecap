@@ -96,22 +96,12 @@ function readLogLevel() {
     return normalized;
 }
 
-function readLolPostMatchAnnouncementStrategy() {
-    const raw = readEnv('LOL_POST_MATCH_ANNOUNCEMENT_STRATEGY') ?? 'edit';
+function readPostMatchAnnouncementStrategy(envName, defaultValue = 'edit') {
+    const raw = readEnv(envName) ?? defaultValue;
     const normalized = String(raw).toLowerCase();
     const valid = new Set(['edit', 'delete_and_send']);
     if (!valid.has(normalized)) {
-        throw new Error(`Environment variable LOL_POST_MATCH_ANNOUNCEMENT_STRATEGY must be one of: ${[...valid].join(', ')}`);
-    }
-    return normalized;
-}
-
-function readTftPostMatchAnnouncementStrategy() {
-    const raw = readEnv('TFT_POST_MATCH_ANNOUNCEMENT_STRATEGY') ?? 'edit';
-    const normalized = String(raw).toLowerCase();
-    const valid = new Set(['edit', 'delete_and_send']);
-    if (!valid.has(normalized)) {
-        throw new Error(`Environment variable TFT_POST_MATCH_ANNOUNCEMENT_STRATEGY must be one of: ${[...valid].join(', ')}`);
+        throw new Error(`Environment variable ${envName} must be one of: ${[...valid].join(', ')}`);
     }
     return normalized;
 }
@@ -150,8 +140,12 @@ const config = Object.freeze({
         min: 0,
         max: 59,
     }),
-    lolPostMatchAnnouncementStrategy: readLolPostMatchAnnouncementStrategy(),
-    tftPostMatchAnnouncementStrategy: readTftPostMatchAnnouncementStrategy(),
+    lolPostMatchAnnouncementStrategy: readPostMatchAnnouncementStrategy(
+        'LOL_POST_MATCH_ANNOUNCEMENT_STRATEGY'
+    ),
+    tftPostMatchAnnouncementStrategy: readPostMatchAnnouncementStrategy(
+        'TFT_POST_MATCH_ANNOUNCEMENT_STRATEGY'
+    ),
     liveAnnounceRankedOnly: readBool('LIVE_ANNOUNCE_RANKED_ONLY', {
         defaultValue: true,
     }),
