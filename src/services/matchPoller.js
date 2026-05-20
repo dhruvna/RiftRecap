@@ -136,9 +136,7 @@ function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, g
         delta: Number(delta ?? 0),
         placement: Number(placement ?? 0),
     };
-    const insertIndex = findRecapInsertIndex(recapEvents, nextEvent);
-    const nextEvents = [...recapEvents];
-    nextEvents.splice(insertIndex, 0, nextEvent);
+    const nextEvents = [...recapEvents, nextEvent].sort(compareRecapEventsDesc);
     if (nextEvents.length > 250) nextEvents.length = 250;
     return nextEvents;
 }
