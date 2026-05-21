@@ -9,7 +9,7 @@ import { withGuildCommand } from '../utils/withGuildCommand.js';
 import logger from '../utils/logger.js';
 import {
     GAME_TYPES,
-    ALL_RECAP_QUEUE_CHOICES,
+    ALL_QUEUE_CHOICES,
     defaultRankedQueueForGame,
     gameFromQueue,
     VALID_RECAP_QUEUES,
@@ -26,7 +26,7 @@ export default {
         .setName('queue')
         .setDescription('Queue to recap (TFT + LoL options)')
         .setRequired(false)
-        .addChoices(...ALL_RECAP_QUEUE_CHOICES)
+        .addChoices(...ALL_QUEUE_CHOICES)
     )
     .addStringOption((opt) =>
       opt.setName('mode').setDescription('Daily or weekly recap').setRequired(false).addChoices(...RECAP_COMMAND_MODE_CHOICES)
@@ -42,7 +42,7 @@ export default {
         }
         const rawQueue = interaction.options.getString('queue');
         if (rawQueue && !VALID_RECAP_QUEUES.has(rawQueue)) {
-            const validQueues = ALL_RECAP_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(', ');
+            const validQueues = ALL_QUEUE_CHOICES.map((choice) => `\`${choice.name}\``).join(', ');
             await interaction.editReply(
                 `Invalid queue \`${rawQueue}\`. Choose one of: ${validQueues}.`
             );

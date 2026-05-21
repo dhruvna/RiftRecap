@@ -1,7 +1,7 @@
 // src/commands/recapconfig.js
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { loadDb, getGuildRecapConfigs, updateGuildRecapConfigsInStore } from '../storage.js';
-import { GAME_TYPES, ALL_RECAP_QUEUE_CHOICES, queueLabel, gameFromQueue } from '../constants/queues.js';
+import { GAME_TYPES, ALL_QUEUE_CHOICES, queueLabel, gameFromQueue } from '../constants/queues.js';
 
 import {
   RECAP_MODE_CHOICES,
@@ -18,7 +18,7 @@ export default {
     .setDescription('Manage recap autopost configs or use `status:true` to view all configs.')
     .addBooleanOption((opt) => opt.setName('status').setDescription('Show current recap configs.').setRequired(false))
     .addStringOption((opt) => opt.setName('mode').setDescription('Daily, weekly, or both recap content').setRequired(false).addChoices(...RECAP_MODE_CHOICES))
-    .addStringOption((opt) => opt.setName('queue').setDescription('Which queue to post').setRequired(false).addChoices(...ALL_RECAP_QUEUE_CHOICES))
+    .addStringOption((opt) => opt.setName('queue').setDescription('Which queue to post').setRequired(false).addChoices(...ALL_QUEUE_CHOICES))
     .addBooleanOption((opt) => opt.setName('enabled').setDescription('Enable/disable recap autopost for queue+mode.').setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
