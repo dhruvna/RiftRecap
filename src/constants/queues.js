@@ -24,6 +24,8 @@ export const LOL_QUEUE_TYPES = Object.freeze({
     UNKNOWN: 'UNKNOWN_LOL',
 });
 
+const LOL_QUEUE_TYPE_SET = new Set(Object.values(LOL_QUEUE_TYPES));
+
 export const GAME_TYPE_CHOICES = Object.freeze([
     { name: 'TFT', value: GAME_TYPES.TFT },
     { name: 'LoL', value: GAME_TYPES.LOL },
@@ -97,7 +99,7 @@ export function defaultRankedQueueForGame(game) {
 
 export function gameFromQueue(queueType) {
     if (!queueType) return GAME_TYPES.TFT;
-    const isLolQueue = Object.values(LOL_QUEUE_TYPES).includes(queueType);
+    const isLolQueue = LOL_QUEUE_TYPE_SET.has(queueType);
     return isLolQueue ? GAME_TYPES.LOL : GAME_TYPES.TFT;
 }
 
@@ -125,7 +127,7 @@ export function queueTypeFromQueueId(queueId, game = GAME_TYPES.TFT) {
 
 export function mapRiotLolQueueType(queueType) {
     if (!queueType) return null;
-    if (Object.values(LOL_QUEUE_TYPES).includes(queueType)) return queueType;
+    if (LOL_QUEUE_TYPE_SET.has(queueType)) return queueType;
     return LOL_RIOT_QUEUE_TYPE_TO_BOT_QUEUE_TYPE[queueType] ?? null;
 }
 

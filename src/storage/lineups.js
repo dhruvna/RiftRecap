@@ -137,14 +137,16 @@ function normalizeMatchIdList(matchIds, limit) {
     }
 
     const normalized = [];
+    const seen = new Set();
     for (const value of matchIds) {
         if (typeof value !== 'string') {
             continue;
         }
         const trimmed = value.trim();
-        if (!trimmed || normalized.includes(trimmed)) {
+        if (!trimmed || seen.has(trimmed)) {
             continue;
         }
+        seen.add(trimmed);
         normalized.push(trimmed);
         if (normalized.length >= limit) {
             break;
