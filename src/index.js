@@ -81,11 +81,18 @@ client.once('clientReady', async () => {
     }
 
     // Start the background services that keep the bot up-to-date:
-    // - match poller: periodic rank/match updates
-    // - recap autoposter: scheduled recap messages
-    startMatchPoller(client).catch((error) => {
+    // 1) match poller performs an immediate backfill on startup (`await tick()`),
+    // 2) recap autoposter starts only after that startup backfill completes.
+    try {
+        await startMatchPoller(client);
+    } catch (error) {
+
+    // // - match poller: periodic rank/match updates
+    // // - recap autoposter: scheduled recap messages
+    // startMatchPoller(client).catch((error) => {
         logger.error('match_poller_failed', { service: 'startup', event: 'match_poller_failed', error });
-    });
+    // });
+    }
 
     startRecapAutoposter(client).catch((error) => {
         logger.error('recap_autoposter_failed', { service: 'startup', event: 'recap_autoposter_failed', error });

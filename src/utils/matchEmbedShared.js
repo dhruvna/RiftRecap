@@ -73,41 +73,55 @@ export function resolveLiveGamePresentation({ queueLabel, riotId, game }) {
 }
 
 const TIER_PROGRESS_ORDER = Object.freeze(['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER']);
+const DIVISION_PROGRESS_ORDER = Object.freeze(['IV', 'III', 'II', 'I']);
+
 function tierProgressIndex(tier) {
     return typeof tier === 'string' ? TIER_PROGRESS_ORDER.indexOf(tier.toUpperCase()) : -1;
 }
 
+function divisionProgressIndex(division) {
+  return typeof division === 'string' ? DIVISION_PROGRESS_ORDER.indexOf(division.toUpperCase()) : -1;
+}
+
+function rankBoundaryIndex(rank) {
+  if (!rank?.tier) return null;
+
+  const tierIndex = tierProgressIndex(rank.tier);
+  if (tierIndex < 0) return null;
+
+  const isApexTier = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(String(rank.tier).toUpperCase());
+  if (isApexTier) return tierIndex * 10;
+
+  const divisionIndex = divisionProgressIndex(rank.rank);
+  if (divisionIndex < 0) return null;
+
+  return tierIndex * 10 + divisionIndex;
+}
+
 function findTierChange({ beforeRank, afterRank }) {
-    if (!beforeRank?.tier || !afterRank?.tier) return false;
-    const beforeTier = tierProgressIndex(beforeRank.tier);
-    const afterTier = tierProgressIndex(afterRank.tier);
-    if (beforeTier >= 0 && afterTier > beforeTier) {
-      return 'promote';
-    } else if (beforeTier >= 0 && afterTier >= 0 && afterTier < beforeTier) {
-      return 'demote';
-    }
-    return false;
+  const beforeBoundary = rankBoundaryIndex(beforeRank);
+  const afterBoundary = rankBoundaryIndex(afterRank);
+  if (beforeBoundary === null || afterBoundary === null || beforeBoundary === afterBoundary) return false;
+  return afterBoundary > beforeBoundary ? 'promote' : 'demote';
 }
 
 export function buildTierChangeEmbed({ channel, account, game, queueType, beforeRank, afterRank }) {
     if (!channel || !findTierChange({ beforeRank, afterRank })) return;
     const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
+    const beforeRankStr = formatRankWithLp(beforeRank);
+    const afterRankStr = formatRankWithLp(afterRank);
     const tierChange = findTierChange({ beforeRank, afterRank });
     const color = tierChange === 'promote' ? 0xf5b642 : 0xf34e3c;
     const title = tierChange === 'promote'
-        ? '✨ Rank Up! ✨'
-        : '😭🤣 Demotion 🤣😭';
+        ? '✨ Rank Promotion! ✨'
+        : '😭🤣 Rank Demotion 🤣😭';
     const description = tierChange === 'promote'
-        ? `**${riotId}** promoted in **${game.toUpperCase()}** (${queueType})`
-        : `**${riotId}** demoted in **${game.toUpperCase()}** (${queueType})`;
+        ? `**${riotId}** promoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`
+        : `**${riotId}** demoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`;
     const embed = new EmbedBuilder()
         .setColor(color)
         .setTitle(title)
         .setDescription(description)
-        .addFields(
-            { name: 'From', value: formatRankWithLp(beforeRank), inline: true },
-            { name: 'To', value: formatRankWithLp(afterRank), inline: true },
-        )
         .setTimestamp(new Date());
     return embed;
 }
