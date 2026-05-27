@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getGuildLineupStats } from '../storage/lineups.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
+import { respondWithAccountChoices } from '../utils/autocomplete.js';
 
 function parseLineupDisplay(lineupKey) {
     if (typeof lineupKey !== 'string' || !lineupKey.trim()) {
@@ -9,10 +10,32 @@ function parseLineupDisplay(lineupKey) {
     return lineupKey.split('|').join(' + ');
 }
 
+function lineupIncludesAccount(lineupKey, accountKey) {
+    if (typeof lineupKey !== 'string' || typeof accountKey !== 'string') {
+        return false;
+    }
+    const normalizedAccountKey = accountKey.trim().toLowerCase();
+    if (!normalizedAccountKey) {
+        return false;
+    }
+
+    return lineupKey
+        .split('|')
+        .map((value) => value.trim().toLowerCase())
+        .includes(normalizedAccountKey);
+}
+
 export default {
     data: new SlashCommandBuilder()
         .setName('lineups')
         .setDescription('Show top LoL lineups by win rate in this server')
+        .addStringOption((opt) =>
+            opt
+                .setName('user')
+                .setDescription('Only show lineups that include this registered user')
+                .setRequired(false)
+                .setAutocomplete(true)
+        )
         .addIntegerOption((opt) =>
             opt
                 .setName('min_games')
@@ -29,7 +52,16 @@ export default {
                 .setMinValue(1)
                 .setMaxValue(20)
         ),
+    async autocomplete(interaction) {
+        try {
+            await respondWithAccountChoices(interaction);
+        } catch (err) {
+            console.error('Error during lineups autocomplete:', err);
+            return interaction.respond([]);
+        }
+    },
     execute: withGuildCommand(async (interaction, { guildId }) => {
+        const selectedAccountKey = interaction.options.getString('user') ?? null;
         const minGames = interaction.options.getInteger('min_games') ?? 1;
         const limit = interaction.options.getInteger('limit') ?? 10;
 
@@ -43,6 +75,7 @@ export default {
                 return { lineupKey, wins, losses, games, winRate };
             })
             .filter((entry) => entry.games >= minGames)
+            .filter((entry) => (selectedAccountKey ? lineupIncludesAccount(entry.lineupKey, selectedAccountKey) : true))
             .sort((a, b) => {
                 if (b.winRate !== a.winRate) return b.winRate - a.winRate;
                 if (b.games !== a.games) return b.games - a.games;
@@ -62,7 +95,7 @@ export default {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle('Top LoL Lineups in This Server')
+            .setTitle(`Top LoL Lineups for ${selectedAccountKey || 'All Players'} in This Server`)
             .setDescription(lines.join('\n'));
 
         await interaction.editReply({ embeds: [embed] });
