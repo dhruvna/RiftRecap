@@ -1,6 +1,6 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { LOL_QUEUE_TYPES } from '../constants/queues.js';
+import { createJsonStore } from './jsonStore.js';
 
 const DEFAULT_LINEUPS_DATA_PATH = path.join(process.cwd(), 'user_data', 'lol_lineups.json');
 const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
@@ -10,84 +10,23 @@ const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
 const LINEUP_DELIMITER = '|';
 const SEEN_MATCH_IDS_LIMIT = 1500;
 
-let writeQueue = Promise.resolve();
-let dbCache = null;
-let dbCacheFileMeta = null;
-
-async function getDbFileMeta() {
-    await ensureDataFile();
-    const stats = await fs.stat(LINEUPS_DATA_PATH);
-    return {
-        size: stats.size,
-        mtimeMs: stats.mtimeMs,
-    };
-}
-
-function isSameDbFileMeta(left, right) {
-    if (!left || !right) {
-        return false;
-    }
-    return left.size === right.size && left.mtimeMs === right.mtimeMs;
-}
-
-function enqueueWrite(operation) {
-    const run = writeQueue.then(operation, operation);
-    writeQueue = run.then(() => undefined, () => undefined);
-    return run;
-}
-
-async function ensureDataFile() {
-    const dir = path.dirname(LINEUPS_DATA_PATH);
-    await fs.mkdir(dir, { recursive: true });
-
-    try {
-        await fs.access(LINEUPS_DATA_PATH);
-    } catch {
-        await fs.writeFile(LINEUPS_DATA_PATH, '{}', 'utf8');
-    }
-}
-
-async function writeDbAtomically(db) {
-    await ensureDataFile();
-    const tmp = `${LINEUPS_DATA_PATH}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(db, null, 2), 'utf8');
-    await fs.rename(tmp, LINEUPS_DATA_PATH);
-}
-
-async function loadDbFromDisk() {
-    await ensureDataFile();
-    const raw = await fs.readFile(LINEUPS_DATA_PATH, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('[lineups] lol_lineups.json root must be an object.');
-    }
-    return parsed;
-}
+const store = createJsonStore({
+    filePath: LINEUPS_DATA_PATH,
+    initialData: {},
+    revalidateCache: true,
+    validateData: (parsed) => {
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('[lineups] lol_lineups.json root must be an object.');
+        }
+    },
+});
 
 async function loadDb({ forceReload = false } = {}) {
-    if (!forceReload && dbCache) {
-        const currentMeta = await getDbFileMeta();
-        if (isSameDbFileMeta(dbCacheFileMeta, currentMeta)) {
-            return dbCache;
-        }
-    }
-    dbCache = await loadDbFromDisk();
-    dbCacheFileMeta = await getDbFileMeta();
-    return dbCache;
+    return store.load({ forceReload });
 }
 
 async function mutateDb(mutator) {
-    return enqueueWrite(async () => {
-        const db = await loadDb();
-        const result = await mutator(db);
-        const didChange = result?.didChange ?? true;
-        if (didChange) {
-            dbCache = db;
-            await writeDbAtomically(db);
-            dbCacheFileMeta = await getDbFileMeta();
-        }
-        return result;
-    });
+    return store.mutate(mutator);
 }
 
 function getGuildStoreMutable(db, guildId) {

@@ -1,9 +1,7 @@
 // === Imports ===
-// We rely on the filesystem to persist registrations and per-guild settings.
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_ANNOUNCE_QUEUES } from './constants/queues.js';
-import logger from './utils/logger.js';
+import { createJsonStore } from './storage/jsonStore.js';
 import {
     DEFAULT_RECAP_CONFIG_ID,
     TRACKED_GAMES,
@@ -29,42 +27,11 @@ const DATA_PATH = process.env.DATA_PATH
  */
 // I/O + mutation orchestration layer: file access, queueing, and store-level state transitions.
 // Keep pure shape-normalization logic in ./storage/normalize.js.
-// Serialize write operations so RMW cycles don't collide.
-let writeQueue = Promise.resolve();
-let dbCache = null;
+
 const DISCORD_SNOWFLAKE_REGEX = /^\d{17,20}$/;
 const RECAP_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export { DEFAULT_RECAP_CONFIG_ID, TRACKED_GAMES, normalizeAccountTracking, normalizeIdentityNamespace, normalizeAccountIdentity, normalizeRecapConfig };
-
-function enqueueWrite(operation) {
-    const run = writeQueue.then(operation, operation);
-    writeQueue = run.then(() => undefined, () => undefined); // Prevent unhandled rejections from blocking the queue
-    return run;
-}
-
-// === File initialization ===
-// Ensure the data file exists so callers can assume read/write will work.
-async function ensureDataFile() {
-    const dir = path.dirname(DATA_PATH);
-
-    // Ensure ./data directory exists
-    await fs.mkdir(dir, { recursive: true });
-
-    // Ensure registrations.json exists
-    try {
-        await fs.access(DATA_PATH);
-    } catch {
-        await fs.writeFile(DATA_PATH, '{}', 'utf8');
-    }
-}
-
-async function writeDbAtomically(db) {
-    await ensureDataFile();
-    const tmp = `${DATA_PATH}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(db, null, 2), 'utf-8');
-    await fs.rename(tmp, DATA_PATH);
-}
 
 // === Database IO ===
 // Read the JSON file into an object, falling back to an empty object on error.
@@ -157,58 +124,31 @@ function assertCanonicalAccountShape(guildId, account, accountIndex) {
  * are non-canonical legacy data and are normalized away.
  */
 
-async function loadDbFromDisk() {
-    await ensureDataFile();
-    let parsed;
-    try {
-        const raw = await fs.readFile(DATA_PATH, 'utf-8');
-        parsed = JSON.parse(raw);
-    } catch (error) {
-        logger.error('load_db_parse_failed', { service: 'storage', event: 'load_db_parse_failed', error });
-        throw error;
-    }
-
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('[loadDb] registrations.json root must be an object keyed by guildId.');
-    }
-
+const store = createJsonStore({
+    filePath: DATA_PATH,
+    initialData: {},
+    validateData: (parsed) => {
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('[loadDb] registrations.json root must be an object keyed by guildId.');
+        }
     for (const guildId of Object.keys(parsed)) {
-        if (!isValidGuildId(guildId)) continue;
-        assertCanonicalGuildShape(guildId, parsed[guildId]);
-    }
-
-    return parsed;
-}
-
-function setDbCache(nextDb) {
-    dbCache = nextDb;
-    return dbCache;
-}
+            if (!isValidGuildId(guildId)) continue;
+            assertCanonicalGuildShape(guildId, parsed[guildId]);
+        }
+    },
+});
 
 export async function reloadDbFromDisk() {
-    const parsed = await loadDbFromDisk();
-    return setDbCache(parsed);
+    return store.reloadFromDisk();
 }
 
 export async function loadDb() {
-    if (dbCache) {
-        return dbCache;
-    }
-    return reloadDbFromDisk();
+    return store.load();
 }
 
 // Queue-backed read-modify-write transaction.
 async function mutateDb(mutator) {
-    return enqueueWrite(async () => {
-        const db = await loadDb();
-        const result = await mutator(db);
-        const didChange = result?.didChange ?? true;
-        if (didChange) {
-            setDbCache(db);
-            await writeDbAtomically(db);
-        }
-        return result;
-    });
+    return store.mutate(mutator);
 }
 
 async function mutateGuild(guildId, mutator) {
