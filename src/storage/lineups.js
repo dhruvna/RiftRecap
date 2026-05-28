@@ -260,7 +260,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         if (matchIdNormalized) {
             seenSet.delete(matchIdNormalized);
             seenSet.add(matchIdNormalized);
-            existing.seenMatchIds = [matchIdNormalized, ...Array.from(seenSet).filter((id) => id !== matchIdNormalized)]
+            existing.seenMatchIds = [matchIdNormalized, ...Array.from(seenSet).filter((id) => id !== matchIdNormalized)];
         } else {
             existing.seenMatchIds = Array.from(seenSet).slice(0, SEEN_MATCH_IDS_LIMIT);
         }

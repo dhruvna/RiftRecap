@@ -230,16 +230,8 @@ function reduceLolLiveState({
 
 export { buildRecapEvents, compareRecapEventsDesc, reduceLolLiveState };
 
-function normalizeRiotId(gameName, tagLine) {
-    const game = typeof gameName === 'string' ? gameName.trim().toLowerCase() : '';
-    const tag = typeof tagLine === 'string' ? tagLine.trim().toLowerCase() : '';
-    if (!game || !tag) return null;
-    return `${game}#${tag}`;
-}
-
 function buildRegisteredLolLookup(guild = {}) {
     const byPuuid = new Map();
-    const byRiotId = new Map();
     const accounts = Array.isArray(guild?.accounts) ? guild.accounts : [];
     for (const registeredAccount of accounts) {
         const identity = getLolIdentity(registeredAccount);
@@ -247,10 +239,8 @@ function buildRegisteredLolLookup(guild = {}) {
         if (!canonicalMemberKey) continue;
         const puuid = typeof identity?.puuid === 'string' ? identity.puuid.trim() : '';
         if (puuid) byPuuid.set(puuid, canonicalMemberKey);
-        const normalizedId = normalizeRiotId(identity?.gameName, identity?.tagLine);
-        if (normalizedId) byRiotId.set(normalizedId, canonicalMemberKey);
     }
-    return { byPuuid, byRiotId };
+    return { byPuuid };
 }
 
 async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null }) {
@@ -369,7 +359,7 @@ async function processUnseenLolMatches({
     for (const [index, prepared] of preparedLolMatches.entries()) {
         const { matchId, me, participants, queueType, isRanked, gameMs, match } = prepared;
         if (isRanked) {
-            const { byPuuid, byRiotId } = registeredLolLookup;
+            const { byPuuid } = registeredLolLookup;
             const myTeamId = Number.isFinite(me?.teamId) ? Number(me.teamId) : null;
             const lineupMemberKeys = [];
             let didWin = null;
@@ -378,13 +368,7 @@ async function processUnseenLolMatches({
                     continue;
                 }
                 const participantPuuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
-                const participantRiotId = normalizeRiotId(
-                    participant?.riotIdGameName ?? participant?.gameName,
-                    participant?.riotIdTagline ?? participant?.tagLine
-                );
-                const canonicalMemberKey = (participantPuuid && byPuuid.get(participantPuuid))
-                    || (participantRiotId && byRiotId.get(participantRiotId))
-                    || null;
+                const canonicalMemberKey = (participantPuuid && byPuuid.get(participantPuuid)) || null;
                 if (!canonicalMemberKey) continue;
                 lineupMemberKeys.push(canonicalMemberKey);
                 if (didWin == null && typeof participant?.win === 'boolean') {

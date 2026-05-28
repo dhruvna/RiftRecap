@@ -423,6 +423,12 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         .setTitle(presentation.title)
         .setTimestamp(new Date());
 
+    const gameName = String(account?.gameName ?? '').trim();
+    const tagLine = String(account?.tagLine ?? '').trim();
+    if (gameName && tagLine) {
+        embed.setURL(`https://porofessor.gg/live/na/${encodeURIComponent(gameName)}-${encodeURIComponent(tagLine)}`);
+    }
+
     try {
         const stripBuffer = await buildLiveDraftImageBuffer({ blueIconUrls, redIconUrls });
         files.push({ attachment: stripBuffer, name: 'lol-live-draft.png' });
