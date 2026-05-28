@@ -156,6 +156,25 @@ function normalizeMatchIdList(matchIds, limit) {
     return normalized;
 }
 
+function normalizeLineupRecordForStorage(stats) {
+    const normalized = stats && typeof stats === 'object' ? { ...stats } : {};
+    normalized.games = Number.isFinite(normalized.games) ? normalized.games : 0;
+    normalized.wins = Number.isFinite(normalized.wins) ? normalized.wins : 0;
+    normalized.losses = Number.isFinite(normalized.losses) ? normalized.losses : 0;
+    normalized.firstSeenAt = Number.isFinite(normalized.firstSeenAt) ? normalized.firstSeenAt : null;
+    normalized.lastSeenAt = Number.isFinite(normalized.lastSeenAt) ? normalized.lastSeenAt : null;
+    // Canonical purpose: lineup records retain one bounded match-id structure for dedupe only.
+    // If we reintroduce user-facing match history later, it should live under a separate field
+    // with independent retention and lifecycle semantics.
+    const legacyRecent = normalizeMatchIdList(normalized.recentMatchIds, RECENT_MATCH_IDS_LIMIT);
+    normalized.seenMatchIds = normalizeMatchIdList(
+        Array.isArray(normalized.seenMatchIds) ? normalized.seenMatchIds : legacyRecent,
+        SEEN_MATCH_IDS_LIMIT
+    );
+    delete normalized.recentMatchIds;
+    return normalized;
+}
+
 function buildCombinations(values, targetSize, startIndex = 0, current = [], result = []) {
     if (current.length === targetSize) {
         result.push([...current]);
@@ -209,7 +228,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
 
     return mutateDb((db) => {
         const lineups = getGuildStoreMutable(db, guildId);
-        const existing = lineups[lineupKey] ?? {
+        const existing = normalizeLineupRecordForStorage(lineups[lineupKey] ?? {
             games: 0,
             wins: 0,
             losses: 0,
@@ -217,16 +236,12 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
             lastSeenAt: null,
             recentMatchIds: [],
             seenMatchIds: [],
-        };
+        });
 
         const now = Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
         const matchIdNormalized = typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
-        const recent = normalizeMatchIdList(existing.recentMatchIds, RECENT_MATCH_IDS_LIMIT);
-        const seen = normalizeMatchIdList(
-            Array.isArray(existing.seenMatchIds) ? existing.seenMatchIds : recent,
-            SEEN_MATCH_IDS_LIMIT
-        );
-
+        const seen = normalizeMatchIdList(existing.seenMatchIds, SEEN_MATCH_IDS_LIMIT);
+        
         if (matchIdNormalized && seen.includes(matchIdNormalized)) {
             return { recorded: false, reason: 'duplicate_match', didChange: false };
         }
@@ -242,12 +257,9 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         existing.lastSeenAt = now;
 
         if (matchIdNormalized) {
-            existing.recentMatchIds = [matchIdNormalized, ...recent.filter((id) => id !== matchIdNormalized)]
-                .slice(0, RECENT_MATCH_IDS_LIMIT);
             existing.seenMatchIds = [matchIdNormalized, ...seen.filter((id) => id !== matchIdNormalized)]
                 .slice(0, SEEN_MATCH_IDS_LIMIT);
         } else {
-            existing.recentMatchIds = recent.slice(0, RECENT_MATCH_IDS_LIMIT);
             existing.seenMatchIds = seen.slice(0, SEEN_MATCH_IDS_LIMIT);
         }
 
@@ -270,20 +282,15 @@ export async function getGuildLineupStats(guildId, { forceReload = false } = {})
 
     return Object.fromEntries(
         Object.entries(lineups).map(([lineupKey, stats]) => {
-            const games = Number.isFinite(stats?.games) ? stats.games : 0;
-            const wins = Number.isFinite(stats?.wins) ? stats.wins : 0;
-            const losses = Number.isFinite(stats?.losses) ? stats.losses : 0;
+            const normalizedStats = normalizeLineupRecordForStorage(stats);
             return [
                 lineupKey,
                 {
-                    games,
-                    wins,
-                    losses,
-                    firstSeenAt: Number.isFinite(stats?.firstSeenAt) ? stats.firstSeenAt : null,
-                    lastSeenAt: Number.isFinite(stats?.lastSeenAt) ? stats.lastSeenAt : null,
-                    recentMatchIds: Array.isArray(stats?.recentMatchIds)
-                        ? stats.recentMatchIds.slice(0, RECENT_MATCH_IDS_LIMIT)
-                        : [],
+                    games: normalizedStats.games,
+                    wins: normalizedStats.wins,
+                    losses: normalizedStats.losses,
+                    firstSeenAt: normalizedStats.firstSeenAt,
+                    lastSeenAt: normalizedStats.lastSeenAt,
                 },
             ];
         })

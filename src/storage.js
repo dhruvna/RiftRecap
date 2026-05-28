@@ -72,9 +72,6 @@ function assertCanonicalGuildShape(guildId, guild) {
     const context = `[loadDb] Malformed guild record for ${guildId}:`;
     if (!guild || typeof guild !== 'object' || Array.isArray(guild)) throw new Error(`${context} expected object.`);
     if (!Array.isArray(guild.accounts)) throw new Error(`${context} accounts must be an array.`);
-    if (!guild.accountsByKey || typeof guild.accountsByKey !== 'object' || Array.isArray(guild.accountsByKey)) {
-        throw new Error(`${context} accountsByKey must be an object.`);
-    }
     if (!('channelId' in guild)) throw new Error(`${context} channelId is required.`);
     if (!Array.isArray(guild.announceQueues)) throw new Error(`${context} announceQueues must be an array.`);
     if (!guild.tft || typeof guild.tft !== 'object' || Array.isArray(guild.tft)) throw new Error(`${context} tft must be an object.`);
@@ -238,7 +235,6 @@ function ensureGuildMutable(db, guildId) {
     if (!db[guildId]) {
         db[guildId] = {
             accounts: [],
-            accountsByKey: {},
             channelId: null,
             announceQueues: [...DEFAULT_ANNOUNCE_QUEUES],
             tft: { seasonCutoffMs: null },
@@ -246,13 +242,6 @@ function ensureGuildMutable(db, guildId) {
         };
     }
     return db[guildId];
-}
-
-function ensureGuildAccountIndexMutable(guild) {
-    if (!guild.accountsByKey || typeof guild.accountsByKey !== 'object' || Array.isArray(guild.accountsByKey)) {
-        guild.accountsByKey = {};
-    }
-    return guild.accountsByKey;
 }
 
 export function getTrackedGameIdentity(account, gameKey) {
@@ -293,14 +282,12 @@ export async function listGuildAccounts(guildId) {
 
 async function upsertGuildAccount(db, guildId, account) {
     const guild = ensureGuildMutable(db, guildId);
-    const accountsByKey = ensureGuildAccountIndexMutable(guild);
 
     const idx = guild.accounts.findIndex((a) => a.key === account.key);
     const existed = idx >= 0;
 
     if (existed) guild.accounts[idx] = { ...guild.accounts[idx], ...account };
     else guild.accounts.push(account);
-    accountsByKey[account.key] = existed ? guild.accounts[idx] : account;
 
     return { account, existed };
 }
@@ -318,8 +305,6 @@ export async function removeGuildAccountByKey(guildId, key) {
         const idx = guild.accounts.findIndex((a) => a.key === key);
         if (idx === -1) return { removed: null, didChange: false };
         const [removed] = guild.accounts.splice(idx, 1);
-        const accountsByKey = ensureGuildAccountIndexMutable(guild);
-        delete accountsByKey[key];
         return { removed, didChange: true };
     }).then((result) => result?.removed ?? null);
 }
