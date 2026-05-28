@@ -242,7 +242,8 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         const matchIdNormalized = typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
         const seen = normalizeMatchIdList(existing.seenMatchIds, SEEN_MATCH_IDS_LIMIT);
         
-        if (matchIdNormalized && seen.includes(matchIdNormalized)) {
+        const seenSet = new Set(seen);
+        if (matchIdNormalized && seenSet.has(matchIdNormalized)) {
             return { recorded: false, reason: 'duplicate_match', didChange: false };
         }
 
@@ -257,10 +258,11 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         existing.lastSeenAt = now;
 
         if (matchIdNormalized) {
-            existing.seenMatchIds = [matchIdNormalized, ...seen.filter((id) => id !== matchIdNormalized)]
-                .slice(0, SEEN_MATCH_IDS_LIMIT);
+            seenSet.delete(matchIdNormalized);
+            seenSet.add(matchIdNormalized);
+            existing.seenMatchIds = [matchIdNormalized, ...Array.from(seenSet).filter((id) => id !== matchIdNormalized)]
         } else {
-            existing.seenMatchIds = seen.slice(0, SEEN_MATCH_IDS_LIMIT);
+            existing.seenMatchIds = Array.from(seenSet).slice(0, SEEN_MATCH_IDS_LIMIT);
         }
 
         lineups[lineupKey] = existing;

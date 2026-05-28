@@ -105,8 +105,8 @@ function findTierChange({ beforeRank, afterRank }) {
   return afterBoundary > beforeBoundary ? 'promote' : 'demote';
 }
 
-export function buildTierChangeEmbed({ channel, account, game, queueType, beforeRank, afterRank }) {
-    if (!channel || !findTierChange({ beforeRank, afterRank })) return;
+export function buildTierChangeEmbed({ account, queueType, beforeRank, afterRank }) {
+    if (!findTierChange({ beforeRank, afterRank })) return;
     const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
     const beforeRankStr = formatRankWithLp(beforeRank);
     const afterRankStr = formatRankWithLp(afterRank);

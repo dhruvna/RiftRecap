@@ -506,11 +506,9 @@ async function processUnseenLolMatches({
                 const sentMessage = await announceGameMatchToDiscord(resultAnnouncementContext);
                 didAnnounceResult = Boolean(sentMessage);
             }
-            if (didAnnounceResult && isLatestRankedMatch) {
+            if (didAnnounceResult && isLatestRankedMatch && channel) {
                 const tierChangeEmbed = buildTierChangeEmbed({
-                    channel,
                     account,
-                    game: GAME_TYPES.LOL,
                     queueType,
                     beforeRank,
                     afterRank,
@@ -965,11 +963,9 @@ export async function startMatchPoller(client) {
                             await announceGameMatchToDiscord(resultAnnouncementContext);
                             didAnnounceResult = true;
                         }
-                        if (didAnnounceResult && isLatestRankedMatch) {
+                        if (didAnnounceResult && isLatestRankedMatch && channel) {
                             const tierChangeEmbed = buildTierChangeEmbed({
-                                channel,
                                 account,
-                                game: GAME_TYPES.TFT,
                                 queueType,
                                 beforeRank,
                                 afterRank,
