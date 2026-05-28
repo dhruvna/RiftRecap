@@ -8,7 +8,6 @@ const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
     : path.join(process.env.DATA_DIR ?? path.dirname(DEFAULT_LINEUPS_DATA_PATH), 'lol_lineups.json');
 
 const LINEUP_DELIMITER = '|';
-const RECENT_MATCH_IDS_LIMIT = 25;
 const SEEN_MATCH_IDS_LIMIT = 1500;
 
 let writeQueue = Promise.resolve();
@@ -163,15 +162,7 @@ function normalizeLineupRecordForStorage(stats) {
     normalized.losses = Number.isFinite(normalized.losses) ? normalized.losses : 0;
     normalized.firstSeenAt = Number.isFinite(normalized.firstSeenAt) ? normalized.firstSeenAt : null;
     normalized.lastSeenAt = Number.isFinite(normalized.lastSeenAt) ? normalized.lastSeenAt : null;
-    // Canonical purpose: lineup records retain one bounded match-id structure for dedupe only.
-    // If we reintroduce user-facing match history later, it should live under a separate field
-    // with independent retention and lifecycle semantics.
-    const legacyRecent = normalizeMatchIdList(normalized.recentMatchIds, RECENT_MATCH_IDS_LIMIT);
-    normalized.seenMatchIds = normalizeMatchIdList(
-        Array.isArray(normalized.seenMatchIds) ? normalized.seenMatchIds : legacyRecent,
-        SEEN_MATCH_IDS_LIMIT
-    );
-    delete normalized.recentMatchIds;
+    normalized.seenMatchIds = normalizeMatchIdList(normalized.seenMatchIds, SEEN_MATCH_IDS_LIMIT);
     return normalized;
 }
 
@@ -234,7 +225,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
             losses: 0,
             firstSeenAt: null,
             lastSeenAt: null,
-            recentMatchIds: [],
             seenMatchIds: [],
         });
 
