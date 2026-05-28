@@ -358,34 +358,21 @@ async function processUnseenLolMatches({
     const newestFinishedLolMatchIndex = preparedLolMatches.length - 1;
     for (const [index, prepared] of preparedLolMatches.entries()) {
         const { matchId, me, participants, queueType, isRanked, gameMs, match } = prepared;
-        if (isRanked) {
+        if (isRanked && me) {
             const { byPuuid } = registeredLolLookup;
-            const myTeamId = Number.isFinite(me?.teamId) ? Number(me.teamId) : null;
-            const lineupMemberKeys = [];
-            let didWin = null;
-            for (const participant of participants) {
-                if (myTeamId != null && Number(participant?.teamId) !== myTeamId) {
-                    continue;
+            const myTeamId = Number.isFinite(me.teamId) ? Number(me.teamId) : null;
+            const didWin = typeof me.win === 'boolean' ? me.win === true : null;
+            if (myTeamId != null && typeof didWin === 'boolean') {
+                const lineupMemberKeys = [];
+                for (const participant of participants) {
+                    if (Number(participant?.teamId) !== myTeamId) {
+                        continue;
+                    }
+                    const participantPuuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
+                    const canonicalMemberKey = (participantPuuid && byPuuid.get(participantPuuid)) || null;
+                    if (canonicalMemberKey) lineupMemberKeys.push(canonicalMemberKey);
                 }
-                const participantPuuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
-                const canonicalMemberKey = (participantPuuid && byPuuid.get(participantPuuid)) || null;
-                if (!canonicalMemberKey) continue;
-                lineupMemberKeys.push(canonicalMemberKey);
-                if (didWin == null && typeof participant?.win === 'boolean') {
-                    didWin = participant.win === true;
-                }
-            }
-            const eligibleLineupMemberSets = getEligibleLineupMemberSets(queueType, lineupMemberKeys);
-            const shouldRecordAnyLineups = eligibleLineupMemberSets.length > 0;
-            if (shouldRecordAnyLineups && myTeamId != null) {
-                const teammateWithOutcome = participants.find(
-                    (participant) => Number(participant?.teamId) === myTeamId && typeof participant?.win === 'boolean'
-                );
-                if (teammateWithOutcome) {
-                    didWin = teammateWithOutcome.win === true;
-                }
-            }
-            if (shouldRecordAnyLineups && typeof didWin === 'boolean') {
+                const eligibleLineupMemberSets = getEligibleLineupMemberSets(queueType, lineupMemberKeys);
                 for (const lineupMemberSet of eligibleLineupMemberSets) {
                     await recordLolLineupResult({
                         guildId,
@@ -415,8 +402,8 @@ async function processUnseenLolMatches({
         const beforeRank = isLatestRankedMatch ? (beforeLol?.[queueType] ?? null) : null;
         const afterRank = isLatestRankedMatch ? (afterLol?.[queueType] ?? null) : null;
         const delta = isLatestRankedMatch ? (deltas?.[queueType] ?? 0) : 0;
-        if (isRanked) {
-            const placement = me?.win ? 1 : 2;
+        if (isRanked && me) {
+            const placement = me.win ? 1 : 2;
             lolRecapEvents = buildRecapEvents({ recapEvents: lolRecapEvents, matchId, queueType, delta, placement, gameMs });
         }
         const shouldAnnounce = account?.notifications?.lolAnnouncements !== false

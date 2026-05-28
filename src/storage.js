@@ -138,10 +138,6 @@ const store = createJsonStore({
     },
 });
 
-export async function reloadDbFromDisk() {
-    return store.reloadFromDisk();
-}
-
 export async function loadDb() {
     return store.load();
 }
@@ -257,11 +253,15 @@ function updateGuildChannelInDb(db, guildId, channelId) {
 }
 
 export function getGuildRecapConfigs(db, guildId) {
-    return db[guildId].recapConfigs;
+    const recapConfigs = db?.[guildId]?.recapConfigs;
+    if (!Array.isArray(recapConfigs) || recapConfigs.length === 0) {
+        return [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
+    }
+    return recapConfigs;
 }
 
 export function getGuildTftConfig(db, guildId) {
-    return db[guildId].tft;
+    return db?.[guildId]?.tft ?? { seasonCutoffMs: null };
 }
 
 function updateGuildDefaultRecapConfigInDb(db, guildId, patch) {
@@ -436,8 +436,7 @@ export async function resetGuildAccountProgressBeforeInStore(guildId, cutoffMs, 
                     continue;
                 }
 
-                const hadLastMatchId = Boolean(tracking?.lastMatchId);
-                const hadRankSnapshot = 
+                const hadRankSnapshot =
                     tracking?.lastRankByQueue && Object.keys(tracking.lastRankByQueue).length > 0;
                 const hadRecapEvents = Array.isArray(tracking?.recapEvents) && tracking.recapEvents.length > 0;
                 const hadMatchCursor = Boolean(tracking?.lastMatchId) || Number(tracking?.lastMatchAt ?? 0) > 0;
@@ -450,7 +449,7 @@ export async function resetGuildAccountProgressBeforeInStore(guildId, cutoffMs, 
                 tracking.lastRankByQueue = {};
                 tracking.recapEvents = [];
 
-                if (hadLastMatchId || hadRankSnapshot || hadRecapEvents || (clearMatchCursor && hadMatchCursor)) {
+                if (hadRankSnapshot || hadRecapEvents || (clearMatchCursor && hadMatchCursor)) {
                     accountReset = true;
                 }
             }

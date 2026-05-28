@@ -230,39 +230,6 @@ async function buildLolGameDto({
     };
 }
 
-/**
- * @typedef {Object} LolLiveGameViewModel
- * @property {{ riotId: string, puuid: (string|null), participantFound: boolean, participant: Object|null }} trackedPlayer
- * @property {string} queueLabel
- * @property {(number|null)} gameStartEpochSeconds
- * @property {{ BLUE: Array<Object>, RED: Array<Object> }} teamRostersBySide
- * @property {{ championDisplay: (string|null), championId: (number|null), championIconUrl: (string|null), championImageKey: (string|null), spellIds: Array<number>, spellSummary: string }} display
- */
-
-/**
- * Build a pure display-agnostic view model for live game rendering.
- * @param {{ account: Object, activeGame: Object }} params
- * @returns {Promise<LolLiveGameViewModel>}
- */
-export async function buildLolLiveGameViewModel({ account, activeGame }) {
-    const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
-    const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
-    const dto = await buildLolGameDto({
-        account,
-        queueId,
-        participants,
-        gameStartTime: activeGame?.gameStartTime,
-    });
-
-    return {
-        trackedPlayer: dto.trackedPlayer,
-        queueLabel: dto.queue.queueLabel,
-        gameStartEpochSeconds: dto.game.gameStartEpochSeconds,
-        teamRostersBySide: dto.rosters.bySide,
-        display: dto.display,
-    };
-}
-
 export async function buildLolLiveTeamPresentationModel({ account, activeGame, identity = null }) {
     const queueId = Number(activeGame?.gameQueueConfigId ?? 0) || null;
     const participants = Array.isArray(activeGame?.participants)

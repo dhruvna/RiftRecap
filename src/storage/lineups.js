@@ -95,14 +95,15 @@ function normalizeMatchIdList(matchIds, limit) {
 }
 
 function normalizeLineupRecordForStorage(stats) {
-    const normalized = stats && typeof stats === 'object' ? { ...stats } : {};
-    normalized.games = Number.isFinite(normalized.games) ? normalized.games : 0;
-    normalized.wins = Number.isFinite(normalized.wins) ? normalized.wins : 0;
-    normalized.losses = Number.isFinite(normalized.losses) ? normalized.losses : 0;
-    normalized.firstSeenAt = Number.isFinite(normalized.firstSeenAt) ? normalized.firstSeenAt : null;
-    normalized.lastSeenAt = Number.isFinite(normalized.lastSeenAt) ? normalized.lastSeenAt : null;
-    normalized.seenMatchIds = normalizeMatchIdList(normalized.seenMatchIds, SEEN_MATCH_IDS_LIMIT);
-    return normalized;
+    const safeStats = stats && typeof stats === 'object' ? stats : {};
+    return {
+        games: Number.isFinite(safeStats.games) ? safeStats.games : 0,
+        wins: Number.isFinite(safeStats.wins) ? safeStats.wins : 0,
+        losses: Number.isFinite(safeStats.losses) ? safeStats.losses : 0,
+        firstSeenAt: Number.isFinite(safeStats.firstSeenAt) ? safeStats.firstSeenAt : null,
+        lastSeenAt: Number.isFinite(safeStats.lastSeenAt) ? safeStats.lastSeenAt : null,
+        seenMatchIds: normalizeMatchIdList(safeStats.seenMatchIds, SEEN_MATCH_IDS_LIMIT),
+    };
 }
 
 function buildCombinations(values, targetSize, startIndex = 0, current = [], result = []) {
@@ -171,8 +172,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         const matchIdNormalized = typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
         const seen = normalizeMatchIdList(existing.seenMatchIds, SEEN_MATCH_IDS_LIMIT);
         
-        const seenSet = new Set(seen);
-        if (matchIdNormalized && seenSet.has(matchIdNormalized)) {
+        if (matchIdNormalized && seen.includes(matchIdNormalized)) {
             return { recorded: false, reason: 'duplicate_match', didChange: false };
         }
 
@@ -186,13 +186,9 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         existing.firstSeenAt = existing.firstSeenAt ?? now;
         existing.lastSeenAt = now;
 
-        if (matchIdNormalized) {
-            seenSet.delete(matchIdNormalized);
-            seenSet.add(matchIdNormalized);
-            existing.seenMatchIds = [matchIdNormalized, ...Array.from(seenSet).filter((id) => id !== matchIdNormalized)];
-        } else {
-            existing.seenMatchIds = Array.from(seenSet).slice(0, SEEN_MATCH_IDS_LIMIT);
-        }
+        existing.seenMatchIds = matchIdNormalized
+            ? [matchIdNormalized, ...seen].slice(0, SEEN_MATCH_IDS_LIMIT)
+            : seen;
 
         lineups[lineupKey] = existing;
 
