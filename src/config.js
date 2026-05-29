@@ -13,7 +13,6 @@ import { DEFAULT_REGION, SUPPORTED_REGIONS, normalizeRegion, isSupportedRegion }
  * @property {string} riotLolApiKey
  * @property {string} defaultRegion
  * @property {number} matchPollIntervalSeconds
- * @property {number} matchPollPerAccountDelayMs
  * @property {number} rankRefreshIntervalMinutes
  * @property {number} recapAutopostHour
  * @property {number} recapAutopostMinute
@@ -123,11 +122,6 @@ const config = Object.freeze({
         defaultValue: 60,
         min: 10,
         max: 3600,
-    }),
-    matchPollPerAccountDelayMs: readInt('MATCH_POLL_PER_ACCOUNT_DELAY_MS', {
-        defaultValue: 250,
-        min: 0,             
-        max: 10000,
     }),
     rankRefreshIntervalMinutes: readInt('RANK_REFRESH_INTERVAL_MINUTES', {
         defaultValue: 180,

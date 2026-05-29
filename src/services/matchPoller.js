@@ -2,6 +2,7 @@
 // This service orchestrates polling Riot for match updates and sending Discord updates.
 
 import {
+    getGuildLolConfig,
     getGuildTftConfig,
     getKnownGuildIds,
     getLolIdentity,
@@ -320,6 +321,8 @@ async function processUnseenLolMatches({
     refreshedRankSnapshotsByGame,
     rankSnapshotBeforeRefresh = null,
     guild = null,
+    seasonCutoffMs = null,
+    hasSeasonCutoff = false,
 }) {
     let shouldClearLiveAnnouncementTracking = false;
     const unseenLolMatchIds = await detectUnseenMatchIds({
@@ -354,10 +357,34 @@ async function processUnseenLolMatches({
         preparedLolMatches.push({ matchId, me, participants, queueType, isRanked, gameMs, match });
     }
 
-    const latestLolRankedIndex = findLatestRankedIndex(preparedLolMatches);
+    const latestLolRankedIndex = findLatestRankedIndex(preparedLolMatches, {
+        shouldInclude: (preparedMatch) => {
+            const gameMs = Number(preparedMatch?.gameMs ?? 0);
+            return !(
+                hasSeasonCutoff &&
+                Number.isFinite(gameMs) &&
+                gameMs > 0 &&
+                gameMs < seasonCutoffMs
+            );
+        },
+    });
     const newestFinishedLolMatchIndex = preparedLolMatches.length - 1;
     for (const [index, prepared] of preparedLolMatches.entries()) {
         const { matchId, me, participants, queueType, isRanked, gameMs, match } = prepared;
+        const isBeforeSeasonCutoff =
+            hasSeasonCutoff &&
+            Number.isFinite(gameMs) &&
+            gameMs > 0 &&
+            gameMs < seasonCutoffMs;
+
+        if (isBeforeSeasonCutoff) {
+            logger.info(
+                `[match-poller] skipping stale pre-cutoff match guild=${guildId} account=${account.key} match=${matchId} game=${GAME_TYPES.LOL} gameMs=${gameMs} cutoffMs=${seasonCutoffMs}`
+            );
+            lastProcessedLolMatchId = matchId;
+            lastProcessedLolMatchAt = gameMs;
+            continue;
+        }
         if (isRanked && me) {
             const { byPuuid } = registeredLolLookup;
             const myTeamId = Number.isFinite(me.teamId) ? Number(me.teamId) : null;
@@ -567,14 +594,36 @@ export async function startMatchPoller(client) {
                 const accounts = guild?.accounts ?? [];
                 const channelIdForGuild = guild?.channelId ;
                 const guildTftConfig = getGuildTftConfig(db, guildId);
-                const seasonCutoffMs = Number(guildTftConfig?.seasonCutoffMs ?? 0);
-                const hasSeasonCutoff = Number.isFinite(seasonCutoffMs) && seasonCutoffMs > 0;
+                const guildLolConfig = getGuildLolConfig(db, guildId);
+                const tftSeasonCutoffMs = Number(guildTftConfig?.seasonCutoffMs ?? 0);
+                const lolSeasonCutoffMs = Number(guildLolConfig?.seasonCutoffMs ?? 0);
+                const hasTftSeasonCutoff = Number.isFinite(tftSeasonCutoffMs) && tftSeasonCutoffMs > 0;
+                const hasLolSeasonCutoff = Number.isFinite(lolSeasonCutoffMs) && lolSeasonCutoffMs > 0;
+
                 for (const account of accounts) {
-                    workItems.push({ guildId, guild, account, channelIdForGuild, seasonCutoffMs, hasSeasonCutoff });
+                    workItems.push({
+                        guildId,
+                        guild,
+                        account,
+                        channelIdForGuild,
+                        tftSeasonCutoffMs,
+                        hasTftSeasonCutoff,
+                        lolSeasonCutoffMs,
+                        hasLolSeasonCutoff,
+                    });
                 }
             }
 
-            const processAccountTick = async ({ guildId, guild, account, channelIdForGuild, seasonCutoffMs, hasSeasonCutoff }) => {
+            const processAccountTick = async ({
+                guildId,
+                guild,
+                account,
+                channelIdForGuild,
+                tftSeasonCutoffMs,
+                hasTftSeasonCutoff,
+                lolSeasonCutoffMs,
+                hasLolSeasonCutoff,
+            }) => {
                 let channel = null;
                 if (channelIdForGuild) {
                     if (channelCache.has(channelIdForGuild)) channel = channelCache.get(channelIdForGuild);
@@ -730,6 +779,8 @@ export async function startMatchPoller(client) {
                             refreshedRankSnapshotsByGame,
                             rankSnapshotBeforeRefresh: lolRankSnapshotBeforeRefresh,
                             guild,
+                            seasonCutoffMs: lolSeasonCutoffMs,
+                            hasSeasonCutoff: hasLolSeasonCutoff,
                         });
                         refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = lolMatchResult.rankSnapshot;
                         if (lolMatchResult.trackingPatch) {
@@ -794,10 +845,10 @@ export async function startMatchPoller(client) {
                         shouldInclude: (preparedMatch) => {
                             const gameMs = Number(preparedMatch?.gameMs ?? 0);
                             return !(
-                                hasSeasonCutoff &&
+                                hasTftSeasonCutoff &&
                                 Number.isFinite(gameMs) &&
                                 gameMs > 0 &&
-                                gameMs < seasonCutoffMs
+                                gameMs < tftSeasonCutoffMs
                             );
                         },
                     });
@@ -815,14 +866,14 @@ export async function startMatchPoller(client) {
                             gameMs,
                         } = prepared;
                         const isBeforeSeasonCutoff =
-                            hasSeasonCutoff &&
+                            hasTftSeasonCutoff &&
                             Number.isFinite(gameMs) &&
                             gameMs > 0 &&
-                            gameMs < seasonCutoffMs;
+                            gameMs < tftSeasonCutoffMs;
 
                         if (isBeforeSeasonCutoff) {
                             logger.info(
-                                `[match-poller] skipping stale pre-cutoff match guild=${guildId} account=${account.key} match=${matchId} gameMs=${gameMs} cutoffMs=${seasonCutoffMs}`
+                                `[match-poller] skipping stale pre-cutoff match guild=${guildId} account=${account.key} match=${matchId} gameMs=${gameMs} cutoffMs=${tftSeasonCutoffMs}`
                             );
                             lastProcessedMatchId = matchId;
                             lastProcessedMatchAt = gameMs;
@@ -931,8 +982,8 @@ export async function startMatchPoller(client) {
                             }
                         }
                         if (!didAnnounceResult) {
-                            await announceGameMatchToDiscord(resultAnnouncementContext);
-                            didAnnounceResult = true;
+                            const sentMessage = await announceGameMatchToDiscord(resultAnnouncementContext);
+                            didAnnounceResult = Boolean(sentMessage);
                         }
                         if (didAnnounceResult && isLatestRankedMatch && channel) {
                             const tierChangeEmbed = buildTierChangeEmbed({

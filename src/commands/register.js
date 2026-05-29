@@ -19,7 +19,6 @@ import {
 import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
 import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
-import { respondWithAccountChoices } from '../utils/autocomplete.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -40,15 +39,6 @@ export default {
                 .setDescription('Whether this account should post live/match alerts (default: true)')
                 .setRequired(false)
         ),
-    
-    async autocomplete(interaction) {
-        try {
-            await respondWithAccountChoices(interaction);
-        } catch (err) {
-            console.error('Error during register autocomplete:', err);
-            return interaction.respond([]);
-        }
-    },
 
     execute: withGuildCommand(async (interaction, { guildId }) => {
         

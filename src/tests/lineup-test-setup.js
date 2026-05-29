@@ -1,9 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { LOL_QUEUE_TYPES } from '../constants/queues.js';
 import { buildLineupKey, getEligibleLineupMemberSets, recordLolLineupResult } from '../storage/lineups.js';
 
 const TEST_GUILD_ID = '288456610366357505';
-const DEFAULT_QUEUE_TYPE = 'RANKED_FLEX_SR';
+const DEFAULT_QUEUE_TYPE = LOL_QUEUE_TYPES.RANKED_FLEX;
 
 function buildDummyAccounts() {
     return Array.from({ length: 5 }, (_, idx) => ({

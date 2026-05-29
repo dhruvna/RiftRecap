@@ -1,6 +1,6 @@
 // === Imports ===
 import path from 'node:path';
-import { DEFAULT_ANNOUNCE_QUEUES } from './constants/queues.js';
+import { DEFAULT_ANNOUNCE_QUEUES, GAME_TYPES } from './constants/queues.js';
 import { createJsonStore } from './storage/jsonStore.js';
 import {
     DEFAULT_RECAP_CONFIG_ID,
@@ -109,6 +109,7 @@ function assertCanonicalAccountShape(guildId, account, accountIndex) {
  *     channelId: string | null,
  *     announceQueues: string[],
  *     tft: { seasonCutoffMs: number | null, ... },
+ *     lol: { seasonCutoffMs: number | null, ... },
  *     recapConfigs: RecapConfig[]
  *   }
  * }
@@ -131,7 +132,7 @@ const store = createJsonStore({
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             throw new Error('[loadDb] registrations.json root must be an object keyed by guildId.');
         }
-    for (const guildId of Object.keys(parsed)) {
+        for (const guildId of Object.keys(parsed)) {
             if (!isValidGuildId(guildId)) continue;
             assertCanonicalGuildShape(guildId, parsed[guildId]);
         }
@@ -174,6 +175,7 @@ function ensureGuildMutable(db, guildId) {
             channelId: null,
             announceQueues: [...DEFAULT_ANNOUNCE_QUEUES],
             tft: { seasonCutoffMs: null },
+            lol: { seasonCutoffMs: null },
             recapConfigs: [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)],
         };
     }
@@ -260,8 +262,20 @@ export function getGuildRecapConfigs(db, guildId) {
     return recapConfigs;
 }
 
+function normalizeGuildSeasonConfig(config) {
+    const cutoff = Number(config?.seasonCutoffMs ?? 0);
+    return {
+        ...(config && typeof config === 'object' ? config : {}),
+        seasonCutoffMs: Number.isFinite(cutoff) && cutoff > 0 ? cutoff : null,
+    };
+}
+
 export function getGuildTftConfig(db, guildId) {
-    return db?.[guildId]?.tft ?? { seasonCutoffMs: null };
+    return normalizeGuildSeasonConfig(db?.[guildId]?.tft);
+}
+
+export function getGuildLolConfig(db, guildId) {
+    return normalizeGuildSeasonConfig(db?.[guildId]?.lol);
 }
 
 function updateGuildDefaultRecapConfigInDb(db, guildId, patch) {
@@ -306,32 +320,44 @@ export async function updateGuildRecapLastSentYmdByIdInStore(guildId, configId, 
     }).then((result) => result?.updated ?? false);
 }
 
-function isSameTftConfig(a, b) {
+function isSameSeasonConfig(a, b) {
     const left = a && typeof a === 'object' ? a : {};
     const right = b && typeof b === 'object' ? b : {};
 
     return (left.seasonCutoffMs ?? null) === (right.seasonCutoffMs ?? null);
 }
 
-export async function updateGuildTftConfigInStore(guildId, patch) {
+function updateGuildSeasonConfigInStore(guildId, guildKey, patch) {
     return mutateGuild(guildId, ({ guild }) => {
-        const current = guild?.tft && typeof guild.tft === 'object'
-            ? guild.tft
-            : { seasonCutoffMs: null };
+        const current = normalizeGuildSeasonConfig(guild?.[guildKey]);
         const nextCutoff = Number(patch?.seasonCutoffMs ?? 0);
         const normalizedPatch = {
             ...patch,
             seasonCutoffMs: Number.isFinite(nextCutoff) && nextCutoff > 0 ? nextCutoff : null,
         };
-        const next = { ...current, ...normalizedPatch };
+        const next = normalizeGuildSeasonConfig({ ...current, ...normalizedPatch });
 
-        if (isSameTftConfig(next, current)) {
-            return { didChange: false, tft: current };
+        if (isSameSeasonConfig(next, current)) {
+            return { didChange: false, config: current };
         }
+        
+        guild[guildKey] = next;
+        return { didChange: true, config: next };
+    }).then((result) => result?.config ?? null);
+}
 
-        guild.tft = next;
-        return { didChange: true, tft: next };
-    }).then((result) => result?.tft ?? null);
+export async function updateGuildTftConfigInStore(guildId, patch) {
+    return updateGuildSeasonConfigInStore(guildId, 'tft', patch);
+}
+
+export async function updateGuildLolConfigInStore(guildId, patch) {
+    return updateGuildSeasonConfigInStore(guildId, 'lol', patch);
+}
+
+export async function updateGuildGameConfigInStore(guildId, gameType, patch) {
+    return gameType === GAME_TYPES.LOL
+        ? updateGuildLolConfigInStore(guildId, patch)
+        : updateGuildTftConfigInStore(guildId, patch);
 }
 
 function updateGuildQueueConfigInDb(db, guildId, queues) {

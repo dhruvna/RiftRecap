@@ -4,7 +4,7 @@ import {
     TRACKED_GAMES,
     resetGuildAccountProgressBeforeInStore,
     resetGuildAccountProgressInStore,
-    updateGuildTftConfigInStore,
+    updateGuildGameConfigInStore,
 } from '../storage.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
 
@@ -23,6 +23,17 @@ function normalizeResetGameScope(selectedGame) {
     if (selectedGame === 'BOTH') return [TRACKED_GAMES.TFT, TRACKED_GAMES.LOL];
     if (selectedGame === GAME_TYPES.LOL) return [TRACKED_GAMES.LOL];
     return [TRACKED_GAMES.TFT];
+}
+
+function normalizeConfigGameScope(selectedGame) {
+    if (selectedGame === 'BOTH') return [GAME_TYPES.TFT, GAME_TYPES.LOL];
+    if (selectedGame === GAME_TYPES.LOL) return [GAME_TYPES.LOL];
+    return [GAME_TYPES.TFT];
+}
+
+function formatGameScope(selectedGame) {
+    if (selectedGame === 'BOTH') return 'TFT + LoL';
+    return selectedGame === GAME_TYPES.LOL ? 'LoL' : 'TFT';
 }
 
 export default {
@@ -59,11 +70,11 @@ export default {
     execute: withGuildCommand(async (interaction, { guildId }) => {
         const confirm = interaction.options.getBoolean('confirm', true);
         if (!confirm) {
-        await interaction.reply({
-            content: 'Reset cancelled. Re-run with `confirm:true` to perform the reset.',
-            ephemeral: true,
-        });
-        return;
+            await interaction.reply({
+                content: 'Reset cancelled. Re-run with `confirm:true` to perform the reset.',
+                ephemeral: true,
+            });
+            return;
         }
 
         const selectedGame = interaction.options.getString('game') ?? GAME_TYPES.TFT;
@@ -86,7 +97,11 @@ export default {
                 : await resetGuildAccountProgressInStore(guildId, { gameScope });
 
         if (beforeDate) {
-            await updateGuildTftConfigInStore(guildId, { seasonCutoffMs: cutoffMs });
+            await Promise.all(
+                normalizeConfigGameScope(selectedGame).map((gameType) =>
+                    updateGuildGameConfigInStore(guildId, gameType, { seasonCutoffMs: cutoffMs })
+                )
+            );
         }
 
         if ((result?.totalAccounts ?? 0) === 0) {
@@ -102,9 +117,9 @@ export default {
                 `Reset complete for this server${beforeDate ? ` (cutoff: **${beforeDate} 00:00:00 UTC**)` : ''}.\n` +
                 `• Accounts registered: **${result.totalAccounts}**\n` +
                 `• Accounts with progress cleared: **${result.resetAccounts}**\n` +
-                `• Game scope: **${selectedGame === 'BOTH' ? 'TFT + LoL' : (selectedGame === GAME_TYPES.LOL ? 'LoL' : 'TFT')}**\n\n` +
+                `• Game scope: **${formatGameScope(selectedGame)}**\n\n` +
                 `${beforeDate ? `• Accounts skipped (recent match on/after cutoff): **${result.skippedAccounts ?? 0}**\n\n` : ''}` +
-                `${beforeDate ? `Saved guild TFT season cutoff to **${beforeDate} 00:00:00 UTC** for future polling.\n` : ''}` +
+                `${beforeDate ? `Saved guild ${formatGameScope(selectedGame)} season cutoff to **${beforeDate} 00:00:00 UTC** for future polling.\n` : ''}` +
                 'Cleared each selected game\'s \'lastRankByQueue\' and \'recapEvents\'' +
                 `${clearMatchCursor ? ", plus 'lastMatchId' and 'lastMatchAt'." : ". (Kept 'lastMatchId' and 'lastMatchAt' to avoid replaying old matches.)"}`,
             ephemeral: true,
