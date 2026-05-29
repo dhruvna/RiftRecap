@@ -33,6 +33,91 @@ function lineupIncludesAccount(lineupKey, accountKey) {
         .includes(normalizedAccountKey);
 }
 
+const LINEUP_CONTEXT_MIN_GAMES = 5;
+
+const ROLE_DISPLAY_NAMES = {
+    TOP: 'top',
+    JUNGLE: 'jungle',
+    MIDDLE: 'mid',
+    MID: 'mid',
+    BOTTOM: 'bot',
+    ADC: 'bot',
+    BOT: 'bot',
+    SUPPORT: 'support',
+    UTILITY: 'support',
+};
+
+function getLineupMemberKeys(lineupKey) {
+    if (typeof lineupKey !== 'string' || !lineupKey.trim()) {
+        return [];
+    }
+    return lineupKey
+        .split('|')
+        .map((value) => value.trim())
+        .filter(Boolean);
+}
+
+function getCounterGames(counter) {
+    if (typeof counter === 'number') return counter;
+    return Number(counter?.games ?? 0);
+}
+
+function getCounterWins(counter) {
+    if (typeof counter === 'number') return 0;
+    return Number(counter?.wins ?? 0);
+}
+
+function selectTopCounterValue(counters = {}, { preferWins = false } = {}) {
+    if (!counters || typeof counters !== 'object' || Array.isArray(counters)) {
+        return null;
+    }
+
+    return Object.entries(counters)
+        .map(([value, counter]) => ({ value, games: getCounterGames(counter), wins: getCounterWins(counter) }))
+        .filter((entry) => entry.value && entry.games > 0)
+        .sort((a, b) => {
+            if (preferWins) {
+                const aWinRate = a.games > 0 ? a.wins / a.games : 0;
+                const bWinRate = b.games > 0 ? b.wins / b.games : 0;
+                if (bWinRate !== aWinRate) return bWinRate - aWinRate;
+                if (b.wins !== a.wins) return b.wins - a.wins;
+            }
+            if (b.games !== a.games) return b.games - a.games;
+            if (b.wins !== a.wins) return b.wins - a.wins;
+            return a.value.localeCompare(b.value);
+        })[0]?.value ?? null;
+}
+
+function formatRoleName(role) {
+    if (typeof role !== 'string') return null;
+    const normalized = role.trim().toUpperCase();
+    return ROLE_DISPLAY_NAMES[normalized] ?? normalized.toLowerCase();
+}
+
+function buildLineupContextLines(entry) {
+    if (entry.games < LINEUP_CONTEXT_MIN_GAMES) {
+        return [];
+    }
+
+    const memberKeys = getLineupMemberKeys(entry.lineupKey);
+    const roleNames = memberKeys
+        .map((memberKey) => formatRoleName(selectTopCounterValue(entry.rolesByMember?.[memberKey])))
+        .filter(Boolean);
+    const championNames = memberKeys
+        .map((memberKey) => selectTopCounterValue(entry.championsByMember?.[memberKey], { preferWins: true }))
+        .filter(Boolean);
+    const contextLines = [];
+
+    if (roleNames.length >= 2) {
+        contextLines.push(`Most common roles: ${roleNames.join(' + ')}`);
+    }
+    if (championNames.length >= 2) {
+        contextLines.push(`Best champs together: ${championNames.join(' / ')}`);
+    }
+
+    return contextLines;
+}
+
 export default {
     data: new SlashCommandBuilder()
         .setName('lineups')
@@ -84,7 +169,16 @@ export default {
                 const games = Number(value?.games ?? wins + losses);
                 const winRate = games > 0 ? wins / games : 0;
                 const size = lineupKey.split('|').length;
-                return { lineupKey, wins, losses, games, winRate, size };
+                return {
+                    lineupKey,
+                    wins,
+                    losses,
+                    games,
+                    winRate,
+                    size,
+                    rolesByMember: value?.rolesByMember,
+                    championsByMember: value?.championsByMember,
+                };
             })
             .filter((entry) => (lineupSize ? entry.size === lineupSize : true))
             .filter((entry) => entry.games >= minGames)
@@ -105,7 +199,11 @@ export default {
 
         const lines = entries.map((entry, index) => {
             const pct = (entry.winRate * 100).toFixed(1);
-            return `${index + 1}. **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`;
+            const contextLines = buildLineupContextLines(entry).map((line) => `   ${line}`);
+            return [
+                `${index + 1}. **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`,
+                ...contextLines,
+            ].join('\n');
         });
 
         const titleSizeText = lineupSize ? `${lineupSize}-Player ` : '';

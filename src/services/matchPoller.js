@@ -231,6 +231,50 @@ function reduceLolLiveState({
 
 export { buildRecapEvents, compareRecapEventsDesc, reduceLolLiveState };
 
+function normalizeLolRole(participant = {}) {
+    const rawRole = typeof participant?.teamPosition === 'string' && participant.teamPosition.trim()
+        ? participant.teamPosition
+        : participant?.lane;
+    if (typeof rawRole !== 'string') return null;
+    const normalized = rawRole.trim().toUpperCase();
+    if (!normalized || normalized === 'NONE') return null;
+    if (normalized === 'UTILITY') return 'SUPPORT';
+    return normalized;
+}
+
+function getParticipantChampionContext(participant = {}) {
+    if (typeof participant?.championName === 'string' && participant.championName.trim()) {
+        return participant.championName.trim();
+    }
+    if (Number.isInteger(participant?.championId) && participant.championId > 0) {
+        return String(participant.championId);
+    }
+    return null;
+}
+
+function buildLineupMemberMetadata({ participants = [], byPuuid, teamId }) {
+    const metadataByMember = {};
+    const lineupMemberKeys = [];
+
+    for (const participant of participants) {
+        if (Number(participant?.teamId) !== teamId) {
+            continue;
+        }
+        const participantPuuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
+        const canonicalMemberKey = (participantPuuid && byPuuid.get(participantPuuid)) || null;
+        if (!canonicalMemberKey) continue;
+
+        lineupMemberKeys.push(canonicalMemberKey);
+        metadataByMember[canonicalMemberKey] = {
+            champion: getParticipantChampionContext(participant),
+            role: normalizeLolRole(participant),
+            didWin: typeof participant?.win === 'boolean' ? participant.win === true : null,
+        };
+    }
+
+    return { lineupMemberKeys, metadataByMember };
+}
+
 function buildRegisteredLolLookup(guild = {}) {
     const byPuuid = new Map();
     const accounts = Array.isArray(guild?.accounts) ? guild.accounts : [];
@@ -390,21 +434,18 @@ async function processUnseenLolMatches({
             const myTeamId = Number.isFinite(me.teamId) ? Number(me.teamId) : null;
             const didWin = typeof me.win === 'boolean' ? me.win === true : null;
             if (myTeamId != null && typeof didWin === 'boolean') {
-                const lineupMemberKeys = [];
-                for (const participant of participants) {
-                    if (Number(participant?.teamId) !== myTeamId) {
-                        continue;
-                    }
-                    const participantPuuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
-                    const canonicalMemberKey = (participantPuuid && byPuuid.get(participantPuuid)) || null;
-                    if (canonicalMemberKey) lineupMemberKeys.push(canonicalMemberKey);
-                }
+                const { lineupMemberKeys, metadataByMember } = buildLineupMemberMetadata({
+                    participants,
+                    byPuuid,
+                    teamId: myTeamId,
+                });
                 const eligibleLineupMemberSets = getEligibleLineupMemberSets(queueType, lineupMemberKeys);
                 for (const lineupMemberSet of eligibleLineupMemberSets) {
                     await recordLolLineupResult({
                         guildId,
                         queueType,
                         lineupMemberKeys: lineupMemberSet,
+                        lineupMemberMetadata: metadataByMember,
                         didWin,
                         matchId,
                         gameMs,

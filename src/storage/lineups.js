@@ -9,6 +9,7 @@ const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
 
 const LINEUP_DELIMITER = '|';
 const SEEN_MATCH_IDS_LIMIT = 1500;
+const LINEUP_CONTEXT_COUNTER_LIMIT = 25;
 
 const store = createJsonStore({
     filePath: LINEUPS_DATA_PATH,
@@ -84,6 +85,92 @@ function normalizeMatchId(matchId) {
     return typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
 }
 
+function normalizeContextValue(value) {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed || null;
+    }
+    if (Number.isInteger(value) && value > 0) {
+        return String(value);
+    }
+    return null;
+}
+
+function getLineupMemberMetadata(lineupMemberMetadata, memberKey) {
+    if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object') {
+        return null;
+    }
+    const metadata = lineupMemberMetadata[memberKey];
+    return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : null;
+}
+
+function incrementContextCounter({ aggregate, memberKey, value, didWin }) {
+    const normalizedMemberKey = typeof memberKey === 'string' ? memberKey.trim() : '';
+    const normalizedValue = normalizeContextValue(value);
+    if (!normalizedMemberKey || !normalizedValue) {
+        return;
+    }
+
+    if (!aggregate[normalizedMemberKey] || typeof aggregate[normalizedMemberKey] !== 'object' || Array.isArray(aggregate[normalizedMemberKey])) {
+        aggregate[normalizedMemberKey] = {};
+    }
+
+    const memberCounters = aggregate[normalizedMemberKey];
+    const counter = memberCounters[normalizedValue];
+    if (!counter || typeof counter !== 'object' || Array.isArray(counter)) {
+        memberCounters[normalizedValue] = { games: 1, wins: didWin ? 1 : 0 };
+    } else {
+        counter.games = Number(counter.games ?? 0) + 1;
+        counter.wins = Number(counter.wins ?? 0) + (didWin ? 1 : 0);
+    }
+
+    const counterEntries = Object.entries(memberCounters);
+    if (counterEntries.length > LINEUP_CONTEXT_COUNTER_LIMIT) {
+        counterEntries
+            .sort(([, left], [, right]) => {
+                const byGames = Number(right?.games ?? 0) - Number(left?.games ?? 0);
+                if (byGames !== 0) return byGames;
+                return Number(right?.wins ?? 0) - Number(left?.wins ?? 0);
+            })
+            .slice(LINEUP_CONTEXT_COUNTER_LIMIT)
+            .forEach(([key]) => {
+                delete memberCounters[key];
+            });
+    }
+}
+
+function updateLineupContextAggregates({ record, lineupMemberKeys, lineupMemberMetadata, didWin }) {
+    if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object') {
+        return;
+    }
+
+    if (!record.rolesByMember || typeof record.rolesByMember !== 'object' || Array.isArray(record.rolesByMember)) {
+        record.rolesByMember = {};
+    }
+    if (!record.championsByMember || typeof record.championsByMember !== 'object' || Array.isArray(record.championsByMember)) {
+        record.championsByMember = {};
+    }
+
+    for (const memberKey of lineupMemberKeys) {
+        const metadata = getLineupMemberMetadata(lineupMemberMetadata, memberKey);
+        if (!metadata) continue;
+
+        const memberDidWin = typeof metadata.didWin === 'boolean' ? metadata.didWin : didWin;
+        incrementContextCounter({
+            aggregate: record.rolesByMember,
+            memberKey,
+            value: metadata.role,
+            didWin: memberDidWin,
+        });
+        incrementContextCounter({
+            aggregate: record.championsByMember,
+            memberKey,
+            value: metadata.champion,
+            didWin: memberDidWin,
+        });
+    }
+}
+
 function buildCombinations(values, targetSize, startIndex = 0, current = [], result = []) {
     if (current.length === targetSize) {
         result.push([...current]);
@@ -121,7 +208,7 @@ export function getEligibleLineupMemberSets(queueType, lineupMemberKeys) {
     return allMemberSets;
 }
 
-export async function recordLolLineupResult({ guildId, queueType, lineupMemberKeys, didWin, matchId, gameMs }) {
+export async function recordLolLineupResult({ guildId, queueType, lineupMemberKeys, lineupMemberMetadata = null, didWin, matchId, gameMs }) {
     const lineupKey = buildLineupKey(lineupMemberKeys);
     const lineupSize = lineupKey ? lineupKey.split(LINEUP_DELIMITER).length : 0;
 
@@ -150,6 +237,13 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         } else {
             existing.losses += 1;
         }
+        
+        updateLineupContextAggregates({
+            record: existing,
+            lineupMemberKeys: lineupKey.split(LINEUP_DELIMITER),
+            lineupMemberMetadata,
+            didWin,
+        });
 
         existing.lastSeenAt = Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
 
@@ -183,6 +277,8 @@ export async function getGuildLineupStats(guildId, { forceReload = false } = {})
                 losses: stats.losses,
                 firstSeenAt: stats.firstSeenAt,
                 lastSeenAt: stats.lastSeenAt,
+                rolesByMember: stats.rolesByMember,
+                championsByMember: stats.championsByMember,
             },
         ])
     );
