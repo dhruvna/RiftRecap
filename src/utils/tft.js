@@ -23,7 +23,7 @@ import {
 
 // === Queue helpers ===
 // Extract the queue id from a match payload while handling API variations.
-export function getQueueIdFromMatch(match) {
+function getQueueIdFromMatch(match) {
     const info = match?.info;
     const q = info?.queueId ?? info?.queue_id ?? null;
     return typeof q === 'number' ? q: (q ? Number(q) : null);
@@ -48,7 +48,7 @@ export function normalizePlacement({ placement, queueType }) {
 }
 
 // Convert a placement number to ordinal text.
-export function placementToOrdinal(placement) {
+function placementToOrdinal(placement) {
     if (!placement) return '?';
     if (placement === 1) return '1st';
     if (placement === 2) return '2nd';

@@ -59,7 +59,7 @@ function createDatasetLoader({ cacheKey, path }) {
     };
 }
 
-export const loadTFTRegalia = createDatasetLoader({
+const loadTFTRegalia = createDatasetLoader({
     cacheKey: 'TFT regalia',
     path: 'tft-regalia.json',
 });

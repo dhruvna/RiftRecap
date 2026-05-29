@@ -28,7 +28,7 @@ const DIV_OFFSET = {
 
 // === Rank normalization ===
 // Convert Riot rank data to a single LP-like number for delta computations.
-export function standardizeRankLp(rank) {
+function standardizeRankLp(rank) {
     if (!rank) return null;
 
     const tier = typeof rank.tier === 'string' ? rank.tier.toUpperCase() : null;

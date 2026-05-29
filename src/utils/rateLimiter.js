@@ -1,7 +1,7 @@
 // === Token bucket ===
 // A simple token bucket implementation used to enforce API rate limits.
 
-export class TokenBucket {
+class TokenBucket {
   constructor({ capacity, refillPerMs }) {
     this.capacity = capacity;
     this.refillPerMs = refillPerMs;
@@ -41,7 +41,7 @@ export class TokenBucket {
 
 // === Composite rate limiter ===
 // Combines multiple buckets so all constraints must be satisfied.
-export class CompositeRateLimiter {
+class CompositeRateLimiter {
   constructor(buckets = []) {
     this.buckets = buckets;
   }

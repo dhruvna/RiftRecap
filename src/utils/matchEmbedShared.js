@@ -2,13 +2,13 @@ import { GAME_TYPES, isRankedQueue, queueLabel } from '../constants/queues.js';
 import { formatDelta, formatRankWithLp } from './presentation.js';
 import { EmbedBuilder } from 'discord.js';
 
-export const MATCH_RESULT_COLORS = Object.freeze({
+const MATCH_RESULT_COLORS = Object.freeze({
   WIN: 0x2dcf71,
   LOSS: 0xf34e3c,
   NEUTRAL: 0x5865f2,
 });
 
-export const LIVE_GAME_COLORS = Object.freeze({
+const LIVE_GAME_COLORS = Object.freeze({
   DEFAULT: 0x6a5cff,
 });
 

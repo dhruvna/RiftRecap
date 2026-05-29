@@ -13,7 +13,7 @@ const BLUE_EMPTY = '#4B5563';
 const RED_EMPTY = '#4B5563';
 const SLOT_RADIUS = 6;
 
-export function getLiveDraftStripLayout() {
+function getLiveDraftStripLayout() {
   const sideWidth = (SLOT_COUNT_PER_SIDE * ICON_SIZE) + ((SLOT_COUNT_PER_SIDE - 1) * ICON_GAP);
   const width = (SIDE_PADDING_X * 2) + sideWidth + VS_WIDTH + sideWidth;
   const height = (CANVAS_PADDING_Y * 2) + ICON_SIZE;
