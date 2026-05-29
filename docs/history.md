@@ -82,7 +82,5 @@ Live Match Tracking
 **2/7/2026 - Present**
 - Haven't updated history frequently, but current version supports TFT + LoL
 - Rebranded to RiftRecap
-S
-![May LoL Match Tracking](../images/MatchTracking_LoLMay4_Progress.png)
-S
+![May LoL Match Tracking](../images/MatchTracking_May4_Progress.png)
 ![May TFT Match Tracking](../images/MatchTracking_TFTMay4_Progress.png)
