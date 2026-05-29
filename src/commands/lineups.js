@@ -46,11 +46,14 @@ export default {
         )
         .addIntegerOption((opt) =>
             opt
-                .setName('limit')
-                .setDescription('Max lineups to show (default: 10, can show up to 20 best lineups)',)
+                .setName('size')
+                .setDescription('Only show lineups with this many registered players')
                 .setRequired(false)
-                .setMinValue(1)
-                .setMaxValue(20)
+                .addChoices(
+                    { name: '2', value: 2 },
+                    { name: '3', value: 3 },
+                    { name: '5', value: 5 }
+                )
         ),
     async autocomplete(interaction) {
         try {
@@ -63,7 +66,7 @@ export default {
     execute: withGuildCommand(async (interaction, { guildId }) => {
         const selectedAccountKey = interaction.options.getString('user') ?? null;
         const minGames = interaction.options.getInteger('min_games') ?? 1;
-        const limit = interaction.options.getInteger('limit') ?? 10;
+        const lineupSize = interaction.options.getInteger('size') ?? 5;
 
         const stats = await getGuildLineupStats(guildId);
         const entries = Object.entries(stats)
@@ -72,8 +75,10 @@ export default {
                 const losses = Number(value?.losses ?? 0);
                 const games = Number(value?.games ?? wins + losses);
                 const winRate = games > 0 ? wins / games : 0;
-                return { lineupKey, wins, losses, games, winRate };
+                const size = lineupKey.split('|').length;
+                return { lineupKey, wins, losses, games, winRate, size };
             })
+            .filter((entry) => (lineupSize ? entry.size === lineupSize : true))
             .filter((entry) => entry.games >= minGames)
             .filter((entry) => (selectedAccountKey ? lineupIncludesAccount(entry.lineupKey, selectedAccountKey) : true))
             .sort((a, b) => {
@@ -82,10 +87,11 @@ export default {
                 if (b.wins !== a.wins) return b.wins - a.wins;
                 return a.lineupKey.localeCompare(b.lineupKey);
             })
-            .slice(0, limit);
+            .slice(0, 10);
 
         if (entries.length === 0) {
-            await interaction.editReply(`No lineup stats found for this server with at least ${minGames} games.`);
+            const sizeText = lineupSize ? ` and ${lineupSize} registered players` : '';
+            await interaction.editReply(`No lineup stats found for this server with at least ${minGames} games${sizeText}.`);
             return;
         }
 
@@ -94,8 +100,9 @@ export default {
             return `${index + 1}. **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`;
         });
 
+        const titleSizeText = lineupSize ? `${lineupSize}-Player ` : '';
         const embed = new EmbedBuilder()
-            .setTitle(`Top LoL Lineups for ${selectedAccountKey || 'All Players'} in This Server`)
+            .setTitle(`Top LoL ${titleSizeText}Lineups for ${selectedAccountKey || 'All Players'} in This Server`)
             .setDescription(lines.join('\n'));
 
         await interaction.editReply({ embeds: [embed] });
