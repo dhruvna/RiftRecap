@@ -7,7 +7,15 @@ function parseLineupDisplay(lineupKey) {
     if (typeof lineupKey !== 'string' || !lineupKey.trim()) {
         return 'Unknown lineup';
     }
-    return lineupKey.split('|').join(' + ');
+    const names = lineupKey.split('|').map((part) => {
+        const trimmedPart = part.trim();
+        const atIndex = trimmedPart.indexOf('@');
+        if (atIndex === -1) {
+            return trimmedPart; // if there's no @, return the whole part
+        }
+        return trimmedPart.substring(0, atIndex); // return only the part before the @
+    });
+    return names.join(' + ');
 }
 
 function lineupIncludesAccount(lineupKey, accountKey) {
@@ -66,7 +74,7 @@ export default {
     execute: withGuildCommand(async (interaction, { guildId }) => {
         const selectedAccountKey = interaction.options.getString('user') ?? null;
         const minGames = interaction.options.getInteger('min_games') ?? 1;
-        const lineupSize = interaction.options.getInteger('size') ?? 5;
+        const lineupSize = interaction.options.getInteger('size') ?? null;
 
         const stats = await getGuildLineupStats(guildId);
         const entries = Object.entries(stats)
