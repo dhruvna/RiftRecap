@@ -18,6 +18,19 @@ function parseLineupDisplay(lineupKey) {
     return names.join(' + ');
 }
 
+function buildLineupFiltersText({ lineupSize, minGames, selectedAccountKey }) {
+    const filters = [
+        `Size: ${lineupSize ?? 'All'}`,
+        `Min games: ${minGames}`,
+    ];
+
+    if (selectedAccountKey) {
+        filters.push(`User: ${parseLineupDisplay(selectedAccountKey)}`);
+    }
+
+    return filters.join(' • ');
+}
+
 function lineupIncludesAccount(lineupKey, accountKey) {
     if (typeof lineupKey !== 'string' || typeof accountKey !== 'string') {
         return false;
@@ -197,19 +210,22 @@ export default {
             return;
         }
 
+        const shouldShowLineupSize = !lineupSize;
         const lines = entries.map((entry, index) => {
             const pct = (entry.winRate * 100).toFixed(1);
+            const sizeLabel = shouldShowLineupSize ? ` [${entry.size}-player]` : '';
             const contextLines = buildLineupContextLines(entry).map((line) => `   ${line}`);
             return [
-                `${index + 1}. **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`,
+                `${index + 1}.${sizeLabel} **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`,
                 ...contextLines,
             ].join('\n');
         });
 
-        const titleSizeText = lineupSize ? `${lineupSize}-Player ` : '';
         const embed = new EmbedBuilder()
-            .setTitle(`Top LoL ${titleSizeText}Lineups for ${selectedAccountKey || 'All Players'} in This Server`)
-            .setDescription(lines.join('\n'));
+            .setTitle('Top LoL Lineups')
+            .setDescription(lines.join('\n'))
+            .setFooter({ text: buildLineupFiltersText({ lineupSize, minGames, selectedAccountKey }) });
+
 
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'lineups' }),
