@@ -9,7 +9,7 @@ import logger from '../utils/logger.js';
 
 // === Date helpers ===
 // Use local dates for daily scheduling (matching users' expectations).
-export function getLocalYmd(d = new Date()) {
+function getLocalYmd(d = new Date()) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -17,7 +17,7 @@ export function getLocalYmd(d = new Date()) {
 }
 
 // Calculate cutoff timestamp for recap aggregation.
-export function getRecapCutoffTimestamp({ now, hours }) {
+function getRecapCutoffTimestamp({ now, hours }) {
     return now.getTime() - hours * 60 * 60 * 1000;
 }
 
@@ -31,7 +31,7 @@ function ymdToUtcDayNumber(ymd) {
 
 // === Scheduling logic ===
 // Decide whether we should fire at the current time, accounting for last send.
-export function shouldFireRecapAutopost({ 
+function shouldFireRecapAutopost({ 
     now,
     fireHour,
     fireMinute,

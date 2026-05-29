@@ -31,14 +31,14 @@ export const GAME_TYPE_CHOICES = Object.freeze([
     { name: 'LoL', value: GAME_TYPES.LOL },
 ]);
 
-export const QUEUE_ID_TO_QUEUE_TYPE = Object.freeze({
+const QUEUE_ID_TO_QUEUE_TYPE = Object.freeze({
     1100: TFT_QUEUE_TYPES.RANKED,
     1160: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP,
     420: LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     440: LOL_QUEUE_TYPES.RANKED_FLEX,
 });
 
-export const LOL_RIOT_QUEUE_TYPE_TO_BOT_QUEUE_TYPE = Object.freeze({
+const LOL_RIOT_QUEUE_TYPE_TO_BOT_QUEUE_TYPE = Object.freeze({
     RANKED_SOLO_5x5: LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     RANKED_FLEX_SR: LOL_QUEUE_TYPES.RANKED_FLEX,
 });
@@ -75,12 +75,12 @@ export const DEFAULT_ANNOUNCE_QUEUES = [
     LOL_QUEUE_TYPES.RANKED_FLEX,
 ];
 
-export const TFT_QUEUE_CHOICES = Object.freeze([
+const TFT_QUEUE_CHOICES = Object.freeze([
     { name: 'Ranked TFT', value: TFT_QUEUE_TYPES.RANKED },
     { name: 'Double Up TFT', value: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP },
 ]);
 
-export const LOL_QUEUE_CHOICES = Object.freeze([
+const LOL_QUEUE_CHOICES = Object.freeze([
     { name: 'LoL Ranked Solo/Duo', value: LOL_QUEUE_TYPES.RANKED_SOLO_DUO },
     { name: 'LoL Ranked Flex', value: LOL_QUEUE_TYPES.RANKED_FLEX },
 ]);

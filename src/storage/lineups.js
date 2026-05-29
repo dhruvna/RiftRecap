@@ -54,7 +54,7 @@ export function buildLineupKey(lineupMemberKeys) {
     return normalized.join(LINEUP_DELIMITER);
 }
 
-export function isEligibleLolLineupSize(queueType, size) {
+function isEligibleLolLineupSize(queueType, size) {
     if (!Number.isInteger(size) || size <= 0) {
         return false;
     }
@@ -69,6 +69,7 @@ export function isEligibleLolLineupSize(queueType, size) {
 
     return false;
 }
+
 function createLineupRecord({ gameMs } = {}) {
     const now = Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
     return {

@@ -229,7 +229,7 @@ function reduceLolLiveState({
     return { nextTrackingPatch, shouldAnnounceLive: true, debugReason: 'announce_live' };
 }
 
-export { buildRecapEvents, compareRecapEventsDesc, reduceLolLiveState };
+export { buildRecapEvents };
 
 function normalizeLolRole(participant = {}) {
     const rawRole = typeof participant?.teamPosition === 'string' && participant.teamPosition.trim()

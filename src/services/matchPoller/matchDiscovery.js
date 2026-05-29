@@ -1,4 +1,4 @@
-export function collectUnseenMatchIds({ ids, lastMatchId, unseenMatchIds, limit }) {
+function collectUnseenMatchIds({ ids, lastMatchId, unseenMatchIds, limit }) {
     let foundLast = false;
 
     for (const id of ids) {

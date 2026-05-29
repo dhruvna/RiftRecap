@@ -9,10 +9,10 @@ export const RECAP_MODE_CHOICES = [
 // Slash command `/recap` should only allow direct daily/weekly requests.
 export const RECAP_COMMAND_MODE_CHOICES = RECAP_MODE_CHOICES.filter((choice) => choice.value !== 'BOTH');
 
-export const VALID_RECAP_MODES = new Set(RECAP_MODE_CHOICES.map((choice) => choice.value));
-export const DEFAULT_RECAP_MODE = 'DAILY';
+const VALID_RECAP_MODES = new Set(RECAP_MODE_CHOICES.map((choice) => choice.value));
+const DEFAULT_RECAP_MODE = 'DAILY';
 
-export function invalidRecapModeMessage(rawMode) {
+function invalidRecapModeMessage(rawMode) {
   const shown = rawMode == null ? 'null' : String(rawMode);
   return `Invalid mode \`${shown}\`. Allowed values: ${[...VALID_RECAP_MODES].join(', ')}.`;
 }

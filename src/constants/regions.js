@@ -26,7 +26,7 @@ export const REGION_CHOICES = [
 
 // === Routing map ===
 // Maps user-facing region -> Riot routing values used by API requests.
-export const REGION_TO_ROUTES = {
+const REGION_TO_ROUTES = {
     NA:  { platform: 'na1', regional: 'americas' },
     BR:  { platform: 'br1', regional: 'americas' },
     LAN: { platform: 'la1', regional: 'americas' },

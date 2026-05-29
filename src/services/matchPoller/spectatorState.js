@@ -3,7 +3,7 @@ import { getLolIdentity, getTftIdentity } from '../../storage.js';
 import { getLolActiveGameByPuuid, getTftActiveGameByPuuid } from '../../riot.js';
 import logger from '../../utils/logger.js';
 
-export const SPECTATOR_CHECK_COOLDOWN_MS = 0.5 * 60 * 1000;
+const SPECTATOR_CHECK_COOLDOWN_MS = 0.5 * 60 * 1000;
 export const LIVE_ANNOUNCE_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 
 export function getLolInGameDedupeKey(tracking = {}) {
@@ -25,7 +25,7 @@ export function getTftInGameDedupeKey(tracking = {}) {
     return null;
 }
 
-export function normalizeTftGameIdentifier(gameId) {
+function normalizeTftGameIdentifier(gameId) {
     const stable = String(gameId ?? '').trim();
     if (!stable) return stable;
     const suffixMatch = stable.match(/(?:^|_)(\d+)$/);

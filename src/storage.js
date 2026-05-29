@@ -5,9 +5,6 @@ import { createJsonStore } from './storage/jsonStore.js';
 import {
     DEFAULT_RECAP_CONFIG_ID,
     TRACKED_GAMES,
-    normalizeAccountTracking,
-    normalizeIdentityNamespace,
-    normalizeAccountIdentity,
     normalizeRecapConfig,
 } from './storage/normalize.js';
 
@@ -31,7 +28,7 @@ const DATA_PATH = process.env.DATA_PATH
 const DISCORD_SNOWFLAKE_REGEX = /^\d{17,20}$/;
 const RECAP_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-export { DEFAULT_RECAP_CONFIG_ID, TRACKED_GAMES, normalizeAccountTracking, normalizeIdentityNamespace, normalizeAccountIdentity, normalizeRecapConfig };
+export { TRACKED_GAMES };
 
 // === Database IO ===
 // Read the JSON file into an object, falling back to an empty object on error.
@@ -182,7 +179,7 @@ function ensureGuildMutable(db, guildId) {
     return db[guildId];
 }
 
-export function getTrackedGameIdentity(account, gameKey) {
+function getTrackedGameIdentity(account, gameKey) {
     return account?.identity?.[gameKey] ?? {};
 }
 
@@ -194,7 +191,7 @@ export function getLolIdentity(account) {
     return getTrackedGameIdentity(account, TRACKED_GAMES.LOL);
 }
 
-export function getTrackedGameState(account, gameKey) {
+function getTrackedGameState(account, gameKey) {
     return account?.trackedGames?.[gameKey] ?? {};
 }
 
@@ -346,11 +343,11 @@ function updateGuildSeasonConfigInStore(guildId, guildKey, patch) {
     }).then((result) => result?.config ?? null);
 }
 
-export async function updateGuildTftConfigInStore(guildId, patch) {
+async function updateGuildTftConfigInStore(guildId, patch) {
     return updateGuildSeasonConfigInStore(guildId, 'tft', patch);
 }
 
-export async function updateGuildLolConfigInStore(guildId, patch) {
+async function updateGuildLolConfigInStore(guildId, patch) {
     return updateGuildSeasonConfigInStore(guildId, 'lol', patch);
 }
 
@@ -381,7 +378,7 @@ export function getKnownGuildIds(db) {
         .filter((guildId) => isValidGuildId(guildId));
 }
 
-export function pruneExpiredRecapEventsInDb(db, nowMs = Date.now()) {
+function pruneExpiredRecapEventsInDb(db, nowMs = Date.now()) {
     if (!db || typeof db !== 'object') {
         return {
             didChange: false,
