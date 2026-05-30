@@ -86,12 +86,7 @@ client.once('clientReady', async () => {
     try {
         await startMatchPoller(client);
     } catch (error) {
-
-    // // - match poller: periodic rank/match updates
-    // // - recap autoposter: scheduled recap messages
-    // startMatchPoller(client).catch((error) => {
         logger.error('match_poller_failed', { service: 'startup', event: 'match_poller_failed', error });
-    // });
     }
 
     startRecapAutoposter(client).catch((error) => {
