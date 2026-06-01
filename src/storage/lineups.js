@@ -57,10 +57,6 @@ function getLineupMemberMetadata(lineupMemberMetadata, memberKey) {
     return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : null;
 }
 
-function toDbQueueType(queueType) {
-    return typeof queueType === 'string' && queueType.trim() ? queueType.trim() : null;
-}
-
 function getLineupSeenAt(gameMs) {
     return Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
 }
@@ -69,7 +65,7 @@ function runStatement(statement, ...params) {
     return statement.run(...params);
 }
 
-function upsertMemberContextCounter({ db, guildId, queueType, memberKey, contextType, value, didWin }) {
+function upsertMemberContextCounter({ db, guildId, memberKey, contextType, value, didWin }) {
     const normalizedMemberKey = typeof memberKey === 'string' ? memberKey.trim() : '';
     const normalizedValue = normalizeContextValue(value);
     if (!normalizedMemberKey || !normalizedValue) {
@@ -85,14 +81,13 @@ function upsertMemberContextCounter({ db, guildId, queueType, memberKey, context
                 context_value,
                 games,
                 wins
-            ) VALUES (?, ?, ?, ?, ?, 1, ?)
+            ) VALUES (?, ?, ?, ?, 1, ?)
             ON CONFLICT(guild_id, member_key, context_type, context_value)
             DO UPDATE SET
                 games = games + 1,
                 wins = wins + excluded.wins
         `),
         guildId,
-        queueType,
         normalizedMemberKey,
         contextType,
         normalizedValue,
@@ -116,18 +111,16 @@ function upsertMemberContextCounter({ db, guildId, queueType, memberKey, context
               )
         `),
         guildId,
-        queueType,
         normalizedMemberKey,
         contextType,
         guildId,
-        queueType,
         normalizedMemberKey,
         contextType,
         MEMBER_CONTEXT_COUNTER_LIMIT
     );
 }
 
-function updateMemberContextAggregates({ db, guildId, queueType, lineupMemberKeys, lineupMemberMetadata, didWin }) {
+function updateMemberContextAggregates({ db, guildId, lineupMemberKeys, lineupMemberMetadata, didWin }) {
     if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object') {
         return;
     }
@@ -140,7 +133,6 @@ function updateMemberContextAggregates({ db, guildId, queueType, lineupMemberKey
         upsertMemberContextCounter({
             db,
             guildId,
-            queueType,
             memberKey,
             contextType: 'role',
             value: metadata.role,
@@ -149,7 +141,6 @@ function updateMemberContextAggregates({ db, guildId, queueType, lineupMemberKey
         upsertMemberContextCounter({
             db,
             guildId,
-            queueType,
             memberKey,
             contextType: 'champion',
             value: metadata.champion,
@@ -221,7 +212,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
     const lineupKey = buildLineupKey(lineupMemberKeys);
     const lineupMembers = lineupKey ? lineupKey.split(LINEUP_DELIMITER) : [];
     const lineupSize = lineupMembers.length;
-    const dbQueueType = toDbQueueType(queueType);
 
     if (!guildId || typeof guildId !== 'string') {
         return { recorded: false, reason: 'invalid_guild_id' };
@@ -244,7 +234,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                 WHERE guild_id = ?
                   AND lineup_key = ?
                   AND match_id = ?
-            `).get(guildId, dbQueueType, lineupKey, matchIdNormalized);
+             `).get(guildId, lineupKey, matchIdNormalized);
 
             if (existingMatch) {
                 return { recorded: false, reason: 'duplicate_match', didChange: false };
@@ -262,7 +252,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                     losses,
                     first_seen_at,
                     last_seen_at
-                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, 1, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, lineup_key)
                 DO UPDATE SET
                     lineup_size = excluded.lineup_size,
@@ -272,7 +262,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                     last_seen_at = excluded.last_seen_at
             `),
             guildId,
-            dbQueueType,
             lineupKey,
             lineupSize,
             didWin ? 1 : 0,
@@ -289,10 +278,9 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                         lineup_key,
                         match_id,
                         seen_at
-                    ) VALUES (?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?)
                 `),
                 guildId,
-                dbQueueType,
                 lineupKey,
                 matchIdNormalized,
                 seenAt
@@ -302,7 +290,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
         updateMemberContextAggregates({
             db,
             guildId,
-            queueType: dbQueueType,
             lineupMemberKeys: lineupMembers,
             lineupMemberMetadata,
             didWin,

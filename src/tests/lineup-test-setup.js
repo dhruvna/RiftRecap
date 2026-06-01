@@ -45,6 +45,14 @@ async function assertPersonLevelChampionCounters() {
     });
 
     const db = await getSqliteDb();
+    for (const tableName of ['lineup_stats', 'lineup_match_seen', 'lol_member_context_counter']) {
+        const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+        assert.equal(
+            columns.some((column) => column.name === 'queue_type'),
+            false,
+            `${tableName} must not include queue_type`
+        );
+    }
     const memberContextColumns = db.prepare('PRAGMA table_info(lol_member_context_counter)').all();
     assert.equal(
         memberContextColumns.some((column) => column.name === 'lineup_key'),
@@ -56,11 +64,10 @@ async function assertPersonLevelChampionCounters() {
         SELECT COUNT(*) AS rows, SUM(games) AS games, SUM(wins) AS wins
         FROM lol_member_context_counter
         WHERE guild_id = ?
-          AND queue_type = ?
           AND member_key = ?
           AND context_type = 'champion'
           AND context_value = 'Ahri'
-    `).get(guildId, DEFAULT_QUEUE_TYPE, sharedMemberKey);
+    `).get(guildId, sharedMemberKey);
 
     assert.equal(Number(championCounter.rows), 1, 'same champion context should use one person-level row');
     assert.equal(Number(championCounter.games), 2, 'same champion context should aggregate across different lineups');
