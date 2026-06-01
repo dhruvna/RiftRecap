@@ -1,7 +1,5 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { LOL_QUEUE_TYPES } from '../constants/queues.js';
-import { buildLineupKey, getEligibleLineupMemberSets, recordLolLineupResult } from '../storage/lineups.js';
+import { buildLineupKey, getEligibleLineupMemberSets, getGuildLineupStats, recordLolLineupResult } from '../storage/lineups.js';
 
 const TEST_GUILD_ID = '288456610366357505';
 const DEFAULT_QUEUE_TYPE = LOL_QUEUE_TYPES.RANKED_FLEX;
@@ -33,13 +31,7 @@ async function main() {
         });
     }
 
-    const outputPath = process.env.LOL_LINEUPS_DATA_PATH
-        ? path.resolve(process.env.LOL_LINEUPS_DATA_PATH)
-        : path.join(process.cwd(), 'user_data', 'lol_lineups.json');
-
-    const raw = await fs.readFile(outputPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    const guildLineups = parsed?.[TEST_GUILD_ID]?.lineups ?? {};
+    const guildLineups = await getGuildLineupStats(TEST_GUILD_ID);
 
     console.log('Dummy accounts:', dummyAccounts.map((a) => `${a.gameName}#${a.tagLine}`).join(', '));
     console.log('Primary lineup key:', buildLineupKey(lineupMemberKeys));

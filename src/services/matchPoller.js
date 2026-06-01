@@ -536,7 +536,7 @@ async function processUnseenLolMatches({
                             await liveMessage.delete().catch(() => null);
                             await liveChannel.send(payload);
                         } else {
-                            await liveChannel.send(payload);
+                            await liveMessage.edit(payload);
                         }
                         didAnnounceResult = true;
                         shouldClearLiveAnnouncementTracking = true;

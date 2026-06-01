@@ -1,44 +1,8 @@
-import path from 'node:path';
 import { LOL_QUEUE_TYPES } from '../constants/queues.js';
-import { createJsonStore } from './jsonStore.js';
-
-const DEFAULT_LINEUPS_DATA_PATH = path.join(process.cwd(), 'user_data', 'lol_lineups.json');
-const LINEUPS_DATA_PATH = process.env.LOL_LINEUPS_DATA_PATH
-    ? path.resolve(process.env.LOL_LINEUPS_DATA_PATH)
-    : path.join(process.env.DATA_DIR ?? path.dirname(DEFAULT_LINEUPS_DATA_PATH), 'lol_lineups.json');
+import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const LINEUP_DELIMITER = '|';
-const SEEN_MATCH_IDS_LIMIT = 1500;
 const LINEUP_CONTEXT_COUNTER_LIMIT = 25;
-
-const store = createJsonStore({
-    filePath: LINEUPS_DATA_PATH,
-    initialData: {},
-    revalidateCache: true,
-    validateData: (parsed) => {
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            throw new Error('[lineups] lol_lineups.json root must be an object.');
-        }
-    },
-});
-
-async function loadDb({ forceReload = false } = {}) {
-    return store.load({ forceReload });
-}
-
-async function mutateDb(mutator) {
-    return store.mutate(mutator);
-}
-
-function getGuildStoreMutable(db, guildId) {
-    if (!db[guildId]) {
-        db[guildId] = { lineups: {} };
-    }
-    if (!db[guildId].lineups || typeof db[guildId].lineups !== 'object' || Array.isArray(db[guildId].lineups)) {
-        db[guildId].lineups = {};
-    }
-    return db[guildId].lineups;
-}
 
 export function buildLineupKey(lineupMemberKeys) {
     if (!Array.isArray(lineupMemberKeys)) {
@@ -70,18 +34,6 @@ function isEligibleLolLineupSize(queueType, size) {
     return false;
 }
 
-function createLineupRecord({ gameMs } = {}) {
-    const now = Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
-    return {
-        games: 0,
-        wins: 0,
-        losses: 0,
-        firstSeenAt: now,
-        lastSeenAt: now,
-        seenMatchIds: [],
-    };
-}
-
 function normalizeMatchId(matchId) {
     return typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
 }
@@ -105,51 +57,88 @@ function getLineupMemberMetadata(lineupMemberMetadata, memberKey) {
     return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : null;
 }
 
-function incrementContextCounter({ aggregate, memberKey, value, didWin }) {
+function toDbQueueType(queueType) {
+    return typeof queueType === 'string' && queueType.trim() ? queueType.trim() : null;
+}
+
+function getLineupSeenAt(gameMs) {
+    return Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
+}
+
+function runStatement(statement, ...params) {
+    return statement.run(...params);
+}
+
+function upsertContextCounter({ db, guildId, queueType, lineupKey, memberKey, contextType, value, didWin }) {
     const normalizedMemberKey = typeof memberKey === 'string' ? memberKey.trim() : '';
     const normalizedValue = normalizeContextValue(value);
     if (!normalizedMemberKey || !normalizedValue) {
         return;
     }
 
-    if (!aggregate[normalizedMemberKey] || typeof aggregate[normalizedMemberKey] !== 'object' || Array.isArray(aggregate[normalizedMemberKey])) {
-        aggregate[normalizedMemberKey] = {};
-    }
+    runStatement(
+        db.prepare(`
+            INSERT INTO lineup_context_counter (
+                guild_id,
+                queue_type,
+                lineup_key,
+                member_key,
+                context_type,
+                context_value,
+                games,
+                wins
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+            ON CONFLICT(guild_id, queue_type, lineup_key, member_key, context_type, context_value)
+            DO UPDATE SET
+                games = games + 1,
+                wins = wins + excluded.wins
+        `),
+        guildId,
+        queueType,
+        lineupKey,
+        normalizedMemberKey,
+        contextType,
+        normalizedValue,
+        didWin ? 1 : 0
+    );
 
-    const memberCounters = aggregate[normalizedMemberKey];
-    const counter = memberCounters[normalizedValue];
-    if (!counter || typeof counter !== 'object' || Array.isArray(counter)) {
-        memberCounters[normalizedValue] = { games: 1, wins: didWin ? 1 : 0 };
-    } else {
-        counter.games = Number(counter.games ?? 0) + 1;
-        counter.wins = Number(counter.wins ?? 0) + (didWin ? 1 : 0);
-    }
-
-    const counterEntries = Object.entries(memberCounters);
-    if (counterEntries.length > LINEUP_CONTEXT_COUNTER_LIMIT) {
-        counterEntries
-            .sort(([, left], [, right]) => {
-                const byGames = Number(right?.games ?? 0) - Number(left?.games ?? 0);
-                if (byGames !== 0) return byGames;
-                return Number(right?.wins ?? 0) - Number(left?.wins ?? 0);
-            })
-            .slice(LINEUP_CONTEXT_COUNTER_LIMIT)
-            .forEach(([key]) => {
-                delete memberCounters[key];
-            });
-    }
+    runStatement(
+        db.prepare(`
+            DELETE FROM lineup_context_counter
+            WHERE guild_id = ?
+              AND queue_type = ?
+              AND lineup_key = ?
+              AND member_key = ?
+              AND context_type = ?
+              AND context_value NOT IN (
+                  SELECT context_value
+                  FROM lineup_context_counter
+                  WHERE guild_id = ?
+                    AND queue_type = ?
+                    AND lineup_key = ?
+                    AND member_key = ?
+                    AND context_type = ?
+                  ORDER BY games DESC, wins DESC, context_value ASC
+                  LIMIT ?
+              )
+        `),
+        guildId,
+        queueType,
+        lineupKey,
+        normalizedMemberKey,
+        contextType,
+        guildId,
+        queueType,
+        lineupKey,
+        normalizedMemberKey,
+        contextType,
+        LINEUP_CONTEXT_COUNTER_LIMIT
+    );
 }
 
-function updateLineupContextAggregates({ record, lineupMemberKeys, lineupMemberMetadata, didWin }) {
+function updateLineupContextAggregates({ db, guildId, queueType, lineupKey, lineupMemberKeys, lineupMemberMetadata, didWin }) {
     if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object') {
         return;
-    }
-
-    if (!record.rolesByMember || typeof record.rolesByMember !== 'object' || Array.isArray(record.rolesByMember)) {
-        record.rolesByMember = {};
-    }
-    if (!record.championsByMember || typeof record.championsByMember !== 'object' || Array.isArray(record.championsByMember)) {
-        record.championsByMember = {};
     }
 
     for (const memberKey of lineupMemberKeys) {
@@ -157,18 +146,48 @@ function updateLineupContextAggregates({ record, lineupMemberKeys, lineupMemberM
         if (!metadata) continue;
 
         const memberDidWin = typeof metadata.didWin === 'boolean' ? metadata.didWin : didWin;
-        incrementContextCounter({
-            aggregate: record.rolesByMember,
+        upsertContextCounter({
+            db,
+            guildId,
+            queueType,
+            lineupKey,
             memberKey,
+            contextType: 'role',
             value: metadata.role,
             didWin: memberDidWin,
         });
-        incrementContextCounter({
-            aggregate: record.championsByMember,
+        upsertContextCounter({
+            db,
+            guildId,
+            queueType,
+            lineupKey,
             memberKey,
+            contextType: 'champion',
             value: metadata.champion,
             didWin: memberDidWin,
         });
+    }
+}
+
+function addContextCounter(target, { memberKey, contextType, contextValue, games, wins }) {
+    const groupKey = contextType === 'role' ? 'rolesByMember' : 'championsByMember';
+    if (!target[groupKey]) {
+        target[groupKey] = {};
+    }
+    if (!target[groupKey][memberKey]) {
+        target[groupKey][memberKey] = {};
+    }
+
+    const memberCounters = target[groupKey][memberKey];
+    const existing = memberCounters[contextValue];
+    if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+        existing.games = Number(existing.games ?? 0) + Number(games ?? 0);
+        existing.wins = Number(existing.wins ?? 0) + Number(wins ?? 0);
+    } else {
+        memberCounters[contextValue] = {
+            games: Number(games ?? 0),
+            wins: Number(wins ?? 0),
+        };
     }
 }
 
@@ -211,7 +230,9 @@ export function getEligibleLineupMemberSets(queueType, lineupMemberKeys) {
 
 export async function recordLolLineupResult({ guildId, queueType, lineupMemberKeys, lineupMemberMetadata = null, didWin, matchId, gameMs }) {
     const lineupKey = buildLineupKey(lineupMemberKeys);
-    const lineupSize = lineupKey ? lineupKey.split(LINEUP_DELIMITER).length : 0;
+    const lineupMembers = lineupKey ? lineupKey.split(LINEUP_DELIMITER) : [];
+    const lineupSize = lineupMembers.length;
+    const dbQueueType = toDbQueueType(queueType);
 
     if (!guildId || typeof guildId !== 'string') {
         return { recorded: false, reason: 'invalid_guild_id' };
@@ -222,65 +243,146 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
     if (!isEligibleLolLineupSize(queueType, lineupSize)) {
         return { recorded: false, reason: 'ineligible_size' };
     }
+    if (!dbQueueType) {
+        return { recorded: false, reason: 'invalid_queue_type' };
+    }
 
-    return mutateDb((db) => {
-        const lineups = getGuildStoreMutable(db, guildId);
-        const existing = lineups[lineupKey] ?? createLineupRecord({ gameMs });
+    return withSqliteTransaction((db) => {
         const matchIdNormalized = normalizeMatchId(matchId);
+        const seenAt = getLineupSeenAt(gameMs);
 
-        if (matchIdNormalized && existing.seenMatchIds.includes(matchIdNormalized)) {
-            return { recorded: false, reason: 'duplicate_match', didChange: false };
+        if (matchIdNormalized) {
+            const existingMatch = db.prepare(`
+                SELECT 1
+                FROM lineup_match_seen
+                WHERE guild_id = ?
+                  AND queue_type = ?
+                  AND lineup_key = ?
+                  AND match_id = ?
+            `).get(guildId, dbQueueType, lineupKey, matchIdNormalized);
+
+            if (existingMatch) {
+                return { recorded: false, reason: 'duplicate_match', didChange: false };
+            }
         }
+        
+        runStatement(
+            db.prepare(`
+                INSERT INTO lineup_stats (
+                    guild_id,
+                    queue_type,
+                    lineup_key,
+                    lineup_size,
+                    games,
+                    wins,
+                    losses,
+                    first_seen_at,
+                    last_seen_at
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, queue_type, lineup_key)
+                DO UPDATE SET
+                    lineup_size = excluded.lineup_size,
+                    games = games + 1,
+                    wins = wins + excluded.wins,
+                    losses = losses + excluded.losses,
+                    last_seen_at = excluded.last_seen_at
+            `),
+            guildId,
+            dbQueueType,
+            lineupKey,
+            lineupSize,
+            didWin ? 1 : 0,
+            didWin ? 0 : 1,
+            seenAt,
+            seenAt
+        );
 
-        existing.games += 1;
-        if (didWin) {
-            existing.wins += 1;
-        } else {
-            existing.losses += 1;
+        if (matchIdNormalized) {
+            runStatement(
+                db.prepare(`
+                    INSERT INTO lineup_match_seen (
+                        guild_id,
+                        queue_type,
+                        lineup_key,
+                        match_id,
+                        seen_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                `),
+                guildId,
+                dbQueueType,
+                lineupKey,
+                matchIdNormalized,
+                seenAt
+            );
         }
         
         updateLineupContextAggregates({
-            record: existing,
-            lineupMemberKeys: lineupKey.split(LINEUP_DELIMITER),
+            db,
+            guildId,
+            queueType: dbQueueType,
+            lineupKey,
+            lineupMemberKeys: lineupMembers,
             lineupMemberMetadata,
             didWin,
         });
-
-        existing.lastSeenAt = Number.isFinite(gameMs) ? Math.trunc(gameMs) : Date.now();
-
-        if (matchIdNormalized) {
-            existing.seenMatchIds = [matchIdNormalized, ...existing.seenMatchIds].slice(0, SEEN_MATCH_IDS_LIMIT);
-        }
-
-        lineups[lineupKey] = existing;
 
         return { recorded: true, lineupKey };
     });
 }
 
-export async function getGuildLineupStats(guildId, { forceReload = false } = {}) {
+export async function getGuildLineupStats(guildId) {
     if (!guildId || typeof guildId !== 'string') {
         return {};
     }
 
-    const db = await loadDb({ forceReload });
-    const lineups = db?.[guildId]?.lineups;
-    if (!lineups || typeof lineups !== 'object' || Array.isArray(lineups)) {
-        return {};
+    const db = await getSqliteDb();
+    const statsRows = db.prepare(`
+        SELECT
+            lineup_key AS lineupKey,
+            SUM(games) AS games,
+            SUM(wins) AS wins,
+            SUM(losses) AS losses,
+            MIN(first_seen_at) AS firstSeenAt,
+            MAX(last_seen_at) AS lastSeenAt
+        FROM lineup_stats
+        WHERE guild_id = ?
+        GROUP BY lineup_key
+    `).all(guildId);
+
+    const lineups = Object.fromEntries(statsRows.map((row) => [
+        row.lineupKey,
+        {
+            games: Number(row.games ?? 0),
+            wins: Number(row.wins ?? 0),
+            losses: Number(row.losses ?? 0),
+            firstSeenAt: Number(row.firstSeenAt ?? 0),
+            lastSeenAt: Number(row.lastSeenAt ?? 0),
+            rolesByMember: {},
+            championsByMember: {},
+        },
+    ]));
+
+    const contextRows = db.prepare(`
+        SELECT
+            lineup_key AS lineupKey,
+            member_key AS memberKey,
+            context_type AS contextType,
+            context_value AS contextValue,
+            SUM(games) AS games,
+            SUM(wins) AS wins
+        FROM lineup_context_counter
+        WHERE guild_id = ?
+        GROUP BY lineup_key, member_key, context_type, context_value
+        ORDER BY games DESC, wins DESC, context_value ASC
+    `).all(guildId);
+
+    for (const row of contextRows) {
+        const target = lineups[row.lineupKey];
+        if (!target || (row.contextType !== 'role' && row.contextType !== 'champion')) {
+            continue;
+        }
+        addContextCounter(target, row);
     }
 
-    return Object.fromEntries(
-        Object.entries(lineups).map(([lineupKey, stats]) => [
-            lineupKey,
-            {
-                games: stats.games,
-                wins: stats.wins,
-                losses: stats.losses,
-                firstSeenAt: stats.firstSeenAt,
-                lastSeenAt: stats.lastSeenAt,
-                rolesByMember: stats.rolesByMember,
-                championsByMember: stats.championsByMember,
-            },
-        ])
-    );
+    return lineups;
 }
