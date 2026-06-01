@@ -362,8 +362,6 @@ export async function buildLolMatchResultEmbed({
 
     const pentakillValue = formatPentakillResultValue(trackedParticipant);
     const resultFields = [
-
-    // embed.addFields(
         { name: 'K/D/A', value: kda, inline: true },
         { name: 'Damage', value: damageDealt.toLocaleString(), inline: true },
         // if lane = UTILITY, show vision score instead of CS/min (and corresponding label as well)
@@ -371,17 +369,14 @@ export async function buildLolMatchResultEmbed({
         { name: 'Rank', value: rankValue.slice(0, 1024), inline: true },
         { name: didWin ? 'LP Win' : 'LP Loss', value: lpChangeValue, inline: true },
         { name: 'Duration', value: duration, inline: true },
-        // { name: "Lane", value: lane, inline: true },
-    // );
     ];
-    if (pentakillValue) {
-        resultFields.push({ name: 'Pentakill', value: pentakillValue, inline: false });
-    }
 
     embed.addFields(...resultFields);
 
     if (championIconUrl) embed.setThumbnail(championIconUrl);
-    const mentionPayload = pentakillValue ? await buildPentakillRoleMentionPayload(channel) : {};
+    const mentionPayload = pentakillValue
+        ? await buildPentakillRoleMentionPayload(channel, { participant: trackedParticipant, summonerName: riotId })
+        : {};
     return { embed, files: [], ...mentionPayload };
 }
 
