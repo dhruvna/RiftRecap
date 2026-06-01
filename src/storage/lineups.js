@@ -2,7 +2,7 @@ import { LOL_QUEUE_TYPES } from '../constants/queues.js';
 import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const LINEUP_DELIMITER = '|';
-const LINEUP_CONTEXT_COUNTER_LIMIT = 25;
+const MEMBER_CONTEXT_COUNTER_LIMIT = 25;
 
 export function buildLineupKey(lineupMemberKeys) {
     if (!Array.isArray(lineupMemberKeys)) {
@@ -69,7 +69,7 @@ function runStatement(statement, ...params) {
     return statement.run(...params);
 }
 
-function upsertContextCounter({ db, guildId, queueType, lineupKey, memberKey, contextType, value, didWin }) {
+function upsertMemberContextCounter({ db, guildId, queueType, memberKey, contextType, value, didWin }) {
     const normalizedMemberKey = typeof memberKey === 'string' ? memberKey.trim() : '';
     const normalizedValue = normalizeContextValue(value);
     if (!normalizedMemberKey || !normalizedValue) {
@@ -78,24 +78,22 @@ function upsertContextCounter({ db, guildId, queueType, lineupKey, memberKey, co
 
     runStatement(
         db.prepare(`
-            INSERT INTO lineup_context_counter (
+            INSERT INTO lol_member_context_counter (
                 guild_id,
                 queue_type,
-                lineup_key,
                 member_key,
                 context_type,
                 context_value,
                 games,
                 wins
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-            ON CONFLICT(guild_id, queue_type, lineup_key, member_key, context_type, context_value)
+            ) VALUES (?, ?, ?, ?, ?, 1, ?)
+            ON CONFLICT(guild_id, queue_type, member_key, context_type, context_value)
             DO UPDATE SET
                 games = games + 1,
                 wins = wins + excluded.wins
         `),
         guildId,
         queueType,
-        lineupKey,
         normalizedMemberKey,
         contextType,
         normalizedValue,
@@ -104,18 +102,16 @@ function upsertContextCounter({ db, guildId, queueType, lineupKey, memberKey, co
 
     runStatement(
         db.prepare(`
-            DELETE FROM lineup_context_counter
+            DELETE FROM lol_member_context_counter
             WHERE guild_id = ?
               AND queue_type = ?
-              AND lineup_key = ?
               AND member_key = ?
               AND context_type = ?
               AND context_value NOT IN (
                   SELECT context_value
-                  FROM lineup_context_counter
+                  FROM lol_member_context_counter
                   WHERE guild_id = ?
                     AND queue_type = ?
-                    AND lineup_key = ?
                     AND member_key = ?
                     AND context_type = ?
                   ORDER BY games DESC, wins DESC, context_value ASC
@@ -124,19 +120,17 @@ function upsertContextCounter({ db, guildId, queueType, lineupKey, memberKey, co
         `),
         guildId,
         queueType,
-        lineupKey,
         normalizedMemberKey,
         contextType,
         guildId,
         queueType,
-        lineupKey,
         normalizedMemberKey,
         contextType,
-        LINEUP_CONTEXT_COUNTER_LIMIT
+        MEMBER_CONTEXT_COUNTER_LIMIT
     );
 }
 
-function updateLineupContextAggregates({ db, guildId, queueType, lineupKey, lineupMemberKeys, lineupMemberMetadata, didWin }) {
+function updateMemberContextAggregates({ db, guildId, queueType, lineupMemberKeys, lineupMemberMetadata, didWin }) {
     if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object') {
         return;
     }
@@ -146,21 +140,19 @@ function updateLineupContextAggregates({ db, guildId, queueType, lineupKey, line
         if (!metadata) continue;
 
         const memberDidWin = typeof metadata.didWin === 'boolean' ? metadata.didWin : didWin;
-        upsertContextCounter({
+        upsertMemberContextCounter({
             db,
             guildId,
             queueType,
-            lineupKey,
             memberKey,
             contextType: 'role',
             value: metadata.role,
             didWin: memberDidWin,
         });
-        upsertContextCounter({
+        upsertMemberContextCounter({
             db,
             guildId,
             queueType,
-            lineupKey,
             memberKey,
             contextType: 'champion',
             value: metadata.champion,
@@ -316,11 +308,10 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
             );
         }
         
-        updateLineupContextAggregates({
+        updateMemberContextAggregates({
             db,
             guildId,
             queueType: dbQueueType,
-            lineupKey,
             lineupMemberKeys: lineupMembers,
             lineupMemberMetadata,
             didWin,
@@ -364,25 +355,36 @@ export async function getGuildLineupStats(guildId) {
 
     const contextRows = db.prepare(`
         SELECT
-            lineup_key AS lineupKey,
             member_key AS memberKey,
             context_type AS contextType,
             context_value AS contextValue,
             SUM(games) AS games,
             SUM(wins) AS wins
-        FROM lineup_context_counter
+        FROM lol_member_context_counter
         WHERE guild_id = ?
-        GROUP BY lineup_key, member_key, context_type, context_value
+        GROUP BY member_key, context_type, context_value
         ORDER BY games DESC, wins DESC, context_value ASC
     `).all(guildId);
-
+    
+    const contextByMember = new Map();
     for (const row of contextRows) {
-        const target = lineups[row.lineupKey];
-        if (!target || (row.contextType !== 'role' && row.contextType !== 'champion')) {
+        if (row.contextType !== 'role' && row.contextType !== 'champion') {
             continue;
         }
-        addContextCounter(target, row);
+        const memberContext = contextByMember.get(row.memberKey) ?? [];
+        memberContext.push(row);
+        contextByMember.set(row.memberKey, memberContext);
     }
 
+    for (const [lineupKey, target] of Object.entries(lineups)) {
+        const memberKeys = lineupKey.split(LINEUP_DELIMITER).map((memberKey) => memberKey.trim()).filter(Boolean);
+        for (const memberKey of memberKeys) {
+            const memberContextRows = contextByMember.get(memberKey) ?? [];
+            for (const row of memberContextRows) {
+                addContextCounter(target, row);
+            }
+        }
+
+    }
     return lineups;
 }

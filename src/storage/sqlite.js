@@ -24,6 +24,13 @@ function ensureDatabaseDirectory(filePath) {
 }
 
 function runMigrations(db) {
+    const legacyContextCounterExists = db.prepare(`
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'lineup_context_counter'
+    `).get();
+
     db.exec(`
         PRAGMA journal_mode = WAL;
         PRAGMA foreign_keys = ON;
@@ -50,25 +57,52 @@ function runMigrations(db) {
             PRIMARY KEY (guild_id, queue_type, lineup_key, match_id)
         );
 
-        CREATE TABLE IF NOT EXISTS lineup_context_counter (
+        CREATE TABLE IF NOT EXISTS lol_member_context_counter (
             guild_id TEXT NOT NULL,
             queue_type TEXT NOT NULL,
-            lineup_key TEXT NOT NULL,
             member_key TEXT NOT NULL,
             context_type TEXT NOT NULL,
             context_value TEXT NOT NULL,
             games INTEGER NOT NULL DEFAULT 0,
             wins INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (guild_id, queue_type, lineup_key, member_key, context_type, context_value)
+            PRIMARY KEY (guild_id, queue_type, member_key, context_type, context_value)
         );
 
         CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_size_games_wins
             ON lineup_stats (guild_id, lineup_size, games, wins);
         CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_games
             ON lineup_stats (guild_id, games);
-        CREATE INDEX IF NOT EXISTS idx_lineup_context_counter_query
-            ON lineup_context_counter (guild_id, lineup_key, member_key, context_type, games, wins);
+        CREATE INDEX IF NOT EXISTS idx_lol_member_context_counter_query
+            ON lol_member_context_counter (guild_id, member_key, context_type, games, wins);
     `);
+
+    if (legacyContextCounterExists) {
+        db.exec(`
+            INSERT INTO lol_member_context_counter (
+                guild_id,
+                queue_type,
+                member_key,
+                context_type,
+                context_value,
+                games,
+                wins
+            )
+            SELECT
+                guild_id,
+                queue_type,
+                member_key,
+                context_type,
+                context_value,
+                SUM(games),
+                SUM(wins)
+            FROM lineup_context_counter
+            GROUP BY guild_id, queue_type, member_key, context_type, context_value
+            ON CONFLICT(guild_id, queue_type, member_key, context_type, context_value)
+            DO UPDATE SET
+                games = MAX(games, excluded.games),
+                wins = MAX(wins, excluded.wins);
+        `);
+    }
 }
 
 async function openDatabase() {
