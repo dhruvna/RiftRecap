@@ -137,6 +137,15 @@ function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, g
 
 // === Discord announcement ===
 // Build an embed and post it in the configured channel (if any).
+function buildDiscordMessagePayload({ embed, files, content, allowedMentions }) {
+    return {
+        ...(content ? { content } : {}),
+        embeds: [embed],
+        files,
+        ...(allowedMentions ? { allowedMentions } : {}),
+    };
+}
+
 async function announceGameMatchToDiscord({ buildEmbed, ...context }) {
     const { channel, guildId, channelId } = context;
     if (!channel) {
@@ -145,8 +154,8 @@ async function announceGameMatchToDiscord({ buildEmbed, ...context }) {
         );
         return null;
     }
-    const { embed, files } = await buildEmbed(context);
-    const sentMessage = await channel.send({ embeds: [embed], files });
+    const payload = buildDiscordMessagePayload(await buildEmbed(context));
+    const sentMessage = await channel.send(payload);
     return sentMessage ?? null;
 }
 
@@ -517,14 +526,17 @@ async function processUnseenLolMatches({
                     ? (channel?.id === liveChannelId ? channel : await channel?.client?.channels?.fetch(liveChannelId).catch(() => null))
                     : null;
                 if (liveChannel) {
-                    const { embed, files } = await buildLolMatchResultEmbed(resultAnnouncementContext);
+                    const payload = buildDiscordMessagePayload(await buildLolMatchResultEmbed({
+                        ...resultAnnouncementContext,
+                        channel: liveChannel,
+                    }));
                     try {
                         const liveMessage = await liveChannel.messages.fetch(lolTracking.liveAnnouncementMessageId);
                         if (strategy === 'delete_and_send') {
                             await liveMessage.delete().catch(() => null);
-                            await liveChannel.send({ embeds: [embed], files });
+                            await liveChannel.send(payload);
                         } else {
-                            await liveMessage.edit({ embeds: [embed], files });
+                            await liveChannel.send(payload);
                         }
                         didAnnounceResult = true;
                         shouldClearLiveAnnouncementTracking = true;
@@ -532,7 +544,7 @@ async function processUnseenLolMatches({
                         const statusCode = Number(err?.status ?? err?.code ?? 0);
                         const isMissingMessage = statusCode === 404 || statusCode === 10008;
                         if (isMissingMessage) {
-                            await liveChannel.send({ embeds: [embed], files });
+                            await liveChannel.send(payload);
                             didAnnounceResult = true;
                             shouldClearLiveAnnouncementTracking = true;
                         } else {

@@ -17,6 +17,7 @@ import {
 } from './matchEmbedShared.js';
 import { resolveChampionIcon } from './lolChampionIcon.js';
 import { buildLiveDraftImageBuffer } from './liveDraftImage.js';
+import { buildPentakillRoleMentionPayload, formatPentakillResultValue } from './lolSpecialCase.js';
 
 function formatDurationFromSeconds(seconds) {
     const totalSeconds = Number(seconds);
@@ -304,7 +305,9 @@ export async function buildLolMatchResultEmbed({
     participant,
     participants = [],
     gameMs,
- }) {
+    channel = null,
+}) {
+
     const dto = await buildLolGameDto({
         account,
         queueType,
@@ -331,7 +334,7 @@ export async function buildLolMatchResultEmbed({
         .setURL(matchUrl)
         .setTimestamp(normalizeEmbedTimestamp(gameStartTimestamp?.getTime?.() ?? gameMs));
 
-        const resultPresentation = resolveMatchResultPresentation({
+    const resultPresentation = resolveMatchResultPresentation({
         didWin,
         queueLabel,
         riotId,
@@ -357,19 +360,29 @@ export async function buildLolMatchResultEmbed({
     const csPerMin = duration === 'Unknown' ? null : totalCs / (Number(trackedParticipant?.timePlayed) / 60);
     const csPerMinLabel = Number.isFinite(csPerMin) && csPerMin > 0 ? `${csPerMin.toFixed(1)} CS/min` : null;
 
-    embed.addFields(
+    const pentakillValue = formatPentakillResultValue(trackedParticipant);
+    const resultFields = [
+
+    // embed.addFields(
         { name: 'K/D/A', value: kda, inline: true },
-        { name: 'Damage', value: damageDealt.toLocaleString(), inline: true },  
+        { name: 'Damage', value: damageDealt.toLocaleString(), inline: true },
         // if lane = UTILITY, show vision score instead of CS/min (and corresponding label as well)
         { name: lane === 'UTILITY' ? 'Vision Score' : 'CS/min', value: lane === 'UTILITY' ? visionScore.toString() : (csPerMinLabel ?? '—'), inline: true },
         { name: 'Rank', value: rankValue.slice(0, 1024), inline: true },
         { name: didWin ? 'LP Win' : 'LP Loss', value: lpChangeValue, inline: true },
         { name: 'Duration', value: duration, inline: true },
         // { name: "Lane", value: lane, inline: true },
-    );
+    // );
+    ];
+    if (pentakillValue) {
+        resultFields.push({ name: 'Pentakill', value: pentakillValue, inline: false });
+    }
+
+    embed.addFields(...resultFields);
 
     if (championIconUrl) embed.setThumbnail(championIconUrl);
-    return { embed, files: [] };
+    const mentionPayload = pentakillValue ? await buildPentakillRoleMentionPayload(channel) : {};
+    return { embed, files: [], ...mentionPayload };
 }
 
 export async function buildLolLiveGameEmbed({ account, activeGame }) {
