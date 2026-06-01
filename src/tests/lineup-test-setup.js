@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { LOL_QUEUE_TYPES } from '../constants/queues.js';
 import { buildLineupKey, getEligibleLineupMemberSets, getGuildLineupStats, recordLolLineupResult, recordLolMemberContextResult } from '../storage/lineups.js';
+import { migrateLegacyLolLineupsJson } from '../storage/migrateLolLineupsJson.js';
 import { getSqliteDb } from '../storage/sqlite.js';
 
 const TEST_GUILD_ID = '288456610366357505';
@@ -12,6 +16,73 @@ function buildDummyAccounts() {
         gameName: `Dummy${idx + 5}`,
         tagLine: 'TEEHEE',
     }));
+}
+
+async function assertLegacyLineupMigrationCanonicalizesAndAggregates() {
+    const guildId = `lineup-migration-test-${Date.now()}`;
+    const canonicalKey = buildLineupKey(['a', 'b']);
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'riftrecap-lineups-'));
+    const legacyPath = path.join(tempDir, 'lol_lineups.json');
+
+    await fs.writeFile(legacyPath, JSON.stringify({
+        [guildId]: {
+            lineups: {
+                'b|a': {
+                    games: 2,
+                    wins: 1,
+                    losses: 1,
+                    firstSeenAt: 100,
+                    lastSeenAt: 200,
+                },
+                'a|a|b': {
+                    games: 3,
+                    wins: 2,
+                    losses: 1,
+                    firstSeenAt: 50,
+                    lastSeenAt: 300,
+                },
+                ' | b | | a | ': {
+                    games: 1,
+                    wins: 0,
+                    losses: 1,
+                    firstSeenAt: 75,
+                    lastSeenAt: 250,
+                },
+            },
+        },
+    }));
+
+    const migrationResult = await migrateLegacyLolLineupsJson({
+        legacyPath,
+        migrationName: `lineup-migration-test-${Date.now()}`,
+    });
+    const guildLineups = await getGuildLineupStats(guildId);
+
+    assert.equal(migrationResult.didRun, true, 'legacy lineup migration should run for the fixture file');
+    assert.equal(migrationResult.importedLineups, 1, 'canonical-equivalent legacy keys should insert one lineup');
+    assert.deepEqual(Object.keys(guildLineups), [canonicalKey], 'legacy keys should normalize to the runtime canonical lineup key');
+    assert.equal(guildLineups[canonicalKey].games, 6, 'collapsed legacy lineup keys should aggregate games before insertion');
+    assert.equal(guildLineups[canonicalKey].wins, 3, 'collapsed legacy lineup keys should aggregate wins before insertion');
+    assert.equal(guildLineups[canonicalKey].losses, 3, 'collapsed legacy lineup keys should aggregate losses before insertion');
+    assert.equal(guildLineups[canonicalKey].firstSeenAt, 50, 'collapsed legacy lineup keys should preserve the earliest firstSeenAt');
+    assert.equal(guildLineups[canonicalKey].lastSeenAt, 300, 'collapsed legacy lineup keys should preserve the latest lastSeenAt');
+
+    const runtimeResult = await recordLolLineupResult({
+        guildId,
+        queueType: DEFAULT_QUEUE_TYPE,
+        lineupMemberKeys: ['b', 'a'],
+        didWin: true,
+        matchId: `${guildId}-runtime-match`,
+        gameMs: 400,
+    });
+    const updatedGuildLineups = await getGuildLineupStats(guildId);
+
+    assert.equal(runtimeResult.recorded, true, 'runtime lineup recording should accept a migrated canonical lineup');
+    assert.equal(runtimeResult.lineupKey, canonicalKey, 'runtime lineup key should match the migrated canonical key');
+    assert.deepEqual(Object.keys(updatedGuildLineups), [canonicalKey], 'runtime recording should update the migrated row instead of creating a second key');
+    assert.equal(updatedGuildLineups[canonicalKey].games, 7, 'runtime recording should increment the migrated canonical lineup');
+    assert.equal(updatedGuildLineups[canonicalKey].wins, 4, 'runtime recording should increment migrated wins');
+    assert.equal(updatedGuildLineups[canonicalKey].losses, 3, 'runtime recording should preserve migrated losses on a win');
 }
 
 async function assertPersonLevelChampionCounters() {
@@ -221,6 +292,7 @@ async function main() {
     await assertPersonLevelChampionCounters();
     await assertLineupMatchSeenDedupesLineupResults();
     await assertMemberContextMatchesAreDedupedAcrossLineups();
+    await assertLegacyLineupMigrationCanonicalizesAndAggregates();
     const guildLineups = await getGuildLineupStats(TEST_GUILD_ID);
 
     console.log('Dummy accounts:', dummyAccounts.map((a) => `${a.gameName}#${a.tagLine}`).join(', '));

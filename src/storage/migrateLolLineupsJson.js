@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { buildLineupKey } from './lineups.js';
 import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const DEFAULT_LEGACY_LINEUPS_PATH = path.join(process.env.DATA_DIR ?? 'user_data', 'lol_lineups.json');
@@ -31,13 +32,8 @@ function normalizeLineupKey(lineupKey) {
     if (typeof lineupKey !== 'string') {
         return null;
     }
-    const members = lineupKey
-        .split(LINEUP_DELIMITER)
-        .map((memberKey) => memberKey.trim())
-        .filter(Boolean);
-    return members.length > 0 ? members.join(LINEUP_DELIMITER) : null;
+    return buildLineupKey(lineupKey.split(LINEUP_DELIMITER)) || null;
 }
-
 
 function hasLineupStats(entry) {
     return isObject(entry) && (
@@ -142,8 +138,34 @@ function findGuildLineups(guildValue) {
     return guildValue;
 }
 
+function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, games, wins, losses, firstSeenAt, lastSeenAt }) {
+    if (games <= 0 && wins <= 0 && losses <= 0) {
+        return;
+    }
+
+    const aggregateKey = JSON.stringify([guildId, lineupKey]);
+    const existing = lineupAggregates.get(aggregateKey) ?? {
+        guildId,
+        lineupKey,
+        lineupSize,
+        games: 0,
+        wins: 0,
+        losses: 0,
+        firstSeenAt,
+        lastSeenAt,
+    };
+
+    existing.lineupSize = lineupSize;
+    existing.games += games;
+    existing.wins += wins;
+    existing.losses += losses;
+    existing.firstSeenAt = Math.min(existing.firstSeenAt, firstSeenAt);
+    existing.lastSeenAt = Math.max(existing.lastSeenAt, lastSeenAt);
+    lineupAggregates.set(aggregateKey, existing);
+}
+
 function buildImportPlan(parsed, now = Date.now()) {
-    const lineups = [];
+    const lineupAggregates = new Map();
     const contextAggregates = new Map();
 
     if (!isObject(parsed)) {
@@ -171,23 +193,21 @@ function buildImportPlan(parsed, now = Date.now()) {
             const firstSeenAt = getTimestamp(rawEntry, 'firstSeenAt', now);
             const lastSeenAt = getTimestamp(rawEntry, 'lastSeenAt', firstSeenAt);
 
-            if (stats.games > 0 || stats.wins > 0 || stats.losses > 0) {
-                lineups.push({
-                    guildId,
-                    lineupKey,
-                    lineupSize,
-                    ...stats,
-                    firstSeenAt,
-                    lastSeenAt,
-                });
-            }
+            addLineupAggregate(lineupAggregates, {
+                guildId,
+                lineupKey,
+                lineupSize,
+                ...stats,
+                firstSeenAt,
+                lastSeenAt,
+            });
 
             collectContextAggregates(contextAggregates, { guildId, entry: rawEntry });
         }
     }
 
     return {
-        lineups,
+        lineups: [...lineupAggregates.values()],
         contextRows: [...contextAggregates.values()],
     };
 }
