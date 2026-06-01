@@ -80,14 +80,13 @@ function upsertMemberContextCounter({ db, guildId, queueType, memberKey, context
         db.prepare(`
             INSERT INTO lol_member_context_counter (
                 guild_id,
-                queue_type,
                 member_key,
                 context_type,
                 context_value,
                 games,
                 wins
             ) VALUES (?, ?, ?, ?, ?, 1, ?)
-            ON CONFLICT(guild_id, queue_type, member_key, context_type, context_value)
+            ON CONFLICT(guild_id, member_key, context_type, context_value)
             DO UPDATE SET
                 games = games + 1,
                 wins = wins + excluded.wins
@@ -104,14 +103,12 @@ function upsertMemberContextCounter({ db, guildId, queueType, memberKey, context
         db.prepare(`
             DELETE FROM lol_member_context_counter
             WHERE guild_id = ?
-              AND queue_type = ?
               AND member_key = ?
               AND context_type = ?
               AND context_value NOT IN (
                   SELECT context_value
                   FROM lol_member_context_counter
                   WHERE guild_id = ?
-                    AND queue_type = ?
                     AND member_key = ?
                     AND context_type = ?
                   ORDER BY games DESC, wins DESC, context_value ASC
@@ -235,9 +232,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
     if (!isEligibleLolLineupSize(queueType, lineupSize)) {
         return { recorded: false, reason: 'ineligible_size' };
     }
-    if (!dbQueueType) {
-        return { recorded: false, reason: 'invalid_queue_type' };
-    }
 
     return withSqliteTransaction((db) => {
         const matchIdNormalized = normalizeMatchId(matchId);
@@ -248,7 +242,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                 SELECT 1
                 FROM lineup_match_seen
                 WHERE guild_id = ?
-                  AND queue_type = ?
                   AND lineup_key = ?
                   AND match_id = ?
             `).get(guildId, dbQueueType, lineupKey, matchIdNormalized);
@@ -262,7 +255,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
             db.prepare(`
                 INSERT INTO lineup_stats (
                     guild_id,
-                    queue_type,
                     lineup_key,
                     lineup_size,
                     games,
@@ -271,7 +263,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                     first_seen_at,
                     last_seen_at
                 ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
-                ON CONFLICT(guild_id, queue_type, lineup_key)
+                ON CONFLICT(guild_id, lineup_key)
                 DO UPDATE SET
                     lineup_size = excluded.lineup_size,
                     games = games + 1,
@@ -294,7 +286,6 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                 db.prepare(`
                     INSERT INTO lineup_match_seen (
                         guild_id,
-                        queue_type,
                         lineup_key,
                         match_id,
                         seen_at

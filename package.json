@@ -12,7 +12,8 @@
     "knip": "knip --config knip.config.js",
     "knip:strict": "knip --config knip.config.js --include files,exports,duplicates",
     "test:lineups": "node src/tests/lineup-test-setup.js",
-    "test:match-poller": "node src/tests/matchPoller-test-recap.js"
+    "test:match-poller": "node src/tests/matchPoller-test-recap.js",
+    "migrate:lineups": "node src/storage/migrateLolLineupsJson.js"
   },
   "repository": {
     "type": "git",
