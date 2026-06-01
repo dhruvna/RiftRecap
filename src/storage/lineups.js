@@ -120,33 +120,80 @@ function upsertMemberContextCounter({ db, guildId, memberKey, contextType, value
     );
 }
 
-function updateMemberContextAggregates({ db, guildId, lineupMemberKeys, lineupMemberMetadata, didWin }) {
-    if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object') {
-        return;
+function normalizeMemberKeys(memberKeys) {
+    if (!Array.isArray(memberKeys)) {
+        return [];
+    }
+    return [...new Set(
+        memberKeys
+            .map((memberKey) => (typeof memberKey === 'string' ? memberKey.trim() : ''))
+            .filter(Boolean)
+    )];
+}
+
+function getMemberKeysFromMetadata(lineupMemberMetadata) {
+    if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object' || Array.isArray(lineupMemberMetadata)) {
+        return [];
+    }
+    return normalizeMemberKeys(Object.keys(lineupMemberMetadata));
+}
+
+function recordMemberContextForMatch({ db, guildId, memberKey, metadata, didWin, matchId, seenAt }) {
+    if (!metadata) {
+        return false;
     }
 
-    for (const memberKey of lineupMemberKeys) {
-        const metadata = getLineupMemberMetadata(lineupMemberMetadata, memberKey);
-        if (!metadata) continue;
+    const matchIdNormalized = normalizeMatchId(matchId);
+    if (matchIdNormalized) {
+        const existingMemberMatch = db.prepare(`
+            SELECT 1
+            FROM lol_member_context_match_seen
+            WHERE guild_id = ?
+              AND member_key = ?
+              AND match_id = ?
+        `).get(guildId, memberKey, matchIdNormalized);
 
-        const memberDidWin = typeof metadata.didWin === 'boolean' ? metadata.didWin : didWin;
-        upsertMemberContextCounter({
-            db,
-            guildId,
-            memberKey,
-            contextType: 'role',
-            value: metadata.role,
-            didWin: memberDidWin,
-        });
-        upsertMemberContextCounter({
-            db,
-            guildId,
-            memberKey,
-            contextType: 'champion',
-            value: metadata.champion,
-            didWin: memberDidWin,
-        });
+        if (existingMemberMatch) {
+            return false;
+        }
     }
+
+    const memberDidWin = typeof metadata.didWin === 'boolean' ? metadata.didWin : didWin;
+    upsertMemberContextCounter({
+        db,
+        guildId,
+        memberKey,
+        contextType: 'role',
+        value: metadata.role,
+        didWin: memberDidWin,
+    });
+    upsertMemberContextCounter({
+        db,
+        guildId,
+        memberKey,
+        contextType: 'champion',
+        value: metadata.champion,
+        didWin: memberDidWin,
+    });
+
+    if (matchIdNormalized) {
+        runStatement(
+            db.prepare(`
+                INSERT INTO lol_member_context_match_seen (
+                    guild_id,
+                    member_key,
+                    match_id,
+                    seen_at
+                ) VALUES (?, ?, ?, ?)
+            `),
+            guildId,
+            memberKey,
+            matchIdNormalized,
+            seenAt
+        );
+    }
+
+    return true;
 }
 
 function addContextCounter(target, { memberKey, contextType, contextValue, games, wins }) {
@@ -208,7 +255,7 @@ export function getEligibleLineupMemberSets(queueType, lineupMemberKeys) {
     return allMemberSets;
 }
 
-export async function recordLolLineupResult({ guildId, queueType, lineupMemberKeys, lineupMemberMetadata = null, didWin, matchId, gameMs }) {
+export async function recordLolLineupResult({ guildId, queueType, lineupMemberKeys, didWin, matchId, gameMs }) {
     const lineupKey = buildLineupKey(lineupMemberKeys);
     const lineupMembers = lineupKey ? lineupKey.split(LINEUP_DELIMITER) : [];
     const lineupSize = lineupMembers.length;
@@ -286,25 +333,61 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                 seenAt
             );
         }
-        
-        updateMemberContextAggregates({
-            db,
-            guildId,
-            lineupMemberKeys: lineupMembers,
-            lineupMemberMetadata,
-            didWin,
-        });
 
         return { recorded: true, lineupKey };
     });
 }
 
-export async function getGuildLineupStats(guildId) {
+export async function recordLolMemberContextResult({ guildId, memberKeys = null, lineupMemberMetadata = null, didWin, matchId, gameMs }) {
+    if (!guildId || typeof guildId !== 'string') {
+        return { recorded: false, reason: 'invalid_guild_id' };
+    }
+    if (!lineupMemberMetadata || typeof lineupMemberMetadata !== 'object' || Array.isArray(lineupMemberMetadata)) {
+        return { recorded: false, reason: 'invalid_metadata' };
+    }
+
+    const candidateMemberKeys = normalizeMemberKeys(memberKeys).length > 0
+        ? normalizeMemberKeys(memberKeys)
+        : getMemberKeysFromMetadata(lineupMemberMetadata);
+
+    if (candidateMemberKeys.length === 0) {
+        return { recorded: false, reason: 'invalid_members' };
+    }
+
+    return withSqliteTransaction((db) => {
+        const seenAt = getLineupSeenAt(gameMs);
+        let recordedMembers = 0;
+
+        for (const memberKey of candidateMemberKeys) {
+            const metadata = getLineupMemberMetadata(lineupMemberMetadata, memberKey);
+            if (!metadata) continue;
+
+            const didRecordMember = recordMemberContextForMatch({
+                db,
+                guildId,
+                memberKey,
+                metadata,
+                didWin,
+                matchId,
+                seenAt,
+            });
+
+            if (didRecordMember) {
+                recordedMembers += 1;
+            }
+        }
+
+        return { recorded: recordedMembers > 0, recordedMembers };
+    });
+}
+
+export async function getGuildLineupStats(guildId, { includeMemberContextFor = null } = {}) {
     if (!guildId || typeof guildId !== 'string') {
         return {};
     }
 
     const db = await getSqliteDb();
+    const normalizedContextMemberKey = typeof includeMemberContextFor === 'string' ? includeMemberContextFor.trim() : '';
     const statsRows = db.prepare(`
         SELECT
             lineup_key AS lineupKey,
@@ -331,6 +414,10 @@ export async function getGuildLineupStats(guildId) {
         },
     ]));
 
+    if (!normalizedContextMemberKey) {
+        return lineups;
+    }
+
     const contextRows = db.prepare(`
         SELECT
             member_key AS memberKey,
@@ -340,9 +427,10 @@ export async function getGuildLineupStats(guildId) {
             SUM(wins) AS wins
         FROM lol_member_context_counter
         WHERE guild_id = ?
+            AND member_key = ?
         GROUP BY member_key, context_type, context_value
         ORDER BY games DESC, wins DESC, context_value ASC
-    `).all(guildId);
+    `).all(guildId, normalizedContextMemberKey);
     
     const contextByMember = new Map();
     for (const row of contextRows) {
@@ -356,13 +444,13 @@ export async function getGuildLineupStats(guildId) {
 
     for (const [lineupKey, target] of Object.entries(lineups)) {
         const memberKeys = lineupKey.split(LINEUP_DELIMITER).map((memberKey) => memberKey.trim()).filter(Boolean);
-        for (const memberKey of memberKeys) {
-            const memberContextRows = contextByMember.get(memberKey) ?? [];
-            for (const row of memberContextRows) {
-                addContextCounter(target, row);
-            }
+        if (!memberKeys.includes(normalizedContextMemberKey)) {
+            continue;
         }
-
+        const memberContextRows = contextByMember.get(normalizedContextMemberKey) ?? [];
+        for (const row of memberContextRows) {
+            addContextCounter(target, row);
+        }
     }
     return lineups;
 }

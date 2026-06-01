@@ -65,7 +65,7 @@ import {
     refreshRankSnapshot,
     shouldRefreshRank,
 } from './matchPoller/rankRefresh.js';
-import { getEligibleLineupMemberSets, recordLolLineupResult } from '../storage/lineups.js';
+import { getEligibleLineupMemberSets, recordLolLineupResult, recordLolMemberContextResult } from '../storage/lineups.js';
 
 // === Polling configuration ===
 // Limit how far back we look for unseen matches to bound API usage.
@@ -448,13 +448,20 @@ async function processUnseenLolMatches({
                     byPuuid,
                     teamId: myTeamId,
                 });
+                await recordLolMemberContextResult({
+                    guildId,
+                    memberKeys: lineupMemberKeys,
+                    lineupMemberMetadata: metadataByMember,
+                    didWin,
+                    matchId,
+                    gameMs,
+                });
                 const eligibleLineupMemberSets = getEligibleLineupMemberSets(queueType, lineupMemberKeys);
                 for (const lineupMemberSet of eligibleLineupMemberSets) {
                     await recordLolLineupResult({
                         guildId,
                         queueType,
                         lineupMemberKeys: lineupMemberSet,
-                        lineupMemberMetadata: metadataByMember,
                         didWin,
                         matchId,
                         gameMs,

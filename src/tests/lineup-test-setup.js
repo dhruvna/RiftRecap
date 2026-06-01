@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { LOL_QUEUE_TYPES } from '../constants/queues.js';
-import { buildLineupKey, getEligibleLineupMemberSets, getGuildLineupStats, recordLolLineupResult } from '../storage/lineups.js';
+import { buildLineupKey, getEligibleLineupMemberSets, getGuildLineupStats, recordLolLineupResult, recordLolMemberContextResult } from '../storage/lineups.js';
 import { getSqliteDb } from '../storage/sqlite.js';
 
 const TEST_GUILD_ID = '288456610366357505';
@@ -29,7 +29,6 @@ async function assertPersonLevelChampionCounters() {
         guildId,
         queueType: DEFAULT_QUEUE_TYPE,
         lineupMemberKeys: firstLineup,
-        lineupMemberMetadata: sharedMetadata,
         didWin: true,
         matchId: `${guildId}-match-1`,
         gameMs: Date.now(),
@@ -38,6 +37,21 @@ async function assertPersonLevelChampionCounters() {
         guildId,
         queueType: DEFAULT_QUEUE_TYPE,
         lineupMemberKeys: secondLineup,
+        didWin: false,
+        matchId: `${guildId}-match-2`,
+        gameMs: Date.now() + 1,
+    });
+    await recordLolMemberContextResult({
+        guildId,
+        memberKeys: firstLineup,
+        lineupMemberMetadata: sharedMetadata,
+        didWin: true,
+        matchId: `${guildId}-match-1`,
+        gameMs: Date.now(),
+    });
+    await recordLolMemberContextResult({
+        guildId,
+        memberKeys: secondLineup,
         lineupMemberMetadata: sharedMetadata,
         didWin: false,
         matchId: `${guildId}-match-2`,
@@ -45,7 +59,7 @@ async function assertPersonLevelChampionCounters() {
     });
 
     const db = await getSqliteDb();
-    for (const tableName of ['lineup_stats', 'lineup_match_seen', 'lol_member_context_counter']) {
+    for (const tableName of ['lineup_stats', 'lineup_match_seen', 'lol_member_context_counter', 'lol_member_context_match_seen']) {
         const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
         assert.equal(
             columns.some((column) => column.name === 'queue_type'),
@@ -73,14 +87,93 @@ async function assertPersonLevelChampionCounters() {
     assert.equal(Number(championCounter.games), 2, 'same champion context should aggregate across different lineups');
     assert.equal(Number(championCounter.wins), 1, 'same champion context should preserve wins across different lineups');
 
-    const guildLineups = await getGuildLineupStats(guildId);
+    const guildLineupsWithoutUserContext = await getGuildLineupStats(guildId);
+    assert.deepEqual(
+        guildLineupsWithoutUserContext[buildLineupKey(firstLineup)]?.championsByMember,
+        {},
+        'default lineup stats should only include lineup win/loss data'
+    );
+
+    const guildLineups = await getGuildLineupStats(guildId, { includeMemberContextFor: sharedMemberKey });
     for (const lineupKey of [buildLineupKey(firstLineup), buildLineupKey(secondLineup)]) {
         assert.equal(
             guildLineups[lineupKey]?.championsByMember?.[sharedMemberKey]?.Ahri?.games,
             2,
-            'lineup display context should be attached from the shared person-level champion counter'
+            'user-filtered lineup display context should be attached from the shared person-level champion counter'
         );
     }
+}
+
+async function assertLineupMatchSeenDedupesLineupResults() {
+    const guildId = `lineup-match-seen-test-${Date.now()}`;
+    const lineup = ['seen-a', 'seen-b'];
+    const matchId = `${guildId}-match`;
+
+    const firstResult = await recordLolLineupResult({
+        guildId,
+        queueType: DEFAULT_QUEUE_TYPE,
+        lineupMemberKeys: lineup,
+        didWin: true,
+        matchId,
+        gameMs: Date.now(),
+    });
+    const duplicateResult = await recordLolLineupResult({
+        guildId,
+        queueType: DEFAULT_QUEUE_TYPE,
+        lineupMemberKeys: [...lineup].reverse(),
+        didWin: false,
+        matchId,
+        gameMs: Date.now() + 1,
+    });
+
+    const guildLineups = await getGuildLineupStats(guildId);
+    const entry = guildLineups[buildLineupKey(lineup)];
+
+    assert.equal(firstResult.recorded, true, 'first lineup result should record');
+    assert.equal(duplicateResult.recorded, false, 'duplicate lineup/match should be skipped');
+    assert.equal(Number(entry?.games), 1, 'lineup_match_seen should prevent duplicate lineup games');
+    assert.equal(Number(entry?.wins), 1, 'lineup_match_seen should preserve the first win value');
+    assert.equal(Number(entry?.losses), 0, 'lineup_match_seen should not add duplicate losses');
+}
+
+async function assertMemberContextMatchesAreDedupedAcrossLineups() {
+    const guildId = `lineup-context-dedupe-test-${Date.now()}`;
+    const memberKeys = ['dedupe-a', 'dedupe-b', 'dedupe-c'];
+    const metadata = Object.fromEntries(memberKeys.map((memberKey, index) => [
+        memberKey,
+        { champion: `Champion${index}`, role: index === 0 ? 'MIDDLE' : 'UTILITY' },
+    ]));
+    const matchId = `${guildId}-match`;
+
+    await recordLolMemberContextResult({
+        guildId,
+        memberKeys,
+        lineupMemberMetadata: metadata,
+        didWin: true,
+        matchId,
+        gameMs: Date.now(),
+    });
+    await recordLolMemberContextResult({
+        guildId,
+        memberKeys,
+        lineupMemberMetadata: metadata,
+        didWin: true,
+        matchId,
+        gameMs: Date.now() + 1,
+    });
+
+    const db = await getSqliteDb();
+    const championCounter = db.prepare(`
+        SELECT SUM(games) AS games, SUM(wins) AS wins
+        FROM lol_member_context_counter
+        WHERE guild_id = ?
+          AND member_key = ?
+          AND context_type = 'champion'
+          AND context_value = 'Champion0'
+    `).get(guildId, memberKeys[0]);
+
+    assert.equal(Number(championCounter.games), 1, 'same user/match champion context should only count once');
+    assert.equal(Number(championCounter.wins), 1, 'same user/match champion wins should only count once');
 }
 
 async function main() {
@@ -103,6 +196,8 @@ async function main() {
     }
 
     await assertPersonLevelChampionCounters();
+    await assertLineupMatchSeenDedupesLineupResults();
+    await assertMemberContextMatchesAreDedupedAcrossLineups();
     const guildLineups = await getGuildLineupStats(TEST_GUILD_ID);
 
     console.log('Dummy accounts:', dummyAccounts.map((a) => `${a.gameName}#${a.tagLine}`).join(', '));

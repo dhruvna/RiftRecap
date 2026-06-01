@@ -46,29 +46,17 @@ function lineupIncludesAccount(lineupKey, accountKey) {
         .includes(normalizedAccountKey);
 }
 
-const LINEUP_CONTEXT_MIN_GAMES = 5;
-
 const ROLE_DISPLAY_NAMES = {
-    TOP: 'top',
-    JUNGLE: 'jungle',
-    MIDDLE: 'mid',
-    MID: 'mid',
-    BOTTOM: 'bot',
-    ADC: 'bot',
-    BOT: 'bot',
-    SUPPORT: 'support',
-    UTILITY: 'support',
+    TOP: 'Top',
+    JUNGLE: 'Jungle',
+    MIDDLE: 'Middle',
+    MID: 'Middle',
+    BOTTOM: 'Bottom',
+    ADC: 'Bottom',
+    BOT: 'Bottom',
+    SUPPORT: 'Support',
+    UTILITY: 'Support',
 };
-
-function getLineupMemberKeys(lineupKey) {
-    if (typeof lineupKey !== 'string' || !lineupKey.trim()) {
-        return [];
-    }
-    return lineupKey
-        .split('|')
-        .map((value) => value.trim())
-        .filter(Boolean);
-}
 
 function getCounterGames(counter) {
     if (typeof counter === 'number') return counter;
@@ -80,7 +68,7 @@ function getCounterWins(counter) {
     return Number(counter?.wins ?? 0);
 }
 
-function selectTopCounterValue(counters = {}, { preferWins = false } = {}) {
+function selectTopCounter(counters = {}, { preferWins = false } = {}) {
     if (!counters || typeof counters !== 'object' || Array.isArray(counters)) {
         return null;
     }
@@ -98,7 +86,18 @@ function selectTopCounterValue(counters = {}, { preferWins = false } = {}) {
             if (b.games !== a.games) return b.games - a.games;
             if (b.wins !== a.wins) return b.wins - a.wins;
             return a.value.localeCompare(b.value);
-        })[0]?.value ?? null;
+        })[0] ?? null;
+}
+
+function formatCounter(counter, formatter = (value) => value) {
+    if (!counter) {
+        return null;
+    }
+    const label = formatter(counter.value);
+    if (!label) {
+        return null;
+    }
+    return `${label} (${counter.wins}W/${counter.games}G)`;
 }
 
 function formatRoleName(role) {
@@ -107,28 +106,27 @@ function formatRoleName(role) {
     return ROLE_DISPLAY_NAMES[normalized] ?? normalized.toLowerCase();
 }
 
-function buildLineupContextLines(entry) {
-    if (entry.games < LINEUP_CONTEXT_MIN_GAMES) {
+function buildUserContextLines(entry, selectedAccountKey) {
+    if (!selectedAccountKey || !lineupIncludesAccount(entry.lineupKey, selectedAccountKey)) {
         return [];
     }
 
-    const memberKeys = getLineupMemberKeys(entry.lineupKey);
-    const roleNames = memberKeys
-        .map((memberKey) => formatRoleName(selectTopCounterValue(entry.rolesByMember?.[memberKey])))
-        .filter(Boolean);
-    const championNames = memberKeys
-        .map((memberKey) => selectTopCounterValue(entry.championsByMember?.[memberKey], { preferWins: true }))
-        .filter(Boolean);
-    const contextLines = [];
+    const topRole = formatCounter(
+        selectTopCounter(entry.rolesByMember?.[selectedAccountKey]),
+        formatRoleName
+    );
+    const topChampion = formatCounter(
+        selectTopCounter(entry.championsByMember?.[selectedAccountKey], { preferWins: true })
+    );
+    const contextParts = [];
 
-    if (roleNames.length >= 2) {
-        contextLines.push(`Most common roles: ${roleNames.join(' + ')}`);
+    if (topRole) {
+        contextParts.push(`role: ${topRole}`);
     }
-    if (championNames.length >= 2) {
-        contextLines.push(`Best champs together: ${championNames.join(' / ')}`);
+    if (topChampion) {
+        contextParts.push(`champion: ${topChampion}`);
     }
-
-    return contextLines;
+    return contextParts.length > 0 ? [`User data — ${contextParts.join(' • ')}`] : [];
 }
 
 export default {
@@ -174,7 +172,7 @@ export default {
         const minGames = interaction.options.getInteger('min_games') ?? 1;
         const lineupSize = interaction.options.getInteger('size') ?? null;
 
-        const stats = await getGuildLineupStats(guildId);
+        const stats = await getGuildLineupStats(guildId, { includeMemberContextFor: selectedAccountKey });
         const entries = Object.entries(stats)
             .map(([lineupKey, value]) => {
                 const wins = Number(value?.wins ?? 0);
@@ -214,7 +212,7 @@ export default {
         const lines = entries.map((entry, index) => {
             const pct = (entry.winRate * 100).toFixed(1);
             const sizeLabel = shouldShowLineupSize ? ` [${entry.size}-player]` : '';
-            const contextLines = buildLineupContextLines(entry).map((line) => `   ${line}`);
+            const contextLines = buildUserContextLines(entry, selectedAccountKey).map((line) => `   ${line}`);
             return [
                 `${index + 1}.${sizeLabel} **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`,
                 ...contextLines,
@@ -222,10 +220,9 @@ export default {
         });
 
         const embed = new EmbedBuilder()
-            .setTitle('Top LoL Lineups')
+            .setTitle(selectedAccountKey ? 'Top LoL Lineups for User' : 'Top LoL Lineups')
             .setDescription(lines.join('\n'))
             .setFooter({ text: buildLineupFiltersText({ lineupSize, minGames, selectedAccountKey }) });
-
 
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'lineups' }),

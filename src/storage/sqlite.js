@@ -65,6 +65,14 @@ function runMigrations(db) {
             PRIMARY KEY (guild_id, member_key, context_type, context_value)
         );
 
+        CREATE TABLE IF NOT EXISTS lol_member_context_match_seen (
+            guild_id TEXT NOT NULL,
+            member_key TEXT NOT NULL,
+            match_id TEXT NOT NULL,
+            seen_at INTEGER NOT NULL,
+            PRIMARY KEY (guild_id, member_key, match_id)
+        );
+
         CREATE TABLE IF NOT EXISTS storage_migrations (
             migration_name TEXT PRIMARY KEY,
             applied_at INTEGER NOT NULL,
@@ -77,6 +85,8 @@ function runMigrations(db) {
             ON lineup_stats (guild_id, games);
         CREATE INDEX IF NOT EXISTS idx_lol_member_context_counter_query
             ON lol_member_context_counter (guild_id, member_key, context_type, games, wins);
+        CREATE INDEX IF NOT EXISTS idx_lol_member_context_match_seen_match
+            ON lol_member_context_match_seen (guild_id, match_id);
     `);
 
     if (legacyContextCounterExists) {
