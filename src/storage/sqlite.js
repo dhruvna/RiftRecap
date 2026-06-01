@@ -23,6 +23,40 @@ function ensureDatabaseDirectory(filePath) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+function backfillMemberContextMatchSeenFromLineups(db) {
+    const lineupSeenRows = db.prepare(`
+        SELECT
+            guild_id AS guildId,
+            lineup_key AS lineupKey,
+            match_id AS matchId,
+            seen_at AS seenAt
+        FROM lineup_match_seen
+    `).all();
+    if (lineupSeenRows.length === 0) {
+        return;
+    }
+
+    const insertMemberSeen = db.prepare(`
+        INSERT INTO lol_member_context_match_seen (
+            guild_id,
+            member_key,
+            match_id,
+            seen_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, member_key, match_id) DO NOTHING
+    `);
+
+    for (const row of lineupSeenRows) {
+        const memberKeys = String(row.lineupKey ?? '')
+            .split('|')
+            .map((memberKey) => memberKey.trim())
+            .filter(Boolean);
+        for (const memberKey of memberKeys) {
+            insertMemberSeen.run(row.guildId, memberKey, row.matchId, row.seenAt);
+        }
+    }
+}
+
 function runMigrations(db) {
     const legacyContextCounterExists = db.prepare(`
         SELECT 1
@@ -89,6 +123,8 @@ function runMigrations(db) {
             ON lol_member_context_match_seen (guild_id, match_id);
     `);
 
+    backfillMemberContextMatchSeenFromLineups(db);
+    
     if (legacyContextCounterExists) {
         db.exec(`
             INSERT INTO lol_member_context_counter (

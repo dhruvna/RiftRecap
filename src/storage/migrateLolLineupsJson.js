@@ -5,7 +5,7 @@ import { buildChampionByRoleContextValue, buildLineupKey, normalizeContextValue 
 import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const DEFAULT_LEGACY_LINEUPS_PATH = path.join(process.env.DATA_DIR ?? 'user_data', 'lol_lineups.json');
-const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_v3';
+const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_v4';
 const LINEUP_DELIMITER = '|';
 const CONTEXT_TYPES = Object.freeze({
     rolesByMember: 'role',
@@ -124,7 +124,7 @@ function getDedupedCounterStats({ existing, games, wins, seenMatchIds }) {
 
 function addContextAggregate(contextAggregates, { guildId, memberKey, contextType, contextValue, games, wins, seenMatchIds }) {
     if (!memberKey || !contextValue || games <= 0) {
-        return;
+        return false;
     }
 
     const aggregateKey = JSON.stringify([guildId, memberKey, contextType, contextValue]);
@@ -141,9 +141,25 @@ function addContextAggregate(contextAggregates, { guildId, memberKey, contextTyp
     existing.games += dedupedStats.games;
     existing.wins += dedupedStats.wins;
     contextAggregates.set(aggregateKey, existing);
+    return true;
 }
 
-function collectContextAggregates(contextAggregates, { guildId, entry, seenMatchIds }) {
+function addContextMatchSeenRows(contextMatchSeenRows, { guildId, memberKey, seenMatchIds, seenAt }) {
+    if (!contextMatchSeenRows || !memberKey || !Array.isArray(seenMatchIds) || seenMatchIds.length === 0) {
+        return;
+    }
+
+    for (const matchId of seenMatchIds) {
+        contextMatchSeenRows.set(JSON.stringify([guildId, memberKey, matchId]), {
+            guildId,
+            memberKey,
+            matchId,
+            seenAt,
+        });
+    }
+}
+
+function collectContextAggregates(contextAggregates, { guildId, entry, seenMatchIds, contextMatchSeenRows, seenAt }) {
     for (const [legacyKey, contextType] of Object.entries(CONTEXT_TYPES)) {
         const byMember = entry?.[legacyKey];
         if (!isObject(byMember)) {
@@ -159,7 +175,7 @@ function collectContextAggregates(contextAggregates, { guildId, entry, seenMatch
             for (const [rawContextValue, counter] of Object.entries(counters)) {
                 const contextValue = normalizeContextValue(rawContextValue);
                 const { games, wins } = getCounterStats(counter);
-                addContextAggregate(contextAggregates, {
+                const didAddContext = addContextAggregate(contextAggregates, {
                     guildId,
                     memberKey,
                     contextType,
@@ -168,6 +184,9 @@ function collectContextAggregates(contextAggregates, { guildId, entry, seenMatch
                     wins,
                     seenMatchIds,
                 });
+                if (didAddContext) {
+                    addContextMatchSeenRows(contextMatchSeenRows, { guildId, memberKey, seenMatchIds, seenAt });
+                }
             }
         }
     }
@@ -190,7 +209,7 @@ function collectContextAggregates(contextAggregates, { guildId, entry, seenMatch
             for (const [rawChampion, counter] of Object.entries(champions)) {
                 const contextValue = buildChampionByRoleContextValue(rawRole, rawChampion);
                 const { games, wins } = getCounterStats(counter);
-                addContextAggregate(contextAggregates, {
+                const didAddContext = addContextAggregate(contextAggregates, {
                     guildId,
                     memberKey,
                     contextType: CHAMPION_BY_ROLE_CONTEXT_TYPE,
@@ -199,6 +218,9 @@ function collectContextAggregates(contextAggregates, { guildId, entry, seenMatch
                     wins,
                     seenMatchIds,
                 });
+                if (didAddContext) {
+                    addContextMatchSeenRows(contextMatchSeenRows, { guildId, memberKey, seenMatchIds, seenAt });
+                }
             }
         }
     }
@@ -247,6 +269,7 @@ function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, 
 function buildImportPlan(parsed, now = Date.now()) {
     const lineupAggregates = new Map();
     const contextAggregates = new Map();
+    const contextMatchSeenRows = new Map();
 
     if (!isObject(parsed)) {
         throw new Error('[migrateLolLineupsJson] Legacy lol_lineups.json root must be an object keyed by guildId.');
@@ -283,7 +306,13 @@ function buildImportPlan(parsed, now = Date.now()) {
                 lastSeenAt,
                 seenMatchIds,
             });
-            collectContextAggregates(contextAggregates, { guildId, entry: rawEntry, seenMatchIds });
+            collectContextAggregates(contextAggregates, {
+                guildId,
+                entry: rawEntry,
+                seenMatchIds,
+                contextMatchSeenRows,
+                seenAt: lastSeenAt,
+            });
         }
     }
 
@@ -293,6 +322,7 @@ function buildImportPlan(parsed, now = Date.now()) {
             seenMatchIds: [...lineup.seenMatchIds],
         })),
         contextRows: [...contextAggregates.values()].map(({ seenMatchIds, ...row }) => row),
+        contextMatchSeenRows: [...contextMatchSeenRows.values()],
     };
 }
 
@@ -335,6 +365,7 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
             migrationName,
             importedLineups: 0,
             importedContextRows: 0,
+            importedContextMatchSeenRows: 0,
         };
     }
 
@@ -417,10 +448,30 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
         );
     }
 
+    const insertContextMatchSeen = db.prepare(`
+        INSERT INTO lol_member_context_match_seen (
+            guild_id,
+            member_key,
+            match_id,
+            seen_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, member_key, match_id) DO NOTHING
+    `);
+
+    for (const row of plan.contextMatchSeenRows) {
+        insertContextMatchSeen.run(
+            row.guildId,
+            row.memberKey,
+            row.matchId,
+            row.seenAt
+        );
+    }
+
     const details = {
         legacyPath,
         importedLineups: plan.lineups.length,
         importedContextRows: plan.contextRows.length,
+        importedContextMatchSeenRows: plan.contextMatchSeenRows.length,
     };
     insertMigrationMarker(db, migrationName, details, now);
 
@@ -447,6 +498,7 @@ export async function migrateLegacyLolLineupsJson({
             legacyPath: resolvedLegacyPath,
             importedLineups: 0,
             importedContextRows: 0,
+            importedContextMatchSeenRows: 0,
         };
     }
 
