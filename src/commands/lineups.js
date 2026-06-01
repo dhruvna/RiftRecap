@@ -46,6 +46,8 @@ function lineupIncludesAccount(lineupKey, accountKey) {
         .includes(normalizedAccountKey);
 }
 
+const ROLE_ORDER = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
+
 const ROLE_DISPLAY_NAMES = {
     TOP: 'Top',
     JUNGLE: 'Jungle',
@@ -106,27 +108,24 @@ function formatRoleName(role) {
     return ROLE_DISPLAY_NAMES[normalized] ?? normalized.toLowerCase();
 }
 
-function buildUserContextLines(entry, selectedAccountKey) {
-    if (!selectedAccountKey || !lineupIncludesAccount(entry.lineupKey, selectedAccountKey)) {
+function buildBestChampionByRoleLines(entries, selectedAccountKey) {
+    if (!selectedAccountKey) {
         return [];
     }
 
-    const topRole = formatCounter(
-        selectTopCounter(entry.rolesByMember?.[selectedAccountKey]),
-        formatRoleName
-    );
-    const topChampion = formatCounter(
-        selectTopCounter(entry.championsByMember?.[selectedAccountKey], { preferWins: true })
-    );
-    const contextParts = [];
+    const userContextEntry = entries.find((entry) => lineupIncludesAccount(entry.lineupKey, selectedAccountKey));
+    const championsByRole = userContextEntry?.championsByRoleByMember?.[selectedAccountKey];
+    if (!championsByRole || typeof championsByRole !== 'object') {
+        return ['**User data — Best champ per role**', 'No role/champion data found yet.'];    
+    }
+    const roleLines = ROLE_ORDER.map((role) => {
+        const topChampion = formatCounter(
+            selectTopCounter(championsByRole[role], { preferWins: true })
+        );
+        return `${formatRoleName(role)}: ${topChampion ?? 'No games'}`;
+    });
 
-    if (topRole) {
-        contextParts.push(`role: ${topRole}`);
-    }
-    if (topChampion) {
-        contextParts.push(`champion: ${topChampion}`);
-    }
-    return contextParts.length > 0 ? [`User data — ${contextParts.join(' • ')}`] : [];
+    return ['**User data — Best champ per role**', ...roleLines];
 }
 
 export default {
@@ -189,6 +188,7 @@ export default {
                     size,
                     rolesByMember: value?.rolesByMember,
                     championsByMember: value?.championsByMember,
+                    championsByRoleByMember: value?.championsByRoleByMember,
                 };
             })
             .filter((entry) => (lineupSize ? entry.size === lineupSize : true))
@@ -212,13 +212,12 @@ export default {
         const lines = entries.map((entry, index) => {
             const pct = (entry.winRate * 100).toFixed(1);
             const sizeLabel = shouldShowLineupSize ? ` [${entry.size}-player]` : '';
-            const contextLines = buildUserContextLines(entry, selectedAccountKey).map((line) => `   ${line}`);
-            return [
-                `${index + 1}.${sizeLabel} **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`,
-                ...contextLines,
-            ].join('\n');
+            return `${index + 1}.${sizeLabel} **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`;
         });
-
+        const userDataLines = buildBestChampionByRoleLines(entries, selectedAccountKey);
+        if (userDataLines.length > 0) {
+            lines.push('', ...userDataLines);
+        }
         const embed = new EmbedBuilder()
             .setTitle(selectedAccountKey ? 'Top LoL Lineups for User' : 'Top LoL Lineups')
             .setDescription(lines.join('\n'))

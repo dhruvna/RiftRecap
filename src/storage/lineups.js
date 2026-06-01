@@ -3,6 +3,7 @@ import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const LINEUP_DELIMITER = '|';
 const MEMBER_CONTEXT_COUNTER_LIMIT = 25;
+const CHAMPION_BY_ROLE_CONTEXT_TYPE = 'champion_by_role';
 
 export function buildLineupKey(lineupMemberKeys) {
     if (!Array.isArray(lineupMemberKeys)) {
@@ -138,6 +139,34 @@ function getMemberKeysFromMetadata(lineupMemberMetadata) {
     return normalizeMemberKeys(Object.keys(lineupMemberMetadata));
 }
 
+function buildChampionByRoleContextValue(role, champion) {
+    const normalizedRole = normalizeContextValue(role);
+    const normalizedChampion = normalizeContextValue(champion);
+    if (!normalizedRole || !normalizedChampion) {
+        return null;
+    }
+    return JSON.stringify([normalizedRole, normalizedChampion]);
+}
+
+function parseChampionByRoleContextValue(value) {
+    if (typeof value !== 'string' || !value.trim()) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(value);
+        if (!Array.isArray(parsed) || parsed.length !== 2) {
+            return null;
+        }
+        const [role, champion] = parsed;
+        const normalizedRole = normalizeContextValue(role);
+        const normalizedChampion = normalizeContextValue(champion);
+        return normalizedRole && normalizedChampion ? { role: normalizedRole, champion: normalizedChampion } : null;
+    } catch {
+        return null;
+    }
+}
+
 function recordMemberContextForMatch({ db, guildId, memberKey, metadata, didWin, matchId, seenAt }) {
     if (!metadata) {
         return false;
@@ -175,6 +204,14 @@ function recordMemberContextForMatch({ db, guildId, memberKey, metadata, didWin,
         value: metadata.champion,
         didWin: memberDidWin,
     });
+    upsertMemberContextCounter({
+        db,
+        guildId,
+        memberKey,
+        contextType: CHAMPION_BY_ROLE_CONTEXT_TYPE,
+        value: buildChampionByRoleContextValue(metadata.role, metadata.champion),
+        didWin: memberDidWin,
+    });
 
     if (matchIdNormalized) {
         runStatement(
@@ -196,7 +233,7 @@ function recordMemberContextForMatch({ db, guildId, memberKey, metadata, didWin,
     return true;
 }
 
-function addContextCounter(target, { memberKey, contextType, contextValue, games, wins }) {
+function addBasicContextCounter(target, { memberKey, contextType, contextValue, games, wins }) {
     const groupKey = contextType === 'role' ? 'rolesByMember' : 'championsByMember';
     if (!target[groupKey]) {
         target[groupKey] = {};
@@ -216,6 +253,44 @@ function addContextCounter(target, { memberKey, contextType, contextValue, games
             wins: Number(wins ?? 0),
         };
     }
+}
+
+function addChampionByRoleContextCounter(target, { memberKey, contextValue, games, wins }) {
+    const parsedContext = parseChampionByRoleContextValue(contextValue);
+    if (!parsedContext) {
+        return;
+    }
+
+    if (!target.championsByRoleByMember) {
+        target.championsByRoleByMember = {};
+    }
+    if (!target.championsByRoleByMember[memberKey]) {
+        target.championsByRoleByMember[memberKey] = {};
+    }
+    if (!target.championsByRoleByMember[memberKey][parsedContext.role]) {
+        target.championsByRoleByMember[memberKey][parsedContext.role] = {};
+    }
+
+    const roleCounters = target.championsByRoleByMember[memberKey][parsedContext.role];
+    const existing = roleCounters[parsedContext.champion];
+    if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+        existing.games = Number(existing.games ?? 0) + Number(games ?? 0);
+        existing.wins = Number(existing.wins ?? 0) + Number(wins ?? 0);
+    } else {
+        roleCounters[parsedContext.champion] = {
+            games: Number(games ?? 0),
+            wins: Number(wins ?? 0),
+        };
+    }
+}
+
+function addContextCounter(target, row) {
+    if (row.contextType === CHAMPION_BY_ROLE_CONTEXT_TYPE) {
+        addChampionByRoleContextCounter(target, row);
+        return;
+    }
+
+    addBasicContextCounter(target, row);
 }
 
 function buildCombinations(values, targetSize, startIndex = 0, current = [], result = []) {
@@ -411,6 +486,7 @@ export async function getGuildLineupStats(guildId, { includeMemberContextFor = n
             lastSeenAt: Number(row.lastSeenAt ?? 0),
             rolesByMember: {},
             championsByMember: {},
+            championsByRoleByMember: {},
         },
     ]));
 
@@ -434,7 +510,7 @@ export async function getGuildLineupStats(guildId, { includeMemberContextFor = n
     
     const contextByMember = new Map();
     for (const row of contextRows) {
-        if (row.contextType !== 'role' && row.contextType !== 'champion') {
+        if (row.contextType !== 'role' && row.contextType !== 'champion' && row.contextType !== CHAMPION_BY_ROLE_CONTEXT_TYPE) {
             continue;
         }
         const memberContext = contextByMember.get(row.memberKey) ?? [];

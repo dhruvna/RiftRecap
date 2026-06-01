@@ -86,12 +86,30 @@ async function assertPersonLevelChampionCounters() {
     assert.equal(Number(championCounter.rows), 1, 'same champion context should use one person-level row');
     assert.equal(Number(championCounter.games), 2, 'same champion context should aggregate across different lineups');
     assert.equal(Number(championCounter.wins), 1, 'same champion context should preserve wins across different lineups');
+    
+    const championByRoleCounter = db.prepare(`
+        SELECT COUNT(*) AS rows, SUM(games) AS games, SUM(wins) AS wins
+        FROM lol_member_context_counter
+        WHERE guild_id = ?
+          AND member_key = ?
+          AND context_type = 'champion_by_role'
+          AND context_value = ?
+    `).get(guildId, sharedMemberKey, JSON.stringify(['MIDDLE', 'Ahri']));
+
+    assert.equal(Number(championByRoleCounter.rows), 1, 'same role/champion context should use one person-level row');
+    assert.equal(Number(championByRoleCounter.games), 2, 'same role/champion context should aggregate across different lineups');
+    assert.equal(Number(championByRoleCounter.wins), 1, 'same role/champion context should preserve wins across different lineups');
 
     const guildLineupsWithoutUserContext = await getGuildLineupStats(guildId);
     assert.deepEqual(
         guildLineupsWithoutUserContext[buildLineupKey(firstLineup)]?.championsByMember,
         {},
         'default lineup stats should only include lineup win/loss data'
+    );
+    assert.deepEqual(
+        guildLineupsWithoutUserContext[buildLineupKey(firstLineup)]?.championsByRoleByMember,
+        {},
+        'default lineup stats should not include role/champion display context'
     );
 
     const guildLineups = await getGuildLineupStats(guildId, { includeMemberContextFor: sharedMemberKey });
@@ -100,6 +118,11 @@ async function assertPersonLevelChampionCounters() {
             guildLineups[lineupKey]?.championsByMember?.[sharedMemberKey]?.Ahri?.games,
             2,
             'user-filtered lineup display context should be attached from the shared person-level champion counter'
+        );
+        assert.equal(
+            guildLineups[lineupKey]?.championsByRoleByMember?.[sharedMemberKey]?.MIDDLE?.Ahri?.games,
+            2,
+            'user-filtered lineup display context should include best champion counters per role'
         );
     }
 }
