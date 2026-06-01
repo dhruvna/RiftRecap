@@ -271,6 +271,85 @@ async function assertPersonLevelChampionCounters() {
     }
 }
 
+async function assertLegacyContextMigrationDedupesCombinationCopies() {
+    const guildId = `lineup-context-combo-dedupe-test-${Date.now()}`;
+    const memberKey = 'combo-shared-player';
+    const firstPartner = 'combo-partner-a';
+    const secondPartner = 'combo-partner-b';
+    const firstLineupKey = buildLineupKey([memberKey, firstPartner]);
+    const secondLineupKey = buildLineupKey([memberKey, secondPartner]);
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'riftrecap-lineups-'));
+    const legacyPath = path.join(tempDir, 'lol_lineups.json');
+
+    const duplicatedContext = {
+        games: 1,
+        wins: 1,
+        losses: 0,
+        firstSeenAt: 100,
+        lastSeenAt: 200,
+        seenMatchIds: ['NA1_duplicated_match'],
+        rolesByMember: {
+            [memberKey]: {
+                MIDDLE: { games: 1, wins: 1 },
+            },
+        },
+        championsByMember: {
+            [memberKey]: {
+                Ahri: { games: 1, wins: 1 },
+            },
+        },
+    };
+
+    await fs.writeFile(legacyPath, JSON.stringify({
+        [guildId]: {
+            lineups: {
+                [`${memberKey}|${firstPartner}`]: duplicatedContext,
+                [`${memberKey}|${secondPartner}`]: duplicatedContext,
+            },
+        },
+    }));
+
+    const db = await getSqliteDb();
+    db.prepare(`
+        INSERT INTO lol_member_context_counter (
+            guild_id,
+            member_key,
+            context_type,
+            context_value,
+            games,
+            wins
+        ) VALUES (?, ?, 'champion', 'Ahri', 11, 11)
+    `).run(guildId, memberKey);
+
+    await migrateLegacyLolLineupsJson({
+        legacyPath,
+        migrationName: `lineup-context-combo-dedupe-test-${Date.now()}`,
+    });
+
+    const championCounter = db.prepare(`
+        SELECT SUM(games) AS games, SUM(wins) AS wins
+        FROM lol_member_context_counter
+        WHERE guild_id = ?
+          AND member_key = ?
+          AND context_type = 'champion'
+          AND context_value = 'Ahri'
+    `).get(guildId, memberKey);
+    const seenRows = db.prepare(`
+        SELECT lineup_key AS lineupKey, COUNT(*) AS rows
+        FROM lineup_match_seen
+        WHERE guild_id = ?
+        GROUP BY lineup_key
+    `).all(guildId);
+
+    assert.equal(Number(championCounter.games), 1, 'same legacy match context copied onto multiple lineup combinations should count once per member');
+    assert.equal(Number(championCounter.wins), 1, 'deduped legacy context should preserve the win once');
+    assert.deepEqual(
+        Object.fromEntries(seenRows.map((row) => [row.lineupKey, Number(row.rows)])),
+        { [firstLineupKey]: 1, [secondLineupKey]: 1 },
+        'legacy seenMatchIds should hydrate lineup_match_seen for migrated lineups'
+    );
+}
+
 async function assertLineupMatchSeenDedupesLineupResults() {
     const guildId = `lineup-match-seen-test-${Date.now()}`;
     const lineup = ['seen-a', 'seen-b'];
@@ -367,6 +446,7 @@ async function main() {
     await assertMemberContextMatchesAreDedupedAcrossLineups();
     await assertLegacyLineupMigrationCanonicalizesAndAggregates();
     await assertLegacyChampionByRoleMigrationHydratesMemberContext();
+    await assertLegacyContextMigrationDedupesCombinationCopies();
     const guildLineups = await getGuildLineupStats(TEST_GUILD_ID);
 
     console.log('Dummy accounts:', dummyAccounts.map((a) => `${a.gameName}#${a.tagLine}`).join(', '));

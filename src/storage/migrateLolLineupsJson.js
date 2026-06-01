@@ -5,7 +5,7 @@ import { buildChampionByRoleContextValue, buildLineupKey, normalizeContextValue 
 import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const DEFAULT_LEGACY_LINEUPS_PATH = path.join(process.env.DATA_DIR ?? 'user_data', 'lol_lineups.json');
-const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_v2';
+const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_v3';
 const LINEUP_DELIMITER = '|';
 const CONTEXT_TYPES = Object.freeze({
     rolesByMember: 'role',
@@ -85,7 +85,44 @@ function getTimestamp(entry, key, fallback) {
     return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
 }
 
-function addContextAggregate(contextAggregates, { guildId, memberKey, contextType, contextValue, games, wins }) {
+function normalizeSeenMatchIds(entry) {
+    if (!Array.isArray(entry?.seenMatchIds)) {
+        return [];
+    }
+
+    return [...new Set(entry.seenMatchIds
+        .map((matchId) => (typeof matchId === 'string' ? matchId.trim() : ''))
+        .filter(Boolean))];
+}
+
+function getDedupedCounterStats({ existing, games, wins, seenMatchIds }) {
+    if (!Array.isArray(seenMatchIds) || seenMatchIds.length === 0) {
+        return { games, wins };
+    }
+
+    const existingSeenMatchIds = existing.seenMatchIds ?? new Set();
+    const newSeenMatchIds = seenMatchIds.filter((matchId) => !existingSeenMatchIds.has(matchId));
+    for (const matchId of newSeenMatchIds) {
+        existingSeenMatchIds.add(matchId);
+    }
+    existing.seenMatchIds = existingSeenMatchIds;
+
+    if (newSeenMatchIds.length === 0) {
+        return { games: 0, wins: 0 };
+    }
+
+    const dedupedGames = Math.min(games, newSeenMatchIds.length);
+    if (dedupedGames <= 0) {
+        return { games: 0, wins: 0 };
+    }
+
+    const dedupedWins = games > 0
+        ? Math.min(dedupedGames, Math.round((wins * dedupedGames) / games))
+        : 0;
+    return { games: dedupedGames, wins: dedupedWins };
+}
+
+function addContextAggregate(contextAggregates, { guildId, memberKey, contextType, contextValue, games, wins, seenMatchIds }) {
     if (!memberKey || !contextValue || games <= 0) {
         return;
     }
@@ -98,13 +135,15 @@ function addContextAggregate(contextAggregates, { guildId, memberKey, contextTyp
         contextValue,
         games: 0,
         wins: 0,
+        seenMatchIds: new Set(),
     };
-    existing.games += games;
-    existing.wins += wins;
+    const dedupedStats = getDedupedCounterStats({ existing, games, wins, seenMatchIds });
+    existing.games += dedupedStats.games;
+    existing.wins += dedupedStats.wins;
     contextAggregates.set(aggregateKey, existing);
 }
 
-function collectContextAggregates(contextAggregates, { guildId, entry }) {
+function collectContextAggregates(contextAggregates, { guildId, entry, seenMatchIds }) {
     for (const [legacyKey, contextType] of Object.entries(CONTEXT_TYPES)) {
         const byMember = entry?.[legacyKey];
         if (!isObject(byMember)) {
@@ -127,6 +166,7 @@ function collectContextAggregates(contextAggregates, { guildId, entry }) {
                     contextValue,
                     games,
                     wins,
+                    seenMatchIds,
                 });
             }
         }
@@ -157,6 +197,7 @@ function collectContextAggregates(contextAggregates, { guildId, entry }) {
                     contextValue,
                     games,
                     wins,
+                    seenMatchIds,
                 });
             }
         }
@@ -173,7 +214,7 @@ function findGuildLineups(guildValue) {
     return guildValue;
 }
 
-function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, games, wins, losses, firstSeenAt, lastSeenAt }) {
+function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, games, wins, losses, firstSeenAt, lastSeenAt, seenMatchIds }) {
     if (games <= 0 && wins <= 0 && losses <= 0) {
         return;
     }
@@ -188,6 +229,7 @@ function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, 
         losses: 0,
         firstSeenAt,
         lastSeenAt,
+        seenMatchIds: new Set(),
     };
 
     existing.lineupSize = lineupSize;
@@ -196,6 +238,9 @@ function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, 
     existing.losses += losses;
     existing.firstSeenAt = Math.min(existing.firstSeenAt, firstSeenAt);
     existing.lastSeenAt = Math.max(existing.lastSeenAt, lastSeenAt);
+    for (const matchId of seenMatchIds ?? []) {
+        existing.seenMatchIds.add(matchId);
+    }
     lineupAggregates.set(aggregateKey, existing);
 }
 
@@ -225,6 +270,7 @@ function buildImportPlan(parsed, now = Date.now()) {
 
             const lineupSize = lineupKey.split(LINEUP_DELIMITER).length;
             const stats = getLineupStats(rawEntry);
+            const seenMatchIds = normalizeSeenMatchIds(rawEntry);
             const firstSeenAt = getTimestamp(rawEntry, 'firstSeenAt', now);
             const lastSeenAt = getTimestamp(rawEntry, 'lastSeenAt', firstSeenAt);
 
@@ -235,15 +281,18 @@ function buildImportPlan(parsed, now = Date.now()) {
                 ...stats,
                 firstSeenAt,
                 lastSeenAt,
+                seenMatchIds,
             });
-
-            collectContextAggregates(contextAggregates, { guildId, entry: rawEntry });
+            collectContextAggregates(contextAggregates, { guildId, entry: rawEntry, seenMatchIds });
         }
     }
 
     return {
-        lineups: [...lineupAggregates.values()],
-        contextRows: [...contextAggregates.values()],
+        lineups: [...lineupAggregates.values()].map((lineup) => ({
+            ...lineup,
+            seenMatchIds: [...lineup.seenMatchIds],
+        })),
+        contextRows: [...contextAggregates.values()].map(({ seenMatchIds, ...row }) => row),
     };
 }
 
@@ -310,6 +359,16 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
             last_seen_at = MAX(last_seen_at, excluded.last_seen_at)
     `);
 
+    const insertLineupMatchSeen = db.prepare(`
+        INSERT INTO lineup_match_seen (
+            guild_id,
+            lineup_key,
+            match_id,
+            seen_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, lineup_key, match_id) DO NOTHING
+    `);
+
     for (const lineup of plan.lineups) {
         insertLineup.run(
             lineup.guildId,
@@ -321,6 +380,15 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
             lineup.firstSeenAt,
             lineup.lastSeenAt
         );
+
+        for (const matchId of lineup.seenMatchIds) {
+            insertLineupMatchSeen.run(
+                lineup.guildId,
+                lineup.lineupKey,
+                matchId,
+                lineup.lastSeenAt
+            );
+        }
     }
 
     const insertContext = db.prepare(`
@@ -334,8 +402,8 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
         ) VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(guild_id, member_key, context_type, context_value)
         DO UPDATE SET
-            games = MAX(games, excluded.games),
-            wins = MAX(wins, excluded.wins)
+            games = excluded.games,
+            wins = excluded.wins
     `);
 
     for (const row of plan.contextRows) {
