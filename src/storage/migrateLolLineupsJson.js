@@ -1,16 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildLineupKey } from './lineups.js';
+import { buildChampionByRoleContextValue, buildLineupKey, normalizeContextValue } from './lineups.js';
 import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const DEFAULT_LEGACY_LINEUPS_PATH = path.join(process.env.DATA_DIR ?? 'user_data', 'lol_lineups.json');
-const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_v1';
+const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_v2';
 const LINEUP_DELIMITER = '|';
 const CONTEXT_TYPES = Object.freeze({
     rolesByMember: 'role',
     championsByMember: 'champion',
 });
+const CHAMPION_BY_ROLE_CONTEXT_TYPE = 'champion_by_role';
 
 function resolveLegacyLineupsPath(legacyPath = process.env.LOL_LINEUPS_DATA_PATH ?? DEFAULT_LEGACY_LINEUPS_PATH) {
     return path.resolve(legacyPath);
@@ -44,7 +45,11 @@ function hasLineupStats(entry) {
 }
 
 function hasLegacyContext(entry) {
-    return isObject(entry) && (isObject(entry.rolesByMember) || isObject(entry.championsByMember));
+    return isObject(entry) && (
+        isObject(entry.rolesByMember)
+        || isObject(entry.championsByMember)
+        || isObject(entry.championsByRoleByMember)
+    );
 }
 
 function getLineupStats(entry) {
@@ -113,12 +118,42 @@ function collectContextAggregates(contextAggregates, { guildId, entry }) {
             }
 
             for (const [rawContextValue, counter] of Object.entries(counters)) {
-                const contextValue = typeof rawContextValue === 'string' ? rawContextValue.trim() : '';
+                const contextValue = normalizeContextValue(rawContextValue);
                 const { games, wins } = getCounterStats(counter);
                 addContextAggregate(contextAggregates, {
                     guildId,
                     memberKey,
                     contextType,
+                    contextValue,
+                    games,
+                    wins,
+                });
+            }
+        }
+    }
+    const championsByRoleByMember = entry?.championsByRoleByMember;
+    if (!isObject(championsByRoleByMember)) {
+        return;
+    }
+
+    for (const [rawMemberKey, roles] of Object.entries(championsByRoleByMember)) {
+        const memberKey = typeof rawMemberKey === 'string' ? rawMemberKey.trim() : '';
+        if (!memberKey || !isObject(roles)) {
+            continue;
+        }
+
+        for (const [rawRole, champions] of Object.entries(roles)) {
+            if (!isObject(champions)) {
+                continue;
+            }
+
+            for (const [rawChampion, counter] of Object.entries(champions)) {
+                const contextValue = buildChampionByRoleContextValue(rawRole, rawChampion);
+                const { games, wins } = getCounterStats(counter);
+                addContextAggregate(contextAggregates, {
+                    guildId,
+                    memberKey,
+                    contextType: CHAMPION_BY_ROLE_CONTEXT_TYPE,
                     contextValue,
                     games,
                     wins,

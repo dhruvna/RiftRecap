@@ -39,7 +39,7 @@ function normalizeMatchId(matchId) {
     return typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
 }
 
-function normalizeContextValue(value) {
+export function normalizeContextValue(value) {
     if (typeof value === 'string') {
         const trimmed = value.trim();
         return trimmed || null;
@@ -139,7 +139,7 @@ function getMemberKeysFromMetadata(lineupMemberMetadata) {
     return normalizeMemberKeys(Object.keys(lineupMemberMetadata));
 }
 
-function buildChampionByRoleContextValue(role, champion) {
+export function buildChampionByRoleContextValue(role, champion) {
     const normalizedRole = normalizeContextValue(role);
     const normalizedChampion = normalizeContextValue(champion);
     if (!normalizedRole || !normalizedChampion) {

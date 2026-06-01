@@ -85,6 +85,79 @@ async function assertLegacyLineupMigrationCanonicalizesAndAggregates() {
     assert.equal(updatedGuildLineups[canonicalKey].losses, 3, 'runtime recording should preserve migrated losses on a win');
 }
 
+async function assertLegacyChampionByRoleMigrationHydratesMemberContext() {
+    const guildId = `lineup-role-champion-migration-test-${Date.now()}`;
+    const memberKey = 'legacy-shared-player';
+    const lineupKey = buildLineupKey([memberKey, 'legacy-partner']);
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'riftrecap-lineups-'));
+    const legacyPath = path.join(tempDir, 'lol_lineups.json');
+
+    await fs.writeFile(legacyPath, JSON.stringify({
+        [guildId]: {
+            lineups: {
+                [`legacy-partner|${memberKey}`]: {
+                    games: 4,
+                    wins: 3,
+                    losses: 1,
+                    firstSeenAt: 100,
+                    lastSeenAt: 200,
+                    championsByRoleByMember: {
+                        [` ${memberKey} `]: {
+                            ' MIDDLE ': {
+                                ' Ahri ': { games: 2, wins: 2 },
+                                ' Lux ': { count: 1, wins: 0 },
+                            },
+                            UTILITY: {
+                                Morgana: { losses: 1, wins: 0 },
+                            },
+                            '   ': {
+                                IgnoredChampion: { games: 5, wins: 5 },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }));
+
+    const migrationResult = await migrateLegacyLolLineupsJson({
+        legacyPath,
+        migrationName: `lineup-role-champion-migration-test-${Date.now()}`,
+    });
+
+    const db = await getSqliteDb();
+    const championByRoleCounter = db.prepare(`
+        SELECT games, wins
+        FROM lol_member_context_counter
+        WHERE guild_id = ?
+          AND member_key = ?
+          AND context_type = 'champion_by_role'
+          AND context_value = ?
+    `).get(guildId, memberKey, JSON.stringify(['MIDDLE', 'Ahri']));
+
+    assert.equal(migrationResult.didRun, true, 'legacy champion-by-role migration should run for the fixture file');
+    assert.equal(migrationResult.importedContextRows, 3, 'valid legacy role/champion counters should be migrated');
+    assert.equal(Number(championByRoleCounter?.games), 2, 'migrated champion-by-role context should use runtime JSON array context_value');
+    assert.equal(Number(championByRoleCounter?.wins), 2, 'migrated champion-by-role context should preserve wins');
+
+    const guildLineups = await getGuildLineupStats(guildId, { includeMemberContextFor: ` ${memberKey} ` });
+    assert.equal(
+        guildLineups[lineupKey]?.championsByRoleByMember?.[memberKey]?.MIDDLE?.Ahri?.games,
+        2,
+        'migrated champion-by-role context should hydrate getGuildLineupStats display context'
+    );
+    assert.equal(
+        guildLineups[lineupKey]?.championsByRoleByMember?.[memberKey]?.MIDDLE?.Lux?.games,
+        1,
+        'migrated count-style legacy counters should hydrate under normalized roles and champions'
+    );
+    assert.equal(
+        guildLineups[lineupKey]?.championsByRoleByMember?.[memberKey]?.UTILITY?.Morgana?.games,
+        1,
+        'migrated wins/losses-style legacy counters should hydrate under normalized roles and champions'
+    );
+}
+
 async function assertPersonLevelChampionCounters() {
     const guildId = `lineup-context-test-${Date.now()}`;
     const sharedMemberKey = 'shared-player';
@@ -293,6 +366,7 @@ async function main() {
     await assertLineupMatchSeenDedupesLineupResults();
     await assertMemberContextMatchesAreDedupedAcrossLineups();
     await assertLegacyLineupMigrationCanonicalizesAndAggregates();
+    await assertLegacyChampionByRoleMigrationHydratesMemberContext();
     const guildLineups = await getGuildLineupStats(TEST_GUILD_ID);
 
     console.log('Dummy accounts:', dummyAccounts.map((a) => `${a.gameName}#${a.tagLine}`).join(', '));
