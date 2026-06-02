@@ -137,7 +137,7 @@ async function assertLegacyChampionByRoleMigrationHydratesMemberContext() {
     `).get(guildId, memberKey, JSON.stringify(['MIDDLE', 'Ahri']));
 
     assert.equal(migrationResult.didRun, true, 'legacy champion-by-role migration should run for the fixture file');
-    assert.equal(migrationResult.importedContextRows, 9, 'legacy role/champion counters should migrate into role, champion, and champ+role rows');
+    assert.equal(migrationResult.importedContextRows, 3, 'legacy champion-by-role counters should migrate only champ+role rows');
     assert.equal(Number(championByRoleCounter?.games), 2, 'migrated champion-by-role context should use runtime JSON array context_value');
     assert.equal(Number(championByRoleCounter?.wins), 2, 'migrated champion-by-role context should preserve wins');
 
@@ -241,19 +241,16 @@ async function assertPersonLevelChampionCounters() {
         'person-level context counters must not include lineup_key'
     );
 
-    const championCounter = db.prepare(`
-        SELECT COUNT(*) AS rows, SUM(games) AS games, SUM(wins) AS wins
+   const basicContextCounter = db.prepare(`
+        SELECT COUNT(*) AS rows
         FROM lol_member_context_counter
         WHERE guild_id = ?
           AND member_key = ?
-          AND context_type = 'champion'
-          AND context_value = 'Ahri'
+          AND context_type IN ('role', 'champion')
     `).get(guildId, sharedMemberKey);
 
-    assert.equal(Number(championCounter.rows), 1, 'same champion context should use one person-level row');
-    assert.equal(Number(championCounter.games), 2, 'same champion context should aggregate across different lineups');
-    assert.equal(Number(championCounter.wins), 1, 'same champion context should preserve wins across different lineups');
-    
+    assert.equal(Number(basicContextCounter.rows), 0, 'role and champion context should be inferred instead of stored separately');
+
     const championByRoleCounter = db.prepare(`
         SELECT COUNT(*) AS rows, SUM(games) AS games, SUM(wins) AS wins
         FROM lol_member_context_counter
@@ -284,7 +281,7 @@ async function assertPersonLevelChampionCounters() {
         assert.equal(
             guildLineups[lineupKey]?.championsByMember?.[sharedMemberKey]?.Ahri?.games,
             2,
-            'user-filtered lineup display context should be attached from the shared person-level champion counter'
+            'user-filtered champion context should be inferred from champion-by-role counters'
         );
         assert.equal(
             guildLineups[lineupKey]?.championsByRoleByMember?.[sharedMemberKey]?.MIDDLE?.Ahri?.games,
@@ -311,14 +308,11 @@ async function assertLegacyContextMigrationDedupesCombinationCopies() {
         firstSeenAt: 100,
         lastSeenAt: 200,
         seenMatchIds: ['NA1_duplicated_match'],
-        rolesByMember: {
+        championsByRoleByMember: {
             [memberKey]: {
-                MIDDLE: { games: 1, wins: 1 },
-            },
-        },
-        championsByMember: {
-            [memberKey]: {
-                Ahri: { games: 1, wins: 1 },
+                MIDDLE: {
+                    Ahri: { games: 1, wins: 1 },
+                },
             },
         },
     };
@@ -341,22 +335,22 @@ async function assertLegacyContextMigrationDedupesCombinationCopies() {
             context_value,
             games,
             wins
-        ) VALUES (?, ?, 'champion', 'Ahri', 11, 11)
-    `).run(guildId, memberKey);
+        ) VALUES (?, ?, 'champion_by_role', ?, 11, 11)
+    `).run(guildId, memberKey, JSON.stringify(['MIDDLE', 'Ahri']));
 
     await migrateLegacyLolLineupsJson({
         legacyPath,
         migrationName: `lineup-context-combo-dedupe-test-${Date.now()}`,
     });
 
-    const championCounter = db.prepare(`
+    const championByRoleCounter = db.prepare(`
         SELECT SUM(games) AS games, SUM(wins) AS wins
         FROM lol_member_context_counter
         WHERE guild_id = ?
           AND member_key = ?
-          AND context_type = 'champion'
-          AND context_value = 'Ahri'
-    `).get(guildId, memberKey);
+          AND context_type = 'champion_by_role'
+          AND context_value = ?
+    `).get(guildId, memberKey, JSON.stringify(['MIDDLE', 'Ahri']));
     const seenRows = db.prepare(`
         SELECT lineup_key AS lineupKey, COUNT(*) AS rows
         FROM lineup_match_seen
@@ -364,8 +358,8 @@ async function assertLegacyContextMigrationDedupesCombinationCopies() {
         GROUP BY lineup_key
     `).all(guildId);
 
-    assert.equal(Number(championCounter.games), 1, 'one-time migration should dedupe copied legacy champion counts');
-    assert.equal(Number(championCounter.wins), 1, 'one-time migration should dedupe copied legacy wins');
+    assert.equal(Number(championByRoleCounter.games), 1, 'one-time migration should dedupe copied legacy champion-by-role counts');
+    assert.equal(Number(championByRoleCounter.wins), 1, 'one-time migration should dedupe copied legacy wins');
     assert.deepEqual(
         Object.fromEntries(seenRows.map((row) => [row.lineupKey, Number(row.rows)])),
         { [firstLineupKey]: 1, [secondLineupKey]: 1 },
@@ -432,17 +426,17 @@ async function assertMemberContextMatchesAreDedupedAcrossLineups() {
     });
 
     const db = await getSqliteDb();
-    const championCounter = db.prepare(`
+    const championByRoleCounter = db.prepare(`
         SELECT SUM(games) AS games, SUM(wins) AS wins
         FROM lol_member_context_counter
         WHERE guild_id = ?
           AND member_key = ?
-          AND context_type = 'champion'
-          AND context_value = 'Champion0'
-    `).get(guildId, memberKeys[0]);
+          AND context_type = 'champion_by_role'
+          AND context_value = ?
+    `).get(guildId, memberKeys[0], JSON.stringify(['MIDDLE', 'Champion0']));
 
-    assert.equal(Number(championCounter.games), 1, 'same user/match champion context should only count once');
-    assert.equal(Number(championCounter.wins), 1, 'same user/match champion wins should only count once');
+    assert.equal(Number(championByRoleCounter.games), 1, 'same user/match champion-by-role context should only count once');
+    assert.equal(Number(championByRoleCounter.wins), 1, 'same user/match champion-by-role wins should only count once');
 }
 
 async function assertFiveStackLineupPermutationsDoNotDuplicateMemberContext() {
@@ -481,30 +475,28 @@ async function assertFiveStackLineupPermutationsDoNotDuplicateMemberContext() {
         FROM lineup_stats
         WHERE guild_id = ?
     `).get(guildId);
-    const championCounter = db.prepare(`
+    const championByRoleCounter = db.prepare(`
         SELECT games, wins
         FROM lol_member_context_counter
         WHERE guild_id = ?
           AND member_key = ?
-          AND context_type = 'champion'
-          AND context_value = 'Champion0'
-    `).get(guildId, memberKeys[0]);
-    const roleCounter = db.prepare(`
-        SELECT games, wins
+          AND context_type = 'champion_by_role'
+          AND context_value = ?
+    `).get(guildId, memberKeys[0], JSON.stringify(['TOP', 'Champion0']));
+    const basicContextCounter = db.prepare(`
+        SELECT COUNT(*) AS rows
         FROM lol_member_context_counter
         WHERE guild_id = ?
           AND member_key = ?
-          AND context_type = 'role'
-          AND context_value = 'TOP'
+          AND context_type IN ('role', 'champion')
     `).get(guildId, memberKeys[0]);
 
     assert.equal(Number(lineupCounter.rows), 21, 'five stack flex match should record every 2/3/5-player lineup permutation');
     assert.equal(Number(lineupCounter.games), 21, 'each eligible lineup permutation should receive one game');
     assert.equal(Number(lineupCounter.wins), 21, 'each eligible lineup permutation should receive one win');
-    assert.equal(Number(championCounter?.games), 1, 'champion stats should only count the member once for the match');
-    assert.equal(Number(championCounter?.wins), 1, 'champion wins should only count the member once for the match');
-    assert.equal(Number(roleCounter?.games), 1, 'role stats should only count the member once for the match');
-    assert.equal(Number(roleCounter?.wins), 1, 'role wins should only count the member once for the match');
+    assert.equal(Number(championByRoleCounter?.games), 1, 'champion-by-role stats should only count the member once for the match');
+    assert.equal(Number(championByRoleCounter?.wins), 1, 'champion-by-role wins should only count the member once for the match');
+    assert.equal(Number(basicContextCounter?.rows), 0, 'role and champion stats should not be stored separately');
 }
 
 async function main() {

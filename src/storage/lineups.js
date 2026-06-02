@@ -3,8 +3,6 @@ import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const LINEUP_DELIMITER = '|';
 const CONTEXT_TYPES = Object.freeze({
-    ROLE: 'role',
-    CHAMPION: 'champion',
     CHAMPION_ROLE: 'champion_by_role',
 });
 
@@ -157,7 +155,7 @@ function recordMemberContextForMatch({ db, guildId, memberKey, metadata, didWin,
 
     const normalizedRole = normalizeContextValue(metadata.role);
     const normalizedChampion = normalizeContextValue(metadata.champion);
-    if (!normalizedRole && !normalizedChampion) {
+    if (!normalizedRole || !normalizedChampion) {
         return false;
     }
 
@@ -177,31 +175,14 @@ function recordMemberContextForMatch({ db, guildId, memberKey, metadata, didWin,
     }
 
     const memberDidWin = typeof metadata.didWin === 'boolean' ? metadata.didWin : didWin;
-    let didRecordCounter = false;
-    didRecordCounter = upsertMemberContextCounter({
-        db,
-        guildId,
-        memberKey,
-        contextType: CONTEXT_TYPES.ROLE,
-        value: normalizedRole,
-        didWin: memberDidWin,
-    }) || didRecordCounter;
-    didRecordCounter = upsertMemberContextCounter({
-        db,
-        guildId,
-        memberKey,
-        contextType: CONTEXT_TYPES.CHAMPION,
-        value: normalizedChampion,
-        didWin: memberDidWin,
-    }) || didRecordCounter;
-    didRecordCounter = upsertMemberContextCounter({
+    const didRecordCounter = upsertMemberContextCounter({
         db,
         guildId,
         memberKey,
         contextType: CONTEXT_TYPES.CHAMPION_ROLE,
         value: buildChampionRoleContextValue(normalizedChampion, normalizedRole),
         didWin: memberDidWin,
-    }) || didRecordCounter;
+    });
 
     if (didRecordCounter && matchIdNormalized) {
         runStatement(
@@ -402,21 +383,24 @@ function addContextStats(target, row) {
         return;
     }
 
-    if (row.contextType === CONTEXT_TYPES.ROLE) {
-        target.roles[row.contextValue] = { games, wins };
+    if (row.contextType !== CONTEXT_TYPES.CHAMPION_ROLE) {
         return;
     }
 
-    if (row.contextType === CONTEXT_TYPES.CHAMPION) {
-        target.champions[row.contextValue] = { games, wins };
+    const parsed = getChampionRoleParts(row.contextValue);
+    if (!parsed) {
         return;
     }
 
-    if (row.contextType === CONTEXT_TYPES.CHAMPION_ROLE) {
-        const parsed = getChampionRoleParts(row.contextValue);
-        const contextValue = parsed?.value ?? row.contextValue;
-        target.championRoles[contextValue] = { games, wins };
-    }
+    target.championRoles[parsed.value] = { games, wins };
+    target.roles[parsed.role] = {
+        games: Number(target.roles[parsed.role]?.games ?? 0) + games,
+        wins: Number(target.roles[parsed.role]?.wins ?? 0) + wins,
+    };
+    target.champions[parsed.champion] = {
+        games: Number(target.champions[parsed.champion]?.games ?? 0) + games,
+        wins: Number(target.champions[parsed.champion]?.wins ?? 0) + wins,
+    };
 }
 
 export async function getLolMemberContextStats(guildId, memberKey) {
@@ -439,6 +423,7 @@ export async function getLolMemberContextStats(guildId, memberKey) {
         FROM lol_member_context_counter
         WHERE guild_id = ?
           AND member_key = ?
+          AND context_type = 'champion_by_role'
         GROUP BY context_type, context_value
         ORDER BY games DESC, wins DESC, context_value ASC
     `).all(guildId, normalizedMemberKey);

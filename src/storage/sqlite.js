@@ -150,6 +150,11 @@ function runMigrations(db) {
                 wins = MAX(wins, excluded.wins);
         `);
     }
+    
+    db.exec(`
+        DELETE FROM lol_member_context_counter
+        WHERE context_type IN ('role', 'champion');
+    `);
 }
 
 async function openDatabase() {

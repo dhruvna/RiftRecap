@@ -8,8 +8,6 @@ const DEFAULT_LEGACY_LINEUPS_PATH = path.join(process.env.DATA_DIR ?? 'user_data
 const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_simple_v3';
 const LINEUP_DELIMITER = '|';
 const CONTEXT_TYPES = Object.freeze({
-    ROLE: 'role',
-    CHAMPION: 'champion',
     CHAMPION_ROLE: 'champion_by_role',
 });
 
@@ -147,52 +145,10 @@ function addContext(contextRows, { guildId, memberKey, contextType, contextValue
     contextRows.set(aggregateKey, existing);
 }
 
-function addDerivedContext(derivedRows, { memberKey, contextType, contextValue, games, wins }) {
-    const normalizedMemberKey = typeof memberKey === 'string' ? memberKey.trim() : '';
-    const normalizedContextValue = normalizeContextValue(contextValue);
-    if (!normalizedMemberKey || !normalizedContextValue || games <= 0) {
-        return;
-    }
-
-    const aggregateKey = JSON.stringify([normalizedMemberKey, contextType, normalizedContextValue]);
-    const existing = derivedRows.get(aggregateKey) ?? {
-        memberKey: normalizedMemberKey,
-        contextType,
-        contextValue: normalizedContextValue,
-        games: 0,
-        wins: 0,
-    };
-    existing.games += games;
-    existing.wins += wins;
-    derivedRows.set(aggregateKey, existing);
-}
-
-function collectBasicContext(contextRows, { guildId, byMember, contextType }) {
-    if (!isObject(byMember)) {
-        return;
-    }
-    for (const [memberKey, counters] of Object.entries(byMember)) {
-        if (!isObject(counters)) {
-            continue;
-        }
-
-        for (const [contextValue, counter] of Object.entries(counters)) {
-            addContext(contextRows, {
-                guildId,
-                memberKey,
-                contextType,
-                contextValue,
-                ...getCounterStats(counter),
-            });
-        }
-    }
-}
-
 function collectChampionRoleContext(contextRows, { guildId, championsByRoleByMember }) {
     if (!isObject(championsByRoleByMember)) {
         return;
     }
-    const derivedRows = new Map();
     for (const [memberKey, roles] of Object.entries(championsByRoleByMember)) {
         if (!isObject(roles)) {
             continue;
@@ -205,18 +161,6 @@ function collectChampionRoleContext(contextRows, { guildId, championsByRoleByMem
 
             for (const [champion, counter] of Object.entries(champions)) {
                 const stats = getCounterStats(counter);
-                addDerivedContext(derivedRows, {
-                    memberKey,
-                    contextType: CONTEXT_TYPES.ROLE,
-                    contextValue: role,
-                    ...stats,
-                });
-                addDerivedContext(derivedRows, {
-                    memberKey,
-                    contextType: CONTEXT_TYPES.CHAMPION,
-                    contextValue: champion,
-                    ...stats,
-                });
                 addContext(contextRows, {
                     guildId,
                     memberKey,
@@ -227,10 +171,6 @@ function collectChampionRoleContext(contextRows, { guildId, championsByRoleByMem
             }
         }
     }
-    for (const row of derivedRows.values()) {
-        addContext(contextRows, { guildId, ...row });
-    }
-
 }
 
 export function buildImportPlan(parsed, now = Date.now()) {
@@ -263,16 +203,6 @@ export function buildImportPlan(parsed, now = Date.now()) {
                 firstSeenAt: getTimestamp(rawEntry, 'firstSeenAt', now),
                 lastSeenAt: getTimestamp(rawEntry, 'lastSeenAt', now),
                 seenMatchIds: normalizeSeenMatchIds(rawEntry),
-            });
-            collectBasicContext(contextRows, {
-                guildId,
-                byMember: rawEntry.rolesByMember,
-                contextType: CONTEXT_TYPES.ROLE,
-            });
-            collectBasicContext(contextRows, {
-                guildId,
-                byMember: rawEntry.championsByMember,
-                contextType: CONTEXT_TYPES.CHAMPION,
             });
             collectChampionRoleContext(contextRows, {
                 guildId,
