@@ -1,17 +1,17 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildChampionByRoleContextValue, buildLineupKey, normalizeContextValue } from './lineups.js';
+import { buildChampionRoleContextValue, buildLineupKey, normalizeContextValue } from './lineups.js';
 import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const DEFAULT_LEGACY_LINEUPS_PATH = path.join(process.env.DATA_DIR ?? 'user_data', 'lol_lineups.json');
-const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_v4';
+const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_simple_v2';
 const LINEUP_DELIMITER = '|';
 const CONTEXT_TYPES = Object.freeze({
-    rolesByMember: 'role',
-    championsByMember: 'champion',
+    ROLE: 'role',
+    CHAMPION: 'champion',
+    CHAMPION_ROLE: 'champion_by_role',
 });
-const CHAMPION_BY_ROLE_CONTEXT_TYPE = 'champion_by_role';
 
 function resolveLegacyLineupsPath(legacyPath = process.env.LOL_LINEUPS_DATA_PATH ?? DEFAULT_LEGACY_LINEUPS_PATH) {
     return path.resolve(legacyPath);
@@ -36,28 +36,12 @@ function normalizeLineupKey(lineupKey) {
     return buildLineupKey(lineupKey.split(LINEUP_DELIMITER)) || null;
 }
 
-function hasLineupStats(entry) {
-    return isObject(entry) && (
-        Object.hasOwn(entry, 'wins')
-        || Object.hasOwn(entry, 'losses')
-        || Object.hasOwn(entry, 'games')
-    );
-}
-
-function hasLegacyContext(entry) {
-    return isObject(entry) && (
-        isObject(entry.rolesByMember)
-        || isObject(entry.championsByMember)
-        || isObject(entry.championsByRoleByMember)
-    );
-}
-
 function getLineupStats(entry) {
     const wins = toNonNegativeInteger(entry?.wins);
     let losses = toNonNegativeInteger(entry?.losses);
     let games = toNonNegativeInteger(entry?.games, wins + losses);
 
-    if (!Object.hasOwn(entry, 'losses') && games >= wins) {
+    if (!Object.hasOwn(entry ?? {}, 'losses') && games >= wins) {
         losses = games - wins;
     }
     games = Math.max(games, wins + losses);
@@ -76,8 +60,10 @@ function getCounterStats(counter) {
     const wins = toNonNegativeInteger(counter.wins);
     const losses = toNonNegativeInteger(counter.losses);
     const count = counter.games ?? counter.count ?? counter.total;
-    const games = Math.max(toNonNegativeInteger(count, wins + losses), wins + losses);
-    return { games, wins };
+    return {
+        games: Math.max(toNonNegativeInteger(count, wins + losses), wins + losses),
+        wins,
+    };
 }
 
 function getTimestamp(entry, key, fallback) {
@@ -95,157 +81,26 @@ function normalizeSeenMatchIds(entry) {
         .filter(Boolean))];
 }
 
-function getDedupedCounterStats({ existing, games, wins, seenMatchIds }) {
-    if (!Array.isArray(seenMatchIds) || seenMatchIds.length === 0) {
-        return { games, wins };
-    }
-
-    const existingSeenMatchIds = existing.seenMatchIds ?? new Set();
-    const newSeenMatchIds = seenMatchIds.filter((matchId) => !existingSeenMatchIds.has(matchId));
-    for (const matchId of newSeenMatchIds) {
-        existingSeenMatchIds.add(matchId);
-    }
-    existing.seenMatchIds = existingSeenMatchIds;
-
-    if (newSeenMatchIds.length === 0) {
-        return { games: 0, wins: 0 };
-    }
-
-    const dedupedGames = Math.min(games, newSeenMatchIds.length);
-    if (dedupedGames <= 0) {
-        return { games: 0, wins: 0 };
-    }
-
-    const dedupedWins = games > 0
-        ? Math.min(dedupedGames, Math.round((wins * dedupedGames) / games))
-        : 0;
-    return { games: dedupedGames, wins: dedupedWins };
-}
-
-function addContextAggregate(contextAggregates, { guildId, memberKey, contextType, contextValue, games, wins, seenMatchIds }) {
-    if (!memberKey || !contextValue || games <= 0) {
-        return false;
-    }
-
-    const aggregateKey = JSON.stringify([guildId, memberKey, contextType, contextValue]);
-    const existing = contextAggregates.get(aggregateKey) ?? {
-        guildId,
-        memberKey,
-        contextType,
-        contextValue,
-        games: 0,
-        wins: 0,
-        seenMatchIds: new Set(),
-    };
-    const dedupedStats = getDedupedCounterStats({ existing, games, wins, seenMatchIds });
-    existing.games += dedupedStats.games;
-    existing.wins += dedupedStats.wins;
-    contextAggregates.set(aggregateKey, existing);
-    return true;
-}
-
-function addContextMatchSeenRows(contextMatchSeenRows, { guildId, memberKey, seenMatchIds, seenAt }) {
-    if (!contextMatchSeenRows || !memberKey || !Array.isArray(seenMatchIds) || seenMatchIds.length === 0) {
-        return;
-    }
-
-    for (const matchId of seenMatchIds) {
-        contextMatchSeenRows.set(JSON.stringify([guildId, memberKey, matchId]), {
-            guildId,
-            memberKey,
-            matchId,
-            seenAt,
-        });
-    }
-}
-
-function collectContextAggregates(contextAggregates, { guildId, entry, seenMatchIds, contextMatchSeenRows, seenAt }) {
-    for (const [legacyKey, contextType] of Object.entries(CONTEXT_TYPES)) {
-        const byMember = entry?.[legacyKey];
-        if (!isObject(byMember)) {
-            continue;
-        }
-
-        for (const [rawMemberKey, counters] of Object.entries(byMember)) {
-            const memberKey = typeof rawMemberKey === 'string' ? rawMemberKey.trim() : '';
-            if (!memberKey || !isObject(counters)) {
-                continue;
-            }
-
-            for (const [rawContextValue, counter] of Object.entries(counters)) {
-                const contextValue = normalizeContextValue(rawContextValue);
-                const { games, wins } = getCounterStats(counter);
-                const didAddContext = addContextAggregate(contextAggregates, {
-                    guildId,
-                    memberKey,
-                    contextType,
-                    contextValue,
-                    games,
-                    wins,
-                    seenMatchIds,
-                });
-                if (didAddContext) {
-                    addContextMatchSeenRows(contextMatchSeenRows, { guildId, memberKey, seenMatchIds, seenAt });
-                }
-            }
-        }
-    }
-    const championsByRoleByMember = entry?.championsByRoleByMember;
-    if (!isObject(championsByRoleByMember)) {
-        return;
-    }
-
-    for (const [rawMemberKey, roles] of Object.entries(championsByRoleByMember)) {
-        const memberKey = typeof rawMemberKey === 'string' ? rawMemberKey.trim() : '';
-        if (!memberKey || !isObject(roles)) {
-            continue;
-        }
-
-        for (const [rawRole, champions] of Object.entries(roles)) {
-            if (!isObject(champions)) {
-                continue;
-            }
-
-            for (const [rawChampion, counter] of Object.entries(champions)) {
-                const contextValue = buildChampionByRoleContextValue(rawRole, rawChampion);
-                const { games, wins } = getCounterStats(counter);
-                const didAddContext = addContextAggregate(contextAggregates, {
-                    guildId,
-                    memberKey,
-                    contextType: CHAMPION_BY_ROLE_CONTEXT_TYPE,
-                    contextValue,
-                    games,
-                    wins,
-                    seenMatchIds,
-                });
-                if (didAddContext) {
-                    addContextMatchSeenRows(contextMatchSeenRows, { guildId, memberKey, seenMatchIds, seenAt });
-                }
-            }
-        }
-    }
-}
-
 function findGuildLineups(guildValue) {
     if (!isObject(guildValue)) {
         return {};
     }
+
     if (isObject(guildValue.lineups)) {
         return guildValue.lineups;
     }
     return guildValue;
 }
 
-function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, games, wins, losses, firstSeenAt, lastSeenAt, seenMatchIds }) {
+function addLineup(lineups, { guildId, lineupKey, games, wins, losses, firstSeenAt, lastSeenAt, seenMatchIds }) {
     if (games <= 0 && wins <= 0 && losses <= 0) {
         return;
     }
-
     const aggregateKey = JSON.stringify([guildId, lineupKey]);
-    const existing = lineupAggregates.get(aggregateKey) ?? {
+    const existing = lineups.get(aggregateKey) ?? {
         guildId,
         lineupKey,
-        lineupSize,
+        lineupSize: lineupKey.split(LINEUP_DELIMITER).length,
         games: 0,
         wins: 0,
         losses: 0,
@@ -253,36 +108,117 @@ function addLineupAggregate(lineupAggregates, { guildId, lineupKey, lineupSize, 
         lastSeenAt,
         seenMatchIds: new Set(),
     };
-
-    existing.lineupSize = lineupSize;
     existing.games += games;
     existing.wins += wins;
     existing.losses += losses;
     existing.firstSeenAt = Math.min(existing.firstSeenAt, firstSeenAt);
     existing.lastSeenAt = Math.max(existing.lastSeenAt, lastSeenAt);
-    for (const matchId of seenMatchIds ?? []) {
+    for (const matchId of seenMatchIds) {
         existing.seenMatchIds.add(matchId);
     }
-    lineupAggregates.set(aggregateKey, existing);
+    lineups.set(aggregateKey, existing);
 }
 
-function buildImportPlan(parsed, now = Date.now()) {
-    const lineupAggregates = new Map();
-    const contextAggregates = new Map();
-    const contextMatchSeenRows = new Map();
+function addContext(contextRows, { guildId, memberKey, contextType, contextValue, games, wins }) {
+    const normalizedMemberKey = typeof memberKey === 'string' ? memberKey.trim() : '';
+    const normalizedContextValue = normalizeContextValue(contextValue);
+    if (!normalizedMemberKey || !normalizedContextValue || games <= 0) {
+        return;
+    }
 
+    const aggregateKey = JSON.stringify([guildId, normalizedMemberKey, contextType, normalizedContextValue]);
+    const existing = contextRows.get(aggregateKey) ?? {
+        guildId,
+        memberKey: normalizedMemberKey,
+        contextType,
+        contextValue: normalizedContextValue,
+        games: 0,
+        wins: 0,
+    };
+    existing.games += games;
+    existing.wins += wins;
+    contextRows.set(aggregateKey, existing);
+}
+
+function collectBasicContext(contextRows, { guildId, byMember, contextType }) {
+    if (!isObject(byMember)) {
+        return;
+    }
+    for (const [memberKey, counters] of Object.entries(byMember)) {
+        if (!isObject(counters)) {
+            continue;
+        }
+
+        for (const [contextValue, counter] of Object.entries(counters)) {
+            addContext(contextRows, {
+                guildId,
+                memberKey,
+                contextType,
+                contextValue,
+                ...getCounterStats(counter),
+            });
+        }
+    }
+}
+
+function collectChampionRoleContext(contextRows, { guildId, championsByRoleByMember }) {
+    if (!isObject(championsByRoleByMember)) {
+        return;
+    }
+
+    for (const [memberKey, roles] of Object.entries(championsByRoleByMember)) {
+        if (!isObject(roles)) {
+            continue;
+        }
+
+        for (const [role, champions] of Object.entries(roles)) {
+            if (!isObject(champions)) {
+                continue;
+            }
+
+            for (const [champion, counter] of Object.entries(champions)) {
+                const stats = getCounterStats(counter);
+                addContext(contextRows, {
+                    guildId,
+                    memberKey,
+                    contextType: CONTEXT_TYPES.ROLE,
+                    contextValue: role,
+                    ...stats,
+                });
+                addContext(contextRows, {
+                    guildId,
+                    memberKey,
+                    contextType: CONTEXT_TYPES.CHAMPION,
+                    contextValue: champion,
+                    ...stats,
+                });
+                addContext(contextRows, {
+                    guildId,
+                    memberKey,
+                    contextType: CONTEXT_TYPES.CHAMPION_ROLE,
+                    contextValue: buildChampionRoleContextValue(champion, role),
+                    ...stats,
+                });
+            }
+        }
+    }
+}
+
+export function buildImportPlan(parsed, now = Date.now()) {
     if (!isObject(parsed)) {
         throw new Error('[migrateLolLineupsJson] Legacy lol_lineups.json root must be an object keyed by guildId.');
     }
+
+    const lineups = new Map();
+    const contextRows = new Map();
 
     for (const [guildId, guildValue] of Object.entries(parsed)) {
         if (!guildId || !isObject(guildValue)) {
             continue;
         }
 
-        const guildLineups = findGuildLineups(guildValue);
-        for (const [rawLineupKey, rawEntry] of Object.entries(guildLineups)) {
-            if (!isObject(rawEntry) || (!hasLineupStats(rawEntry) && !hasLegacyContext(rawEntry))) {
+        for (const [rawLineupKey, rawEntry] of Object.entries(findGuildLineups(guildValue))) {
+            if (!isObject(rawEntry)) {
                 continue;
             }
 
@@ -291,52 +227,49 @@ function buildImportPlan(parsed, now = Date.now()) {
                 continue;
             }
 
-            const lineupSize = lineupKey.split(LINEUP_DELIMITER).length;
-            const stats = getLineupStats(rawEntry);
-            const seenMatchIds = normalizeSeenMatchIds(rawEntry);
-            const firstSeenAt = getTimestamp(rawEntry, 'firstSeenAt', now);
-            const lastSeenAt = getTimestamp(rawEntry, 'lastSeenAt', firstSeenAt);
-
-            addLineupAggregate(lineupAggregates, {
+            addLineup(lineups, {
                 guildId,
                 lineupKey,
-                lineupSize,
-                ...stats,
-                firstSeenAt,
-                lastSeenAt,
-                seenMatchIds,
+                ...getLineupStats(rawEntry),
+                firstSeenAt: getTimestamp(rawEntry, 'firstSeenAt', now),
+                lastSeenAt: getTimestamp(rawEntry, 'lastSeenAt', now),
+                seenMatchIds: normalizeSeenMatchIds(rawEntry),
             });
-            collectContextAggregates(contextAggregates, {
+            collectBasicContext(contextRows, {
                 guildId,
-                entry: rawEntry,
-                seenMatchIds,
-                contextMatchSeenRows,
-                seenAt: lastSeenAt,
+                byMember: rawEntry.rolesByMember,
+                contextType: CONTEXT_TYPES.ROLE,
+            });
+            collectBasicContext(contextRows, {
+                guildId,
+                byMember: rawEntry.championsByMember,
+                contextType: CONTEXT_TYPES.CHAMPION,
+            });
+            collectChampionRoleContext(contextRows, {
+                guildId,
+                championsByRoleByMember: rawEntry.championsByRoleByMember,
             });
         }
     }
 
     return {
-        lineups: [...lineupAggregates.values()].map((lineup) => ({
+        lineups: [...lineups.values()].map((lineup) => ({
             ...lineup,
             seenMatchIds: [...lineup.seenMatchIds],
         })),
-        contextRows: [...contextAggregates.values()].map(({ seenMatchIds, ...row }) => row),
-        contextMatchSeenRows: [...contextMatchSeenRows.values()],
+        contextRows: [...contextRows.values()],
     };
 }
 
 async function readLegacyJson(filePath) {
-    let raw;
     try {
-        raw = await fs.readFile(filePath, 'utf8');
+        return JSON.parse(await fs.readFile(filePath, 'utf8'));
     } catch (error) {
         if (error?.code === 'ENOENT') {
             return null;
         }
         throw error;
     }
-    return JSON.parse(raw);
 }
 
 function getMigrationMarker(db, migrationName) {
@@ -356,8 +289,7 @@ function insertMigrationMarker(db, migrationName, details, now) {
 }
 
 function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
-    const existingMarker = getMigrationMarker(db, migrationName);
-    if (existingMarker) {
+    if (getMigrationMarker(db, migrationName)) {
         return {
             didRun: false,
             reason: 'already_applied',
@@ -365,7 +297,6 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
             migrationName,
             importedLineups: 0,
             importedContextRows: 0,
-            importedContextMatchSeenRows: 0,
         };
     }
 
@@ -413,12 +344,7 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
         );
 
         for (const matchId of lineup.seenMatchIds) {
-            insertLineupMatchSeen.run(
-                lineup.guildId,
-                lineup.lineupKey,
-                matchId,
-                lineup.lastSeenAt
-            );
+            insertLineupMatchSeen.run(lineup.guildId, lineup.lineupKey, matchId, lineup.lastSeenAt);
         }
     }
 
@@ -438,40 +364,13 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
     `);
 
     for (const row of plan.contextRows) {
-        insertContext.run(
-            row.guildId,
-            row.memberKey,
-            row.contextType,
-            row.contextValue,
-            row.games,
-            row.wins
-        );
-    }
-
-    const insertContextMatchSeen = db.prepare(`
-        INSERT INTO lol_member_context_match_seen (
-            guild_id,
-            member_key,
-            match_id,
-            seen_at
-        ) VALUES (?, ?, ?, ?)
-        ON CONFLICT(guild_id, member_key, match_id) DO NOTHING
-    `);
-
-    for (const row of plan.contextMatchSeenRows) {
-        insertContextMatchSeen.run(
-            row.guildId,
-            row.memberKey,
-            row.matchId,
-            row.seenAt
-        );
+        insertContext.run(row.guildId, row.memberKey, row.contextType, row.contextValue, row.games, row.wins);
     }
 
     const details = {
         legacyPath,
         importedLineups: plan.lineups.length,
         importedContextRows: plan.contextRows.length,
-        importedContextMatchSeenRows: plan.contextMatchSeenRows.length,
     };
     insertMigrationMarker(db, migrationName, details, now);
 
@@ -479,7 +378,6 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
         didRun: true,
         reason: 'imported',
         migrationName,
-        legacyPath,
         ...details,
     };
 }
@@ -498,7 +396,6 @@ export async function migrateLegacyLolLineupsJson({
             legacyPath: resolvedLegacyPath,
             importedLineups: 0,
             importedContextRows: 0,
-            importedContextMatchSeenRows: 0,
         };
     }
 

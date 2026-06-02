@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { getGuildLineupStats } from '../storage/lineups.js';
+import { getChampionRoleParts, getGuildLineupStats, getLolMemberContextStats } from '../storage/lineups.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
 import { respondWithAccountChoices } from '../utils/autocomplete.js';
 
@@ -46,8 +46,6 @@ function lineupIncludesAccount(lineupKey, accountKey) {
         .includes(normalizedAccountKey);
 }
 
-const ROLE_ORDER = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY'];
-
 const ROLE_DISPLAY_NAMES = {
     TOP: 'Top',
     JUNGLE: 'Jungle',
@@ -70,7 +68,7 @@ function getCounterWins(counter) {
     return Number(counter?.wins ?? 0);
 }
 
-function selectTopCounter(counters = {}, { preferWins = false } = {}) {
+function selectTopCounter(counters = {}) {
     if (!counters || typeof counters !== 'object' || Array.isArray(counters)) {
         return null;
     }
@@ -79,25 +77,22 @@ function selectTopCounter(counters = {}, { preferWins = false } = {}) {
         .map(([value, counter]) => ({ value, games: getCounterGames(counter), wins: getCounterWins(counter) }))
         .filter((entry) => entry.value && entry.games > 0)
         .sort((a, b) => {
-            if (preferWins) {
-                const aWinRate = a.games > 0 ? a.wins / a.games : 0;
-                const bWinRate = b.games > 0 ? b.wins / b.games : 0;
-                if (bWinRate !== aWinRate) return bWinRate - aWinRate;
-                if (b.wins !== a.wins) return b.wins - a.wins;
-            }
-            if (b.games !== a.games) return b.games - a.games;
+            const aWinRate = a.games > 0 ? a.wins / a.games : 0;
+            const bWinRate = b.games > 0 ? b.wins / b.games : 0;
+            if (bWinRate !== aWinRate) return bWinRate - aWinRate;
             if (b.wins !== a.wins) return b.wins - a.wins;
+            if (b.games !== a.games) return b.games - a.games;
             return a.value.localeCompare(b.value);
         })[0] ?? null;
 }
 
 function formatCounter(counter, formatter = (value) => value) {
     if (!counter) {
-        return null;
+        return 'No games';
     }
     const label = formatter(counter.value);
     if (!label) {
-        return null;
+        return 'No games';
     }
     return `${label} (${counter.wins}W/${counter.games}G)`;
 }
@@ -108,24 +103,25 @@ function formatRoleName(role) {
     return ROLE_DISPLAY_NAMES[normalized] ?? normalized.toLowerCase();
 }
 
-function buildBestChampionByRoleLines(entries, selectedAccountKey) {
+function formatChampionRole(value) {
+    const parsed = getChampionRoleParts(value);
+    if (!parsed) {
+        return value;
+    }
+    return `${parsed.champion} ${formatRoleName(parsed.role) ?? parsed.role}`;
+}
+
+async function buildUserDataLines(guildId, selectedAccountKey) {
     if (!selectedAccountKey) {
-        return [];
+        return []; 
     }
-
-    const userContextEntry = entries.find((entry) => lineupIncludesAccount(entry.lineupKey, selectedAccountKey));
-    const championsByRole = userContextEntry?.championsByRoleByMember?.[selectedAccountKey];
-    if (!championsByRole || typeof championsByRole !== 'object') {
-        return ['**User data — Best champ per role**', 'No role/champion data found yet.'];    
-    }
-    const roleLines = ROLE_ORDER.map((role) => {
-        const topChampion = formatCounter(
-            selectTopCounter(championsByRole[role], { preferWins: true })
-        );
-        return `${formatRoleName(role)}: ${topChampion ?? 'No games'}`;
-    });
-
-    return ['**User data — Best champ per role**', ...roleLines];
+    const userContext = await getLolMemberContextStats(guildId, selectedAccountKey);
+    return [
+        '**User data**',
+        `Best role: ${formatCounter(selectTopCounter(userContext.roles), formatRoleName)}`,
+        `Best champ: ${formatCounter(selectTopCounter(userContext.champions))}`,
+        `Best champ+role: ${formatCounter(selectTopCounter(userContext.championRoles), formatChampionRole)}`,
+    ];
 }
 
 export default {
@@ -171,7 +167,7 @@ export default {
         const minGames = interaction.options.getInteger('min_games') ?? 1;
         const lineupSize = interaction.options.getInteger('size') ?? null;
 
-        const stats = await getGuildLineupStats(guildId, { includeMemberContextFor: selectedAccountKey });
+        const stats = await getGuildLineupStats(guildId);
         const entries = Object.entries(stats)
             .map(([lineupKey, value]) => {
                 const wins = Number(value?.wins ?? 0);
@@ -186,9 +182,6 @@ export default {
                     games,
                     winRate,
                     size,
-                    rolesByMember: value?.rolesByMember,
-                    championsByMember: value?.championsByMember,
-                    championsByRoleByMember: value?.championsByRoleByMember,
                 };
             })
             .filter((entry) => (lineupSize ? entry.size === lineupSize : true))
@@ -214,7 +207,7 @@ export default {
             const sizeLabel = shouldShowLineupSize ? ` [${entry.size}-player]` : '';
             return `${index + 1}.${sizeLabel} **${parseLineupDisplay(entry.lineupKey)}** — ${pct}% (${entry.wins}W-${entry.losses}L)`;
         });
-        const userDataLines = buildBestChampionByRoleLines(entries, selectedAccountKey);
+        const userDataLines = await buildUserDataLines(guildId, selectedAccountKey);
         if (userDataLines.length > 0) {
             lines.push('', ...userDataLines);
         }

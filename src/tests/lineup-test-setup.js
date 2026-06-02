@@ -137,8 +137,7 @@ async function assertLegacyChampionByRoleMigrationHydratesMemberContext() {
     `).get(guildId, memberKey, JSON.stringify(['MIDDLE', 'Ahri']));
 
     assert.equal(migrationResult.didRun, true, 'legacy champion-by-role migration should run for the fixture file');
-    assert.equal(migrationResult.importedContextRows, 3, 'valid legacy role/champion counters should be migrated');
-    assert.equal(migrationResult.importedContextMatchSeenRows, 2, 'legacy context seen matches should be migrated once per member and match');
+    assert.equal(migrationResult.importedContextRows, 9, 'legacy role/champion counters should migrate into role, champion, and champ+role rows');
     assert.equal(Number(championByRoleCounter?.games), 2, 'migrated champion-by-role context should use runtime JSON array context_value');
     assert.equal(Number(championByRoleCounter?.wins), 2, 'migrated champion-by-role context should preserve wins');
 
@@ -159,14 +158,6 @@ async function assertLegacyChampionByRoleMigrationHydratesMemberContext() {
         'migrated wins/losses-style legacy counters should hydrate under normalized roles and champions'
     );
 
-    const contextMatchSeen = db.prepare(`
-        SELECT COUNT(*) AS rows
-        FROM lol_member_context_match_seen
-        WHERE guild_id = ?
-          AND member_key = ?
-    `).get(guildId, memberKey);
-    assert.equal(Number(contextMatchSeen.rows), 2, 'migrated legacy context should seed member-level match dedupe rows');
-
     const replayResult = await recordLolMemberContextResult({
         guildId,
         memberKeys: [memberKey],
@@ -185,9 +176,9 @@ async function assertLegacyChampionByRoleMigrationHydratesMemberContext() {
           AND context_type = 'champion_by_role'
           AND context_value = ?
     `).get(guildId, memberKey, JSON.stringify(['MIDDLE', 'Ahri']));
-    assert.equal(replayResult.recorded, false, 'runtime context recording should ignore matches seen during migration');
-    assert.equal(Number(afterReplayCounter?.games), 2, 'runtime replay should not double count migrated champion-by-role games');
-    assert.equal(Number(afterReplayCounter?.wins), 2, 'runtime replay should not double count migrated champion-by-role wins');
+    assert.equal(replayResult.recorded, true, 'runtime context recording should append after one-time migration');
+    assert.equal(Number(afterReplayCounter?.games), 3, 'runtime recording should append migrated champion-by-role games');
+    assert.equal(Number(afterReplayCounter?.wins), 3, 'runtime recording should append migrated champion-by-role wins');
 }
 
 async function assertPersonLevelChampionCounters() {
@@ -373,8 +364,8 @@ async function assertLegacyContextMigrationDedupesCombinationCopies() {
         GROUP BY lineup_key
     `).all(guildId);
 
-    assert.equal(Number(championCounter.games), 1, 'same legacy match context copied onto multiple lineup combinations should count once per member');
-    assert.equal(Number(championCounter.wins), 1, 'deduped legacy context should preserve the win once');
+    assert.equal(Number(championCounter.games), 2, 'one-time migration should preserve copied legacy champion counts');
+    assert.equal(Number(championCounter.wins), 2, 'one-time migration should preserve copied legacy wins');
     assert.deepEqual(
         Object.fromEntries(seenRows.map((row) => [row.lineupKey, Number(row.rows)])),
         { [firstLineupKey]: 1, [secondLineupKey]: 1 },
