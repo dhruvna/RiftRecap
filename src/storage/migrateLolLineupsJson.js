@@ -5,7 +5,7 @@ import { buildChampionRoleContextValue, buildLineupKey, normalizeContextValue } 
 import { getSqliteDb, withSqliteTransaction } from './sqlite.js';
 
 const DEFAULT_LEGACY_LINEUPS_PATH = path.join(process.env.DATA_DIR ?? 'user_data', 'lol_lineups.json');
-const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_simple_v2';
+const DEFAULT_MIGRATION_NAME = 'lol_lineups_json_simple_v3';
 const LINEUP_DELIMITER = '|';
 const CONTEXT_TYPES = Object.freeze({
     ROLE: 'role',
@@ -135,9 +135,36 @@ function addContext(contextRows, { guildId, memberKey, contextType, contextValue
         games: 0,
         wins: 0,
     };
+
+    // Legacy JSON stored member champion/role context on each lineup permutation. A
+    // five stack can therefore copy the same person-level match into many lineup
+    // rows. Keep the strongest aggregate we see for a member/context instead of
+    // summing across permutations, which would multiply that member's stats.
+    if (games > existing.games || (games === existing.games && wins > existing.wins)) {
+        existing.games = games;
+        existing.wins = wins;
+    }
+    contextRows.set(aggregateKey, existing);
+}
+
+function addDerivedContext(derivedRows, { memberKey, contextType, contextValue, games, wins }) {
+    const normalizedMemberKey = typeof memberKey === 'string' ? memberKey.trim() : '';
+    const normalizedContextValue = normalizeContextValue(contextValue);
+    if (!normalizedMemberKey || !normalizedContextValue || games <= 0) {
+        return;
+    }
+
+    const aggregateKey = JSON.stringify([normalizedMemberKey, contextType, normalizedContextValue]);
+    const existing = derivedRows.get(aggregateKey) ?? {
+        memberKey: normalizedMemberKey,
+        contextType,
+        contextValue: normalizedContextValue,
+        games: 0,
+        wins: 0,
+    };
     existing.games += games;
     existing.wins += wins;
-    contextRows.set(aggregateKey, existing);
+    derivedRows.set(aggregateKey, existing);
 }
 
 function collectBasicContext(contextRows, { guildId, byMember, contextType }) {
@@ -165,7 +192,7 @@ function collectChampionRoleContext(contextRows, { guildId, championsByRoleByMem
     if (!isObject(championsByRoleByMember)) {
         return;
     }
-
+    const derivedRows = new Map();
     for (const [memberKey, roles] of Object.entries(championsByRoleByMember)) {
         if (!isObject(roles)) {
             continue;
@@ -178,15 +205,13 @@ function collectChampionRoleContext(contextRows, { guildId, championsByRoleByMem
 
             for (const [champion, counter] of Object.entries(champions)) {
                 const stats = getCounterStats(counter);
-                addContext(contextRows, {
-                    guildId,
+                addDerivedContext(derivedRows, {
                     memberKey,
                     contextType: CONTEXT_TYPES.ROLE,
                     contextValue: role,
                     ...stats,
                 });
-                addContext(contextRows, {
-                    guildId,
+                addDerivedContext(derivedRows, {
                     memberKey,
                     contextType: CONTEXT_TYPES.CHAMPION,
                     contextValue: champion,
@@ -202,6 +227,10 @@ function collectChampionRoleContext(contextRows, { guildId, championsByRoleByMem
             }
         }
     }
+    for (const row of derivedRows.values()) {
+        addContext(contextRows, { guildId, ...row });
+    }
+
 }
 
 export function buildImportPlan(parsed, now = Date.now()) {
@@ -297,6 +326,7 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
             migrationName,
             importedLineups: 0,
             importedContextRows: 0,
+            importedMemberContextSeenRows: 0,
         };
     }
 
@@ -367,10 +397,48 @@ function applyImportPlan(db, { migrationName, legacyPath, plan, now }) {
         insertContext.run(row.guildId, row.memberKey, row.contextType, row.contextValue, row.games, row.wins);
     }
 
+    const insertMemberContextMatchSeen = db.prepare(`
+        INSERT INTO lol_member_context_match_seen (
+            guild_id,
+            member_key,
+            match_id,
+            seen_at
+        ) VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, member_key, match_id) DO NOTHING
+    `);
+    const contextMembersByGuild = new Map();
+    for (const row of plan.contextRows) {
+        const members = contextMembersByGuild.get(row.guildId) ?? new Set();
+        members.add(row.memberKey);
+        contextMembersByGuild.set(row.guildId, members);
+    }
+
+    let importedMemberContextSeenRows = 0;
+    for (const lineup of plan.lineups) {
+        if (lineup.seenMatchIds.length === 0) {
+            continue;
+        }
+        const contextMembers = contextMembersByGuild.get(lineup.guildId);
+        if (!contextMembers) {
+            continue;
+        }
+        const lineupMembers = new Set(lineup.lineupKey.split(LINEUP_DELIMITER).filter(Boolean));
+        for (const memberKey of lineupMembers) {
+            if (!contextMembers.has(memberKey)) {
+                continue;
+            }
+            for (const matchId of lineup.seenMatchIds) {
+                const result = insertMemberContextMatchSeen.run(lineup.guildId, memberKey, matchId, lineup.lastSeenAt);
+                importedMemberContextSeenRows += Number(result?.changes ?? 0);
+            }
+        }
+    }
+
     const details = {
         legacyPath,
         importedLineups: plan.lineups.length,
         importedContextRows: plan.contextRows.length,
+        importedMemberContextSeenRows,
     };
     insertMigrationMarker(db, migrationName, details, now);
 
@@ -396,6 +464,7 @@ export async function migrateLegacyLolLineupsJson({
             legacyPath: resolvedLegacyPath,
             importedLineups: 0,
             importedContextRows: 0,
+            importedMemberContextSeenRows: 0,
         };
     }
 

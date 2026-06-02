@@ -176,9 +176,9 @@ async function assertLegacyChampionByRoleMigrationHydratesMemberContext() {
           AND context_type = 'champion_by_role'
           AND context_value = ?
     `).get(guildId, memberKey, JSON.stringify(['MIDDLE', 'Ahri']));
-    assert.equal(replayResult.recorded, true, 'runtime context recording should append after one-time migration');
-    assert.equal(Number(afterReplayCounter?.games), 3, 'runtime recording should append migrated champion-by-role games');
-    assert.equal(Number(afterReplayCounter?.wins), 3, 'runtime recording should append migrated champion-by-role wins');
+    assert.equal(replayResult.recorded, false, 'runtime context recording should not replay a migrated legacy match');
+    assert.equal(Number(afterReplayCounter?.games), 2, 'runtime recording should not duplicate migrated champion-by-role games');
+    assert.equal(Number(afterReplayCounter?.wins), 2, 'runtime recording should not duplicate migrated champion-by-role wins');
 }
 
 async function assertPersonLevelChampionCounters() {
@@ -364,8 +364,8 @@ async function assertLegacyContextMigrationDedupesCombinationCopies() {
         GROUP BY lineup_key
     `).all(guildId);
 
-    assert.equal(Number(championCounter.games), 2, 'one-time migration should preserve copied legacy champion counts');
-    assert.equal(Number(championCounter.wins), 2, 'one-time migration should preserve copied legacy wins');
+    assert.equal(Number(championCounter.games), 1, 'one-time migration should dedupe copied legacy champion counts');
+    assert.equal(Number(championCounter.wins), 1, 'one-time migration should dedupe copied legacy wins');
     assert.deepEqual(
         Object.fromEntries(seenRows.map((row) => [row.lineupKey, Number(row.rows)])),
         { [firstLineupKey]: 1, [secondLineupKey]: 1 },
@@ -445,6 +445,68 @@ async function assertMemberContextMatchesAreDedupedAcrossLineups() {
     assert.equal(Number(championCounter.wins), 1, 'same user/match champion wins should only count once');
 }
 
+async function assertFiveStackLineupPermutationsDoNotDuplicateMemberContext() {
+    const guildId = `lineup-five-stack-dedupe-test-${Date.now()}`;
+    const memberKeys = ['five-a', 'five-b', 'five-c', 'five-d', 'five-e'];
+    const matchId = `${guildId}-match`;
+    const metadata = Object.fromEntries(memberKeys.map((memberKey, index) => [
+        memberKey,
+        { champion: `Champion${index}`, role: index === 0 ? 'TOP' : 'BOTTOM' },
+    ]));
+
+    await recordLolMemberContextResult({
+        guildId,
+        memberKeys,
+        lineupMemberMetadata: metadata,
+        didWin: true,
+        matchId,
+        gameMs: Date.now(),
+    });
+
+    const lineupSets = getEligibleLineupMemberSets(LOL_QUEUE_TYPES.RANKED_FLEX, memberKeys);
+    for (const lineupMemberKeys of lineupSets) {
+        await recordLolLineupResult({
+            guildId,
+            queueType: LOL_QUEUE_TYPES.RANKED_FLEX,
+            lineupMemberKeys,
+            didWin: true,
+            matchId,
+            gameMs: Date.now(),
+        });
+    }
+
+    const db = await getSqliteDb();
+    const lineupCounter = db.prepare(`
+        SELECT COUNT(*) AS rows, SUM(games) AS games, SUM(wins) AS wins
+        FROM lineup_stats
+        WHERE guild_id = ?
+    `).get(guildId);
+    const championCounter = db.prepare(`
+        SELECT games, wins
+        FROM lol_member_context_counter
+        WHERE guild_id = ?
+          AND member_key = ?
+          AND context_type = 'champion'
+          AND context_value = 'Champion0'
+    `).get(guildId, memberKeys[0]);
+    const roleCounter = db.prepare(`
+        SELECT games, wins
+        FROM lol_member_context_counter
+        WHERE guild_id = ?
+          AND member_key = ?
+          AND context_type = 'role'
+          AND context_value = 'TOP'
+    `).get(guildId, memberKeys[0]);
+
+    assert.equal(Number(lineupCounter.rows), 21, 'five stack flex match should record every 2/3/5-player lineup permutation');
+    assert.equal(Number(lineupCounter.games), 21, 'each eligible lineup permutation should receive one game');
+    assert.equal(Number(lineupCounter.wins), 21, 'each eligible lineup permutation should receive one win');
+    assert.equal(Number(championCounter?.games), 1, 'champion stats should only count the member once for the match');
+    assert.equal(Number(championCounter?.wins), 1, 'champion wins should only count the member once for the match');
+    assert.equal(Number(roleCounter?.games), 1, 'role stats should only count the member once for the match');
+    assert.equal(Number(roleCounter?.wins), 1, 'role wins should only count the member once for the match');
+}
+
 async function main() {
     const dummyAccounts = buildDummyAccounts();
     const lineupMemberKeys = dummyAccounts.map((account) => account.key);
@@ -467,6 +529,7 @@ async function main() {
     await assertPersonLevelChampionCounters();
     await assertLineupMatchSeenDedupesLineupResults();
     await assertMemberContextMatchesAreDedupedAcrossLineups();
+    await assertFiveStackLineupPermutationsDoNotDuplicateMemberContext();
     await assertLegacyLineupMigrationCanonicalizesAndAggregates();
     await assertLegacyChampionByRoleMigrationHydratesMemberContext();
     await assertLegacyContextMigrationDedupesCombinationCopies();
