@@ -35,7 +35,7 @@ const db = await loadDb();
 const guildIds = getKnownGuildIds(db);
 
 if (!guildIds.length) {
-    console.log('No guild IDs found in registrations.json; skipping guild override cleanup.');
+    console.log('No guild IDs found in storage; skipping guild override cleanup.');
 } else {
     console.log(`Clearing guild-scoped command overrides in ${guildIds.length} known guild(s)...`);
 
