@@ -28,6 +28,88 @@ function runMigrations(db) {
         PRAGMA journal_mode = WAL;
         PRAGMA foreign_keys = ON;
 
+        CREATE TABLE IF NOT EXISTS guilds (
+            guild_id TEXT PRIMARY KEY,
+            channel_id TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS guild_announce_queues (
+            guild_id TEXT NOT NULL,
+            queue_type TEXT NOT NULL,
+            PRIMARY KEY (guild_id, queue_type),
+            FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS guild_game_config (
+            guild_id TEXT NOT NULL,
+            game_key TEXT NOT NULL,
+            season_cutoff_ms INTEGER,
+            PRIMARY KEY (guild_id, game_key),
+            FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS guild_recap_configs (
+            guild_id TEXT NOT NULL,
+            config_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            mode TEXT NOT NULL DEFAULT 'DAILY',
+            game TEXT NOT NULL DEFAULT 'TFT',
+            queue TEXT NOT NULL DEFAULT 'RANKED_TFT',
+            last_sent_ymd_by_mode TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY (guild_id, config_id),
+            FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS accounts (
+            guild_id TEXT NOT NULL,
+            account_key TEXT NOT NULL,
+            game_name TEXT,
+            tag_line TEXT,
+            region TEXT,
+            platform TEXT,
+            regional TEXT,
+            PRIMARY KEY (guild_id, account_key),
+            FOREIGN KEY (guild_id) REFERENCES guilds(guild_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS account_game_identity (
+            guild_id TEXT NOT NULL,
+            account_key TEXT NOT NULL,
+            game_key TEXT NOT NULL,
+            puuid TEXT,
+            PRIMARY KEY (guild_id, account_key, game_key),
+            FOREIGN KEY (guild_id, account_key) REFERENCES accounts(guild_id, account_key) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS account_game_tracking (
+            guild_id TEXT NOT NULL,
+            account_key TEXT NOT NULL,
+            game_key TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            last_match_id TEXT,
+            last_match_at INTEGER,
+            last_rank_by_queue TEXT NOT NULL DEFAULT '{}',
+            recap_events TEXT NOT NULL DEFAULT '[]',
+            PRIMARY KEY (guild_id, account_key, game_key),
+            FOREIGN KEY (guild_id, account_key) REFERENCES accounts(guild_id, account_key) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS account_notifications (
+            guild_id TEXT NOT NULL,
+            account_key TEXT NOT NULL,
+            lol_announcements INTEGER NOT NULL DEFAULT 1,
+            tft_announcements INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (guild_id, account_key),
+            FOREIGN KEY (guild_id, account_key) REFERENCES accounts(guild_id, account_key) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_accounts_guild
+            ON accounts (guild_id);
+        CREATE INDEX IF NOT EXISTS idx_account_game_identity_guild_game
+            ON account_game_identity (guild_id, game_key);
+        CREATE INDEX IF NOT EXISTS idx_account_game_tracking_guild_game
+            ON account_game_tracking (guild_id, game_key);
+
         CREATE TABLE IF NOT EXISTS lineup_stats (
             guild_id TEXT NOT NULL,
             lineup_key TEXT NOT NULL,

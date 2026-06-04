@@ -1,157 +1,25 @@
 // === Imports ===
-import path from 'node:path';
 import { DEFAULT_ANNOUNCE_QUEUES, GAME_TYPES } from './constants/queues.js';
-import { createJsonStore } from './storage/jsonStore.js';
+import { getSqliteDb, withSqliteTransaction } from './storage/sqlite.js';
 import {
     DEFAULT_RECAP_CONFIG_ID,
     TRACKED_GAMES,
     normalizeRecapConfig,
 } from './storage/normalize.js';
 
-// === File locations ===
-// Use a default path in the repo while allowing overrides via env vars.
-const DEFAULT_DATA_PATH = path.join(process.cwd(), 'user_data', 'registrations.json');
-const DATA_PATH = process.env.DATA_PATH
-    ? path.resolve(process.env.DATA_PATH)
-    : path.join(process.env.DATA_DIR ?? path.dirname(DEFAULT_DATA_PATH), 'registrations.json');
-
 /**
- * Storage module contract for guild data:
+ * SQLite-backed storage module contract for guild data:
  * - Read helpers (`get*`, `list*`) return normalized views and do not mutate caller-owned objects.
- * - Update helpers (`update*InStore`) enqueue read-modify-write transactions and persist to disk.
+ * - Update helpers (`update*InStore`) execute SQLite transactions and preserve the public API used by commands/services.
  *
- * Guild operations cover accounts, channel/queue settings, recap configs, and TFT config.
+ * `loadDb()` intentionally returns the legacy object-shaped view so existing callers can keep using selectors such as
+ * `getKnownGuildIds(db)`, `getGuildLolConfig(db, guildId)`, and `getGuildRecapConfigs(db, guildId)`.
  */
-// I/O + mutation orchestration layer: file access, queueing, and store-level state transitions.
-// Keep pure shape-normalization logic in ./storage/normalize.js.
 
 const DISCORD_SNOWFLAKE_REGEX = /^\d{17,20}$/;
 const RECAP_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export { TRACKED_GAMES };
-
-// === Database IO ===
-// Read the JSON file into an object, falling back to an empty object on error.
-function assertCanonicalGuildShape(guildId, guild) {
-    const context = `[loadDb] Malformed guild record for ${guildId}:`;
-    if (!guild || typeof guild !== 'object' || Array.isArray(guild)) throw new Error(`${context} expected object.`);
-    if (!Array.isArray(guild.accounts)) throw new Error(`${context} accounts must be an array.`);
-    if (!('channelId' in guild)) throw new Error(`${context} channelId is required.`);
-    if (!Array.isArray(guild.announceQueues)) throw new Error(`${context} announceQueues must be an array.`);
-    if (!guild.tft || typeof guild.tft !== 'object' || Array.isArray(guild.tft)) throw new Error(`${context} tft must be an object.`);
-    if (!Array.isArray(guild.recapConfigs) || guild.recapConfigs.length === 0) throw new Error(`${context} recapConfigs must be a non-empty array.`);
-    for (let idx = 0; idx < guild.accounts.length; idx += 1) {
-        assertCanonicalAccountShape(guildId, guild.accounts[idx], idx);
-    }
-}
-
-function assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, namespace) {
-    const context = `[loadDb] Malformed guild record for ${guildId}: accounts[${accountIndex}].trackedGames.${gameKey}`;
-    if (!namespace || typeof namespace !== 'object' || Array.isArray(namespace)) {
-        throw new Error(`${context} must be an object.`);
-    }
-
-    // Canonical tracked-game namespace invariants.
-    // NOTE: live-game detection fields are intentionally non-canonical and must not be required here.
-    if (typeof namespace.enabled !== 'boolean') throw new Error(`${context}.enabled must be boolean.`);
-    if (!(namespace.lastMatchId === null || typeof namespace.lastMatchId === 'string')) {
-        throw new Error(`${context}.lastMatchId must be string|null.`);
-    }
-    if (!(namespace.lastMatchAt === null || Number.isFinite(namespace.lastMatchAt))) {
-        throw new Error(`${context}.lastMatchAt must be number|null.`);
-    }
-    if (!namespace.lastRankByQueue || typeof namespace.lastRankByQueue !== 'object' || Array.isArray(namespace.lastRankByQueue)) {
-        throw new Error(`${context}.lastRankByQueue must be an object.`);
-    }
-    if (!Array.isArray(namespace.recapEvents)) throw new Error(`${context}.recapEvents must be an array.`);
-}
-
-function assertCanonicalAccountShape(guildId, account, accountIndex) {
-    const context = `[loadDb] Malformed guild record for ${guildId}: accounts[${accountIndex}]`;
-    if (!account || typeof account !== 'object' || Array.isArray(account)) throw new Error(`${context} must be an object.`);
-    if (typeof account.key !== 'string' || !account.key.trim()) throw new Error(`${context}.key must be a non-empty string.`);
-    if (!account.identity || typeof account.identity !== 'object' || Array.isArray(account.identity)) {
-        throw new Error(`${context}.identity must be an object.`);
-    }
-    if (!account.trackedGames || typeof account.trackedGames !== 'object' || Array.isArray(account.trackedGames)) {
-        throw new Error(`${context}.trackedGames must be an object.`);
-    }
-    if (account.notifications && (typeof account.notifications !== 'object' || Array.isArray(account.notifications))) {
-        throw new Error(`${context}.notifications must be an object when present.`);
-    }
-    if (account.notifications && !(account.notifications.lolAnnouncements === undefined || typeof account.notifications.lolAnnouncements === 'boolean')) {
-        throw new Error(`${context}.notifications.lolAnnouncements must be boolean when present.`);
-    }
-    if (account.notifications && !(account.notifications.tftAnnouncements === undefined || typeof account.notifications.tftAnnouncements === 'boolean')) {
-        throw new Error(`${context}.notifications.tftAnnouncements must be boolean when present.`);
-    }
-
-    for (const gameKey of Object.values(TRACKED_GAMES)) {
-        const identityNs = account.identity?.[gameKey];
-        if (!identityNs || typeof identityNs !== 'object' || Array.isArray(identityNs)) {
-            throw new Error(`${context}.identity.${gameKey} must be an object.`);
-        }
-        if (!(identityNs.puuid === null || typeof identityNs.puuid === 'string')) {
-            throw new Error(`${context}.identity.${gameKey}.puuid must be string|null.`);
-        }
-        assertCanonicalTrackingNamespace(guildId, accountIndex, gameKey, account.trackedGames?.[gameKey]);
-    }
-}
-
-/**
- * Canonical registrations.json schema (steady-state):
- * {
- *   [guildId: string]: {
- *     accounts: AccountTracking[],
- *     channelId: string | null,
- *     announceQueues: string[],
- *     tft: { seasonCutoffMs: number | null, ... },
- *     lol: { seasonCutoffMs: number | null, ... },
- *     recapConfigs: RecapConfig[]
- *   }
- * }
- *
- * AccountTracking trackedGames[gameKey] canonical invariants:
- * - enabled: boolean
- * - lastMatchId: string | null
- * - lastMatchAt: number | null (epoch ms)
- * - lastRankByQueue: object
- * - recapEvents: array
- *
- * Any live-game fields (e.g. liveState/liveGameId/liveDetectedAt/awaitingSince)
- * are non-canonical legacy data and are normalized away.
- */
-
-const store = createJsonStore({
-    filePath: DATA_PATH,
-    initialData: {},
-    validateData: (parsed) => {
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            throw new Error('[loadDb] registrations.json root must be an object keyed by guildId.');
-        }
-        for (const guildId of Object.keys(parsed)) {
-            if (!isValidGuildId(guildId)) continue;
-            assertCanonicalGuildShape(guildId, parsed[guildId]);
-        }
-    },
-});
-
-export async function loadDb() {
-    return store.load();
-}
-
-// Queue-backed read-modify-write transaction.
-async function mutateDb(mutator) {
-    return store.mutate(mutator);
-}
-
-async function mutateGuild(guildId, mutator) {
-    assertValidGuildId(guildId, 'mutateGuild');
-    return mutateDb((db) => {
-        const guild = ensureGuildMutable(db, guildId);
-        return mutator({ db, guild });
-    });
-}
 
 function isValidGuildId(guildId) {
     return typeof guildId === 'string' && DISCORD_SNOWFLAKE_REGEX.test(guildId);
@@ -165,18 +33,320 @@ function assertValidGuildId(guildId, context = 'storage') {
     }
 }
 
-function ensureGuildMutable(db, guildId) {
-    if (!db[guildId]) {
-        db[guildId] = {
-            accounts: [],
-            channelId: null,
-            announceQueues: [...DEFAULT_ANNOUNCE_QUEUES],
-            tft: { seasonCutoffMs: null },
-            lol: { seasonCutoffMs: null },
-            recapConfigs: [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)],
-        };
+function boolToInt(value) {
+    return value ? 1 : 0;
+}
+
+function intToBool(value) {
+    return Number(value) === 1;
+}
+
+function jsonStringify(value, fallback) {
+    return JSON.stringify(value ?? fallback);
+}
+
+function jsonParse(value, fallback) {
+    if (typeof value !== 'string' || value.length === 0) return fallback;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return fallback;
     }
+}
+
+function normalizeGuildSeasonConfig(config) {
+    const cutoff = Number(config?.seasonCutoffMs ?? 0);
+    return {
+        ...(config && typeof config === 'object' ? config : {}),
+        seasonCutoffMs: Number.isFinite(cutoff) && cutoff > 0 ? cutoff : null,
+    };
+}
+
+function defaultTrackingState() {
+    return {
+        enabled: false,
+        lastMatchId: null,
+        lastMatchAt: null,
+        lastRankByQueue: {},
+        recapEvents: [],
+    };
+}
+
+function normalizeTrackingState(state) {
+    const safe = state && typeof state === 'object' ? state : {};
+    const lastMatchAt = Number(safe.lastMatchAt ?? 0);
+    return {
+        enabled: Boolean(safe.enabled),
+        lastMatchId: typeof safe.lastMatchId === 'string' && safe.lastMatchId.trim() ? safe.lastMatchId : null,
+        lastMatchAt: Number.isFinite(lastMatchAt) && lastMatchAt > 0 ? lastMatchAt : null,
+        lastRankByQueue: safe.lastRankByQueue && typeof safe.lastRankByQueue === 'object' && !Array.isArray(safe.lastRankByQueue)
+            ? safe.lastRankByQueue
+            : {},
+        recapEvents: Array.isArray(safe.recapEvents) ? safe.recapEvents : [],
+    };
+}
+
+function makeEmptyGuild() {
+    return {
+        accounts: [],
+        channelId: null,
+        announceQueues: [...DEFAULT_ANNOUNCE_QUEUES],
+        tft: { seasonCutoffMs: null },
+        lol: { seasonCutoffMs: null },
+        recapConfigs: [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)],
+    };
+}
+
+function ensureGuildInView(db, guildId) {
+    if (!db[guildId]) db[guildId] = makeEmptyGuild();
     return db[guildId];
+}
+
+function ensureGuildRow(sqliteDb, guildId) {
+    const result = sqliteDb.prepare('INSERT OR IGNORE INTO guilds (guild_id, channel_id) VALUES (?, NULL)').run(guildId);
+    if (Number(result?.changes ?? 0) === 0) return;
+
+    const insertQueue = sqliteDb.prepare(`
+        INSERT OR IGNORE INTO guild_announce_queues (guild_id, queue_type)
+        VALUES (?, ?)
+    `);
+    for (const queueType of DEFAULT_ANNOUNCE_QUEUES) {
+        insertQueue.run(guildId, queueType);
+    }
+
+    const insertGameConfig = sqliteDb.prepare(`
+        INSERT OR IGNORE INTO guild_game_config (guild_id, game_key, season_cutoff_ms)
+        VALUES (?, ?, NULL)
+    `);
+    for (const gameKey of Object.values(TRACKED_GAMES)) {
+        insertGameConfig.run(guildId, gameKey);
+    }
+
+    upsertRecapConfigRow(sqliteDb, guildId, normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID));
+}
+
+function rowToRecapConfig(row, fallbackId = DEFAULT_RECAP_CONFIG_ID) {
+    return normalizeRecapConfig({
+        id: row?.config_id,
+        enabled: intToBool(row?.enabled),
+        mode: row?.mode,
+        game: row?.game,
+        queue: row?.queue,
+        lastSentYmdByMode: jsonParse(row?.last_sent_ymd_by_mode, {}),
+    }, fallbackId);
+}
+
+function upsertRecapConfigRow(sqliteDb, guildId, config) {
+    const normalized = normalizeRecapConfig(config, config?.id ?? DEFAULT_RECAP_CONFIG_ID);
+    sqliteDb.prepare(`
+        INSERT INTO guild_recap_configs (
+            guild_id, config_id, enabled, mode, game, queue, last_sent_ymd_by_mode
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(guild_id, config_id) DO UPDATE SET
+            enabled = excluded.enabled,
+            mode = excluded.mode,
+            game = excluded.game,
+            queue = excluded.queue,
+            last_sent_ymd_by_mode = excluded.last_sent_ymd_by_mode
+    `).run(
+        guildId,
+        normalized.id,
+        boolToInt(normalized.enabled),
+        normalized.mode,
+        normalized.game,
+        normalized.queue,
+        jsonStringify(normalized.lastSentYmdByMode, {})
+    );
+    return normalized;
+}
+
+function accountFromRows(accountRow, identityRows, trackingRows, notificationRow) {
+    const account = {
+        key: accountRow.account_key,
+        gameName: accountRow.game_name,
+        tagLine: accountRow.tag_line,
+        region: accountRow.region,
+        platform: accountRow.platform,
+        regional: accountRow.regional,
+        identity: {},
+        trackedGames: {},
+        notifications: {
+            lolAnnouncements: notificationRow ? intToBool(notificationRow.lol_announcements) : true,
+            tftAnnouncements: notificationRow ? intToBool(notificationRow.tft_announcements) : true,
+        },
+    };
+
+    for (const gameKey of Object.values(TRACKED_GAMES)) {
+        const identityRow = identityRows.find((row) => row.game_key === gameKey);
+        const trackingRow = trackingRows.find((row) => row.game_key === gameKey);
+        account.identity[gameKey] = { puuid: identityRow?.puuid ?? null };
+        account.trackedGames[gameKey] = trackingRow
+            ? normalizeTrackingState({
+                enabled: intToBool(trackingRow.enabled),
+                lastMatchId: trackingRow.last_match_id,
+                lastMatchAt: trackingRow.last_match_at,
+                lastRankByQueue: jsonParse(trackingRow.last_rank_by_queue, {}),
+                recapEvents: jsonParse(trackingRow.recap_events, []),
+            })
+            : defaultTrackingState();
+    }
+
+    return account;
+}
+
+function getAccountFromDb(sqliteDb, guildId, accountKey) {
+    const accountRow = sqliteDb.prepare(`
+        SELECT guild_id, account_key, game_name, tag_line, region, platform, regional
+        FROM accounts
+        WHERE guild_id = ? AND account_key = ?
+    `).get(guildId, accountKey);
+    if (!accountRow) return null;
+
+    const identityRows = sqliteDb.prepare(`
+        SELECT game_key, puuid
+        FROM account_game_identity
+        WHERE guild_id = ? AND account_key = ?
+    `).all(guildId, accountKey);
+    const trackingRows = sqliteDb.prepare(`
+        SELECT game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events
+        FROM account_game_tracking
+        WHERE guild_id = ? AND account_key = ?
+    `).all(guildId, accountKey);
+    const notificationRow = sqliteDb.prepare(`
+        SELECT lol_announcements, tft_announcements
+        FROM account_notifications
+        WHERE guild_id = ? AND account_key = ?
+    `).get(guildId, accountKey);
+
+    return accountFromRows(accountRow, identityRows, trackingRows, notificationRow);
+}
+
+function listGuildAccountsFromDb(sqliteDb, guildId) {
+    const accountRows = sqliteDb.prepare(`
+        SELECT guild_id, account_key, game_name, tag_line, region, platform, regional
+        FROM accounts
+        WHERE guild_id = ?
+        ORDER BY account_key
+    `).all(guildId);
+    return accountRows.map((accountRow) => getAccountFromDb(sqliteDb, guildId, accountRow.account_key));
+}
+
+function upsertGuildAccount(sqliteDb, guildId, account) {
+    ensureGuildRow(sqliteDb, guildId);
+
+    const key = account?.key ?? makeAccountKey(account ?? {});
+    const existed = Boolean(sqliteDb.prepare(`
+        SELECT 1 FROM accounts WHERE guild_id = ? AND account_key = ?
+    `).get(guildId, key));
+    const previous = existed ? getAccountFromDb(sqliteDb, guildId, key) : null;
+    const merged = previous ? { ...previous, ...account, key } : { ...account, key };
+
+    sqliteDb.prepare(`
+        INSERT INTO accounts (guild_id, account_key, game_name, tag_line, region, platform, regional)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(guild_id, account_key) DO UPDATE SET
+            game_name = excluded.game_name,
+            tag_line = excluded.tag_line,
+            region = excluded.region,
+            platform = excluded.platform,
+            regional = excluded.regional
+    `).run(
+        guildId,
+        key,
+        merged.gameName ?? null,
+        merged.tagLine ?? null,
+        merged.region ?? null,
+        merged.platform ?? null,
+        merged.regional ?? null
+    );
+
+    const upsertIdentity = sqliteDb.prepare(`
+        INSERT INTO account_game_identity (guild_id, account_key, game_key, puuid)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, account_key, game_key) DO UPDATE SET
+            puuid = excluded.puuid
+    `);
+    const upsertTracking = sqliteDb.prepare(`
+        INSERT INTO account_game_tracking (
+            guild_id, account_key, game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(guild_id, account_key, game_key) DO UPDATE SET
+            enabled = excluded.enabled,
+            last_match_id = excluded.last_match_id,
+            last_match_at = excluded.last_match_at,
+            last_rank_by_queue = excluded.last_rank_by_queue,
+            recap_events = excluded.recap_events
+    `);
+
+    for (const gameKey of Object.values(TRACKED_GAMES)) {
+        const identity = merged.identity?.[gameKey] ?? {};
+        const tracking = normalizeTrackingState(merged.trackedGames?.[gameKey]);
+        upsertIdentity.run(guildId, key, gameKey, identity.puuid ?? null);
+        upsertTracking.run(
+            guildId,
+            key,
+            gameKey,
+            boolToInt(tracking.enabled),
+            tracking.lastMatchId,
+            tracking.lastMatchAt,
+            jsonStringify(tracking.lastRankByQueue, {}),
+            jsonStringify(tracking.recapEvents, [])
+        );
+    }
+    const notifications = merged.notifications && typeof merged.notifications === 'object' ? merged.notifications : {};
+    sqliteDb.prepare(`
+        INSERT INTO account_notifications (guild_id, account_key, lol_announcements, tft_announcements)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, account_key) DO UPDATE SET
+            lol_announcements = excluded.lol_announcements,
+            tft_announcements = excluded.tft_announcements
+    `).run(
+        guildId,
+        key,
+        boolToInt(notifications.lolAnnouncements !== false),
+        boolToInt(notifications.tftAnnouncements !== false)
+    );
+
+    return { account: getAccountFromDb(sqliteDb, guildId, key), existed };
+}
+
+export async function loadDb() {
+    const sqliteDb = await getSqliteDb();
+    const db = {};
+
+    for (const row of sqliteDb.prepare('SELECT guild_id, channel_id FROM guilds ORDER BY guild_id').all()) {
+        const guild = ensureGuildInView(db, row.guild_id);
+        guild.channelId = row.channel_id ?? null;
+        guild.announceQueues = [];
+        guild.recapConfigs = [];
+    }
+    for (const row of sqliteDb.prepare('SELECT guild_id, queue_type FROM guild_announce_queues ORDER BY guild_id, queue_type').all()) {
+        ensureGuildInView(db, row.guild_id).announceQueues.push(row.queue_type);
+    }
+
+    for (const row of sqliteDb.prepare('SELECT guild_id, game_key, season_cutoff_ms FROM guild_game_config ORDER BY guild_id, game_key').all()) {
+        const guild = ensureGuildInView(db, row.guild_id);
+        guild[row.game_key] = normalizeGuildSeasonConfig({ seasonCutoffMs: row.season_cutoff_ms });
+    }
+
+    for (const row of sqliteDb.prepare(`
+        SELECT guild_id, config_id, enabled, mode, game, queue, last_sent_ymd_by_mode
+        FROM guild_recap_configs
+        ORDER BY guild_id, CASE WHEN config_id = ? THEN 0 ELSE 1 END, config_id
+    `).all(DEFAULT_RECAP_CONFIG_ID)) {
+        const guild = ensureGuildInView(db, row.guild_id);
+        guild.recapConfigs.push(rowToRecapConfig(row, row.config_id));
+    }
+
+    for (const guild of Object.values(db)) {
+        if (guild.recapConfigs.length === 0) guild.recapConfigs = [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
+    }
+
+    for (const row of sqliteDb.prepare('SELECT DISTINCT guild_id FROM accounts ORDER BY guild_id').all()) {
+        ensureGuildInView(db, row.guild_id).accounts = listGuildAccountsFromDb(sqliteDb, row.guild_id);
+    }
+
+    return db;
 }
 
 function getTrackedGameIdentity(account, gameKey) {
@@ -210,61 +380,36 @@ export function makeAccountKey({ gameName, tagLine, platform }) {
 
 // === Account Creation, Read, Update, Deletion ===
 export async function listGuildAccounts(guildId) {
-    const db = await loadDb();
-    const guild = db?.[guildId];
-    return guild?.accounts ?? [];
-}
-
-async function upsertGuildAccount(db, guildId, account) {
-    const guild = ensureGuildMutable(db, guildId);
-
-    const idx = guild.accounts.findIndex((a) => a.key === account.key);
-    const existed = idx >= 0;
-
-    if (existed) guild.accounts[idx] = { ...guild.accounts[idx], ...account };
-    else guild.accounts.push(account);
-
-    return { account, existed };
+    assertValidGuildId(guildId, 'listGuildAccounts');
+    const sqliteDb = await getSqliteDb();
+    return listGuildAccountsFromDb(sqliteDb, guildId);
 }
 
 export async function upsertGuildAccountInStore(guildId, account) {
-    return mutateGuild(guildId, async ({ db }) => {
-        const upserted = await upsertGuildAccount(db, guildId, account);
+    assertValidGuildId(guildId, 'upsertGuildAccountInStore');
+    return withSqliteTransaction((sqliteDb) => {
+        const upserted = upsertGuildAccount(sqliteDb, guildId, account);
         return { ...upserted, didChange: true };
     });
 }
 
 export async function removeGuildAccountByKey(guildId, key) {
-    return mutateGuild(guildId, ({ guild }) => {
-        if (!guild?.accounts?.length) return { removed: null, didChange: false };
-        const idx = guild.accounts.findIndex((a) => a.key === key);
-        if (idx === -1) return { removed: null, didChange: false };
-        const [removed] = guild.accounts.splice(idx, 1);
-        return { removed, didChange: true };
-    }).then((result) => result?.removed ?? null);
+    assertValidGuildId(guildId, 'removeGuildAccountByKey');
+    return withSqliteTransaction((sqliteDb) => {
+        const removed = getAccountFromDb(sqliteDb, guildId, key);
+        if (!removed) return null;
+        sqliteDb.prepare('DELETE FROM accounts WHERE guild_id = ? AND account_key = ?').run(guildId, key);
+        return removed;
+    });
 }
 
 // === Guild-level settings ===
-function updateGuildChannelInDb(db, guildId, channelId) {
-    const g = ensureGuildMutable(db, guildId);
-    g.channelId = channelId;
-    return { channelId };
-}
-
 export function getGuildRecapConfigs(db, guildId) {
     const recapConfigs = db?.[guildId]?.recapConfigs;
     if (!Array.isArray(recapConfigs) || recapConfigs.length === 0) {
         return [normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID)];
     }
     return recapConfigs;
-}
-
-function normalizeGuildSeasonConfig(config) {
-    const cutoff = Number(config?.seasonCutoffMs ?? 0);
-    return {
-        ...(config && typeof config === 'object' ? config : {}),
-        seasonCutoffMs: Number.isFinite(cutoff) && cutoff > 0 ? cutoff : null,
-    };
 }
 
 export function getGuildTftConfig(db, guildId) {
@@ -275,46 +420,67 @@ export function getGuildLolConfig(db, guildId) {
     return normalizeGuildSeasonConfig(db?.[guildId]?.lol);
 }
 
-function updateGuildDefaultRecapConfigInDb(db, guildId, patch) {
-    const g = ensureGuildMutable(db, guildId);
-    const current = g.recapConfigs[0] ?? normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
-    g.recapConfigs[0] = normalizeRecapConfig({ ...current, ...patch }, current.id);
-    return g.recapConfigs[0];
-}
-
 export async function updateGuildRecapConfigsInStore(guildId, patch) {
-    return mutateGuild(guildId, ({ db, guild }) => {
+    assertValidGuildId(guildId, 'updateGuildRecapConfigsInStore');
+    return withSqliteTransaction((sqliteDb) => {
+        ensureGuildRow(sqliteDb, guildId);
         if (Array.isArray(patch?.recapConfigs)) {
-            guild.recapConfigs = patch.recapConfigs.map((cfg, idx) =>
+            sqliteDb.prepare('DELETE FROM guild_recap_configs WHERE guild_id = ?').run(guildId);
+            const recapConfigs = patch.recapConfigs.map((cfg, idx) =>
                 normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
             );
-            return { didChange: true, recapConfigs: guild.recapConfigs };
+            for (const config of recapConfigs) upsertRecapConfigRow(sqliteDb, guildId, config);
+            return recapConfigs;
         }
+
+        const currentRow = sqliteDb.prepare(`
+            SELECT config_id, enabled, mode, game, queue, last_sent_ymd_by_mode
+            FROM guild_recap_configs
+            WHERE guild_id = ? AND config_id = ?
+        `).get(guildId, DEFAULT_RECAP_CONFIG_ID);
+        const current = currentRow ? rowToRecapConfig(currentRow) : normalizeRecapConfig(null, DEFAULT_RECAP_CONFIG_ID);
+
         const defaultPatch = patch?.defaultRecapPatch ?? patch ?? {};
-        const recap = updateGuildDefaultRecapConfigInDb(db, guildId, defaultPatch);
-        return { didChange: true, recapConfigs: [recap, ...guild.recapConfigs.slice(1)] };
-    }).then((result) => result?.recapConfigs ?? []);
+        const recap = upsertRecapConfigRow(sqliteDb, guildId, { ...current, ...defaultPatch, id: current.id });
+        const otherRows = sqliteDb.prepare(`
+            SELECT config_id, enabled, mode, game, queue, last_sent_ymd_by_mode
+            FROM guild_recap_configs
+            WHERE guild_id = ? AND config_id <> ?
+            ORDER BY config_id
+        `).all(guildId, DEFAULT_RECAP_CONFIG_ID);
+        return [recap, ...otherRows.map((row) => rowToRecapConfig(row, row.config_id))];
+    });
 }
 
 export async function updateGuildRecapLastSentYmdByIdInStore(guildId, configId, lastSentYmd, mode) {
-    return mutateGuild(guildId, ({ guild }) => {
-        const recapConfigs = Array.isArray(guild?.recapConfigs) ? guild.recapConfigs : [];
-        const idx = recapConfigs.findIndex((cfg) => cfg?.id === configId);
-        if (idx < 0) return { didChange: false, updated: false };
-        const normalizedMode = typeof mode === 'string' ? mode.trim().toUpperCase() : '';
-        if (!normalizedMode) throw new Error('[updateGuildRecapLastSentYmdByIdInStore] mode is required.');
+    assertValidGuildId(guildId, 'updateGuildRecapLastSentYmdByIdInStore');
+    const normalizedMode = typeof mode === 'string' ? mode.trim().toUpperCase() : '';
+    if (!normalizedMode) throw new Error('[updateGuildRecapLastSentYmdByIdInStore] mode is required.');
 
-        const currentByMode = recapConfigs[idx]?.lastSentYmdByMode && typeof recapConfigs[idx].lastSentYmdByMode === 'object'
-            ? recapConfigs[idx].lastSentYmdByMode
+    return withSqliteTransaction((sqliteDb) => {
+        ensureGuildRow(sqliteDb, guildId);
+        const row = sqliteDb.prepare(`
+            SELECT config_id, enabled, mode, game, queue, last_sent_ymd_by_mode
+            FROM guild_recap_configs
+            WHERE guild_id = ? AND config_id = ?
+        `).get(guildId, configId);
+        if (!row) return false;
+
+        const current = rowToRecapConfig(row, configId);
+        const currentByMode = current.lastSentYmdByMode && typeof current.lastSentYmdByMode === 'object'
+            ? current.lastSentYmdByMode
             : {};
-        if (currentByMode[normalizedMode] === lastSentYmd) return { didChange: false, updated: false };
+        if (currentByMode[normalizedMode] === lastSentYmd) return false;
 
-        recapConfigs[idx].lastSentYmdByMode = {
-            ...currentByMode,
-            [normalizedMode]: lastSentYmd,
-        };
-        return { didChange: true, updated: true };
-    }).then((result) => result?.updated ?? false);
+        upsertRecapConfigRow(sqliteDb, guildId, {
+            ...current,
+            lastSentYmdByMode: {
+                ...currentByMode,
+                [normalizedMode]: lastSentYmd,
+            },
+        });
+        return true;
+    });
 }
 
 function isSameSeasonConfig(a, b) {
@@ -324,9 +490,16 @@ function isSameSeasonConfig(a, b) {
     return (left.seasonCutoffMs ?? null) === (right.seasonCutoffMs ?? null);
 }
 
-function updateGuildSeasonConfigInStore(guildId, guildKey, patch) {
-    return mutateGuild(guildId, ({ guild }) => {
-        const current = normalizeGuildSeasonConfig(guild?.[guildKey]);
+async function updateGuildSeasonConfigInStore(guildId, guildKey, patch) {
+    assertValidGuildId(guildId, 'updateGuildSeasonConfigInStore');
+    return withSqliteTransaction((sqliteDb) => {
+        ensureGuildRow(sqliteDb, guildId);
+        const row = sqliteDb.prepare(`
+            SELECT season_cutoff_ms
+            FROM guild_game_config
+            WHERE guild_id = ? AND game_key = ?
+        `).get(guildId, guildKey);
+        const current = normalizeGuildSeasonConfig({ seasonCutoffMs: row?.season_cutoff_ms });
         const nextCutoff = Number(patch?.seasonCutoffMs ?? 0);
         const normalizedPatch = {
             ...patch,
@@ -334,21 +507,24 @@ function updateGuildSeasonConfigInStore(guildId, guildKey, patch) {
         };
         const next = normalizeGuildSeasonConfig({ ...current, ...normalizedPatch });
 
-        if (isSameSeasonConfig(next, current)) {
-            return { didChange: false, config: current };
+        if (!isSameSeasonConfig(next, current)) {
+            sqliteDb.prepare(`
+                INSERT INTO guild_game_config (guild_id, game_key, season_cutoff_ms)
+                VALUES (?, ?, ?)
+                ON CONFLICT(guild_id, game_key) DO UPDATE SET
+                    season_cutoff_ms = excluded.season_cutoff_ms
+            `).run(guildId, guildKey, next.seasonCutoffMs);
         }
-        
-        guild[guildKey] = next;
-        return { didChange: true, config: next };
-    }).then((result) => result?.config ?? null);
+        return next;
+    });
 }
 
 async function updateGuildTftConfigInStore(guildId, patch) {
-    return updateGuildSeasonConfigInStore(guildId, 'tft', patch);
+    return updateGuildSeasonConfigInStore(guildId, TRACKED_GAMES.TFT, patch);
 }
 
 async function updateGuildLolConfigInStore(guildId, patch) {
-    return updateGuildSeasonConfigInStore(guildId, 'lol', patch);
+    return updateGuildSeasonConfigInStore(guildId, TRACKED_GAMES.LOL, patch);
 }
 
 export async function updateGuildGameConfigInStore(guildId, gameType, patch) {
@@ -357,17 +533,20 @@ export async function updateGuildGameConfigInStore(guildId, gameType, patch) {
         : updateGuildTftConfigInStore(guildId, patch);
 }
 
-function updateGuildQueueConfigInDb(db, guildId, queues) {
-    const g = ensureGuildMutable(db, guildId);
-    g.announceQueues = queues;
-    return g.announceQueues;
-}
-
 export async function updateGuildChannelAndQueueConfigInStore(guildId, { channelId, queues }) {
-    return mutateGuild(guildId, ({ db }) => {
-        updateGuildChannelInDb(db, guildId, channelId);
-        const announceQueues = updateGuildQueueConfigInDb(db, guildId, queues);
-        return { didChange: true, channelId, announceQueues };
+    assertValidGuildId(guildId, 'updateGuildChannelAndQueueConfigInStore');
+    return withSqliteTransaction((sqliteDb) => {
+        ensureGuildRow(sqliteDb, guildId);
+        sqliteDb.prepare('UPDATE guilds SET channel_id = ? WHERE guild_id = ?').run(channelId ?? null, guildId);
+        sqliteDb.prepare('DELETE FROM guild_announce_queues WHERE guild_id = ?').run(guildId);
+        const insertQueue = sqliteDb.prepare(`
+            INSERT INTO guild_announce_queues (guild_id, queue_type)
+            VALUES (?, ?)
+        `);
+        for (const queueType of queues ?? []) {
+            insertQueue.run(guildId, queueType);
+        }
+        return { didChange: true, channelId: channelId ?? null, announceQueues: queues ?? [] };
     });
 }
 
@@ -378,48 +557,54 @@ export function getKnownGuildIds(db) {
         .filter((guildId) => isValidGuildId(guildId));
 }
 
-function pruneExpiredRecapEventsInDb(db, nowMs = Date.now()) {
-    if (!db || typeof db !== 'object') {
-        return {
-            didChange: false,
-            prunedEvents: 0,
-            touchedAccounts: 0
-        };        
-    }
-
+function pruneExpiredRecapEventsForGuild(sqliteDb, guildId, nowMs = Date.now()) {
     const cutoffMs = nowMs - RECAP_EVENT_RETENTION_MS;
     let didChange = false;
     let prunedEvents = 0;
-    let touchedAccounts = 0;
+    const touchedAccounts = new Set();
 
-    for (const guildId of getKnownGuildIds(db)) {
-        const guild = ensureGuildMutable(db, guildId);
-        for (const account of guild.accounts) {
-            const tftTracking = getTftTracking(account);
-            const lolTracking = getLolTracking(account);
-            let accountTouched = false;
+    const rows = sqliteDb.prepare(`
+        SELECT guild_id, account_key, game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events
+        FROM account_game_tracking
+        WHERE guild_id = ?
+    `).all(guildId);
+    const updateTracking = sqliteDb.prepare(`
+        UPDATE account_game_tracking
+        SET recap_events = ?
+        WHERE guild_id = ? AND account_key = ? AND game_key = ?
+    `);
 
-            for (const tracking of [tftTracking, lolTracking]) {
-                const recapEvents = Array.isArray(tracking?.recapEvents) ? tracking.recapEvents : [];
-                if (recapEvents.length === 0) continue;
-                const nextRecapEvents = recapEvents.filter((event) => Number(event?.at ?? 0) > cutoffMs);
-                const removedCount = recapEvents.length - nextRecapEvents.length;
-                if (removedCount <= 0) continue;
+    for (const row of rows) {
+        const recapEvents = jsonParse(row.recap_events, []);
+        if (!Array.isArray(recapEvents) || recapEvents.length === 0) continue;
+        const nextRecapEvents = recapEvents.filter((event) => Number(event?.at ?? 0) > cutoffMs);
+        const removedCount = recapEvents.length - nextRecapEvents.length;
+        if (removedCount <= 0) continue;
 
-                tracking.recapEvents = nextRecapEvents;
-                didChange = true;
-                prunedEvents += removedCount;
-                accountTouched = true;
-            }
-            if (accountTouched) touchedAccounts += 1;
-        }
+        updateTracking.run(jsonStringify(nextRecapEvents, []), row.guild_id, row.account_key, row.game_key);
+        didChange = true;
+        prunedEvents += removedCount;
+        touchedAccounts.add(row.account_key);
     }
-
-    return { didChange, prunedEvents, touchedAccounts };
+    return { didChange, prunedEvents, touchedAccounts: touchedAccounts.size };
 }
 
 export async function pruneExpiredRecapEventsInStore(nowMs = Date.now()) {
-    return mutateDb((db) => pruneExpiredRecapEventsInDb(db, nowMs));
+    return withSqliteTransaction((sqliteDb) => {
+        let didChange = false;
+        let prunedEvents = 0;
+        let touchedAccounts = 0;
+
+        const rows = sqliteDb.prepare('SELECT guild_id FROM guilds').all();
+        for (const row of rows) {
+            const result = pruneExpiredRecapEventsForGuild(sqliteDb, row.guild_id, nowMs);
+            didChange = didChange || result.didChange;
+            prunedEvents += result.prunedEvents;
+            touchedAccounts += result.touchedAccounts;
+        }
+
+        return { didChange, prunedEvents, touchedAccounts };
+    });
 }
 
 export async function resetGuildAccountProgressInStore(guildId, options = {}) {
@@ -427,20 +612,26 @@ export async function resetGuildAccountProgressInStore(guildId, options = {}) {
 }
 
 export async function resetGuildAccountProgressBeforeInStore(guildId, cutoffMs, options = {}) {
+    assertValidGuildId(guildId, 'resetGuildAccountProgressBeforeInStore');
     const hasCutoff = Number.isFinite(cutoffMs) && cutoffMs > 0;
     const clearMatchCursor = options?.clearMatchCursor === true;
     const requestedScope = Array.isArray(options?.gameScope) ? options.gameScope : [];
     if (requestedScope.length === 0) {
         throw new Error('[resetGuildAccountProgressBeforeInStore] options.gameScope must be a non-empty array of tracked game keys.');
     }
-    return mutateGuild(guildId, ({ guild }) => {
-        const accounts = Array.isArray(guild?.accounts) ? guild.accounts : [];
+    return withSqliteTransaction((sqliteDb) => {
+        const accounts = listGuildAccountsFromDb(sqliteDb, guildId);
         if (accounts.length === 0) {
             return { didChange: false, totalAccounts: 0, resetAccounts: 0 };
         }
 
         let resetAccounts = 0;
         let skippedAccounts = 0;
+        const updateTracking = sqliteDb.prepare(`
+            UPDATE account_game_tracking
+            SET last_match_id = ?, last_match_at = ?, last_rank_by_queue = ?, recap_events = ?
+            WHERE guild_id = ? AND account_key = ? AND game_key = ?
+        `);
 
         for (const account of accounts) {
             let accountReset = false;
@@ -464,13 +655,17 @@ export async function resetGuildAccountProgressBeforeInStore(guildId, cutoffMs, 
                 const hadRecapEvents = Array.isArray(tracking?.recapEvents) && tracking.recapEvents.length > 0;
                 const hadMatchCursor = Boolean(tracking?.lastMatchId) || Number(tracking?.lastMatchAt ?? 0) > 0;
 
-                if (clearMatchCursor) {
-                    tracking.lastMatchId = null;
-                    tracking.lastMatchAt = null;
-                }
-
-                tracking.lastRankByQueue = {};
-                tracking.recapEvents = [];
+                const nextLastMatchId = clearMatchCursor ? null : tracking.lastMatchId;
+                const nextLastMatchAt = clearMatchCursor ? null : tracking.lastMatchAt;
+                updateTracking.run(
+                    nextLastMatchId,
+                    nextLastMatchAt,
+                    jsonStringify({}, {}),
+                    jsonStringify([], []),
+                    guildId,
+                    account.key,
+                    gameKey
+                );
 
                 if (hadRankSnapshot || hadRecapEvents || (clearMatchCursor && hadMatchCursor)) {
                     accountReset = true;
