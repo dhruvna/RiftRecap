@@ -40,7 +40,7 @@ function normalizeMatchId(matchId) {
     return typeof matchId === 'string' && matchId.trim() ? matchId.trim() : null;
 }
 
-export function normalizeContextValue(value) {
+function normalizeContextValue(value) {
     if (typeof value === 'string') {
         const trimmed = value.trim();
         return trimmed || null;
@@ -51,7 +51,7 @@ export function normalizeContextValue(value) {
     return null;
 }
 
-export function buildChampionRoleContextValue(champion, role) {
+function buildChampionRoleContextValue(champion, role) {
     const normalizedChampion = normalizeContextValue(champion);
     const normalizedRole = normalizeContextValue(role);
     if (!normalizedChampion || !normalizedRole) {
@@ -99,22 +99,18 @@ export function getChampionRoleParts(value) {
         return null;
     }
 
-    const trimmed = value.trim();
     try {
-        const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed) && parsed.length === 2) {
-            const [first, second] = parsed;
-            const role = normalizeContextValue(first);
-            const champion = normalizeContextValue(second);
-            return role && champion ? { champion, role, value: buildChampionRoleContextValue(champion, role) } : null;
+        const parsed = JSON.parse(value.trim());
+        if (!Array.isArray(parsed) || parsed.length !== 2) {
+            return null;
         }
+        const [first, second] = parsed;
+        const role = normalizeContextValue(first);
+        const champion = normalizeContextValue(second);
+        return role && champion ? { champion, role, value: buildChampionRoleContextValue(champion, role) } : null;
     } catch {
-        // Old rows can be plain text; fall through and parse those below.
+        return null;
     }
-
-    const [champion, ...roleParts] = trimmed.split(/\s+/);
-    const role = roleParts.join(' ');
-    return champion && role ? { champion, role, value: buildChampionRoleContextValue(champion, role) } : null;
 }
 
 function upsertMemberContextCounter({ db, guildId, memberKey, contextType, value, didWin }) {

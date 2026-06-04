@@ -23,48 +23,7 @@ function ensureDatabaseDirectory(filePath) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
-function backfillMemberContextMatchSeenFromLineups(db) {
-    const lineupSeenRows = db.prepare(`
-        SELECT
-            guild_id AS guildId,
-            lineup_key AS lineupKey,
-            match_id AS matchId,
-            seen_at AS seenAt
-        FROM lineup_match_seen
-    `).all();
-    if (lineupSeenRows.length === 0) {
-        return;
-    }
-
-    const insertMemberSeen = db.prepare(`
-        INSERT INTO lol_member_context_match_seen (
-            guild_id,
-            member_key,
-            match_id,
-            seen_at
-        ) VALUES (?, ?, ?, ?)
-        ON CONFLICT(guild_id, member_key, match_id) DO NOTHING
-    `);
-
-    for (const row of lineupSeenRows) {
-        const memberKeys = String(row.lineupKey ?? '')
-            .split('|')
-            .map((memberKey) => memberKey.trim())
-            .filter(Boolean);
-        for (const memberKey of memberKeys) {
-            insertMemberSeen.run(row.guildId, memberKey, row.matchId, row.seenAt);
-        }
-    }
-}
-
 function runMigrations(db) {
-    const legacyContextCounterExists = db.prepare(`
-        SELECT 1
-        FROM sqlite_master
-        WHERE type = 'table'
-          AND name = 'lineup_context_counter'
-    `).get();
-
     db.exec(`
         PRAGMA journal_mode = WAL;
         PRAGMA foreign_keys = ON;
@@ -107,12 +66,6 @@ function runMigrations(db) {
             PRIMARY KEY (guild_id, member_key, match_id)
         );
 
-        CREATE TABLE IF NOT EXISTS storage_migrations (
-            migration_name TEXT PRIMARY KEY,
-            applied_at INTEGER NOT NULL,
-            details TEXT
-        );
-
         CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_size_games_wins
             ON lineup_stats (guild_id, lineup_size, games, wins);
         CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_games
@@ -121,39 +74,6 @@ function runMigrations(db) {
             ON lol_member_context_counter (guild_id, member_key, context_type, games, wins);
         CREATE INDEX IF NOT EXISTS idx_lol_member_context_match_seen_match
             ON lol_member_context_match_seen (guild_id, match_id);
-    `);
-
-    backfillMemberContextMatchSeenFromLineups(db);
-    
-    if (legacyContextCounterExists) {
-        db.exec(`
-            INSERT INTO lol_member_context_counter (
-                guild_id,
-                member_key,
-                context_type,
-                context_value,
-                games,
-                wins
-            )
-            SELECT
-                guild_id,
-                member_key,
-                context_type,
-                context_value,
-                SUM(games),
-                SUM(wins)
-            FROM lineup_context_counter
-            GROUP BY guild_id, member_key, context_type, context_value
-            ON CONFLICT(guild_id, member_key, context_type, context_value)
-            DO UPDATE SET
-                games = MAX(games, excluded.games),
-                wins = MAX(wins, excluded.wins);
-        `);
-    }
-    
-    db.exec(`
-        DELETE FROM lol_member_context_counter
-        WHERE context_type IN ('role', 'champion');
     `);
 }
 
