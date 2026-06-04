@@ -79,6 +79,22 @@ function defaultTrackingState() {
     };
 }
 
+function pickNonEmptyString(value) {
+    return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function pickPositiveNumber(value) {
+    const numberValue = Number(value ?? 0);
+    return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+function normalizeOptionalPrimitive(value) {
+    if (value == null) return null;
+    if (typeof value === 'string') return value.trim() ? value : null;
+    if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') return String(value);
+    return null;
+}
+
 function normalizeTrackingState(state) {
     const safe = state && typeof state === 'object' ? state : {};
     const lastMatchAt = Number(safe.lastMatchAt ?? 0);
@@ -90,6 +106,17 @@ function normalizeTrackingState(state) {
             ? safe.lastRankByQueue
             : {},
         recapEvents: Array.isArray(safe.recapEvents) ? safe.recapEvents : [],
+        inGame: safe.inGame === true,
+        lastSpectatorCheckAt: pickPositiveNumber(safe.lastSpectatorCheckAt),
+        activeGameId: normalizeOptionalPrimitive(safe.activeGameId),
+        activeQueueId: normalizeOptionalPrimitive(safe.activeQueueId),
+        activeGameStartTime: pickPositiveNumber(safe.activeGameStartTime),
+        lastAnnouncedInGameKey: pickNonEmptyString(safe.lastAnnouncedInGameKey),
+        lastAnnouncedActiveGameId: normalizeOptionalPrimitive(safe.lastAnnouncedActiveGameId),
+        lastInGameAnnouncementAt: pickPositiveNumber(safe.lastInGameAnnouncementAt),
+        liveAnnouncementMessageId: pickNonEmptyString(safe.liveAnnouncementMessageId),
+        liveAnnouncementChannelId: pickNonEmptyString(safe.liveAnnouncementChannelId),
+        liveAnnouncementGameKey: pickNonEmptyString(safe.liveAnnouncementGameKey),
     };
 }
 
@@ -194,6 +221,17 @@ function accountFromRows(accountRow, identityRows, trackingRows, notificationRow
                 lastMatchAt: trackingRow.last_match_at,
                 lastRankByQueue: jsonParse(trackingRow.last_rank_by_queue, {}),
                 recapEvents: jsonParse(trackingRow.recap_events, []),
+                inGame: intToBool(trackingRow.in_game),
+                lastSpectatorCheckAt: trackingRow.last_spectator_check_at,
+                activeGameId: trackingRow.active_game_id,
+                activeQueueId: trackingRow.active_queue_id,
+                activeGameStartTime: trackingRow.active_game_start_time,
+                lastAnnouncedInGameKey: trackingRow.last_announced_in_game_key,
+                lastAnnouncedActiveGameId: trackingRow.last_announced_active_game_id,
+                lastInGameAnnouncementAt: trackingRow.last_in_game_announcement_at,
+                liveAnnouncementMessageId: trackingRow.live_announcement_message_id,
+                liveAnnouncementChannelId: trackingRow.live_announcement_channel_id,
+                liveAnnouncementGameKey: trackingRow.live_announcement_game_key,
             })
             : defaultTrackingState();
     }
@@ -215,7 +253,11 @@ function getAccountFromDb(sqliteDb, guildId, accountKey) {
         WHERE guild_id = ? AND account_key = ?
     `).all(guildId, accountKey);
     const trackingRows = sqliteDb.prepare(`
-        SELECT game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events
+        SELECT
+            game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events,
+            in_game, last_spectator_check_at, active_game_id, active_queue_id, active_game_start_time,
+            last_announced_in_game_key, last_announced_active_game_id, last_in_game_announcement_at,
+            live_announcement_message_id, live_announcement_channel_id, live_announcement_game_key
         FROM account_game_tracking
         WHERE guild_id = ? AND account_key = ?
     `).all(guildId, accountKey);
@@ -275,14 +317,28 @@ function upsertGuildAccount(sqliteDb, guildId, account) {
     `);
     const upsertTracking = sqliteDb.prepare(`
         INSERT INTO account_game_tracking (
-            guild_id, account_key, game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            guild_id, account_key, game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events,
+            in_game, last_spectator_check_at, active_game_id, active_queue_id, active_game_start_time,
+            last_announced_in_game_key, last_announced_active_game_id, last_in_game_announcement_at,
+            live_announcement_message_id, live_announcement_channel_id, live_announcement_game_key
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(guild_id, account_key, game_key) DO UPDATE SET
             enabled = excluded.enabled,
             last_match_id = excluded.last_match_id,
             last_match_at = excluded.last_match_at,
             last_rank_by_queue = excluded.last_rank_by_queue,
-            recap_events = excluded.recap_events
+            recap_events = excluded.recap_events,
+            in_game = excluded.in_game,
+            last_spectator_check_at = excluded.last_spectator_check_at,
+            active_game_id = excluded.active_game_id,
+            active_queue_id = excluded.active_queue_id,
+            active_game_start_time = excluded.active_game_start_time,
+            last_announced_in_game_key = excluded.last_announced_in_game_key,
+            last_announced_active_game_id = excluded.last_announced_active_game_id,
+            last_in_game_announcement_at = excluded.last_in_game_announcement_at,
+            live_announcement_message_id = excluded.live_announcement_message_id,
+            live_announcement_channel_id = excluded.live_announcement_channel_id,
+            live_announcement_game_key = excluded.live_announcement_game_key
     `);
 
     for (const gameKey of Object.values(TRACKED_GAMES)) {
@@ -297,7 +353,18 @@ function upsertGuildAccount(sqliteDb, guildId, account) {
             tracking.lastMatchId,
             tracking.lastMatchAt,
             jsonStringify(tracking.lastRankByQueue, {}),
-            jsonStringify(tracking.recapEvents, [])
+            jsonStringify(tracking.recapEvents, []),
+            boolToInt(tracking.inGame),
+            tracking.lastSpectatorCheckAt,
+            tracking.activeGameId,
+            tracking.activeQueueId,
+            tracking.activeGameStartTime,
+            tracking.lastAnnouncedInGameKey,
+            tracking.lastAnnouncedActiveGameId,
+            tracking.lastInGameAnnouncementAt,
+            tracking.liveAnnouncementMessageId,
+            tracking.liveAnnouncementChannelId,
+            tracking.liveAnnouncementGameKey
         );
     }
     const notifications = merged.notifications && typeof merged.notifications === 'object' ? merged.notifications : {};

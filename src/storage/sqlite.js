@@ -23,6 +23,14 @@ function ensureDatabaseDirectory(filePath) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+function addColumnIfMissing(db, tableName, columnName, columnDefinition) {
+    const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+    if (columns.some((column) => column.name === columnName)) {
+        return;
+    }
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`);
+}
+
 function runMigrations(db) {
     db.exec(`
         PRAGMA journal_mode = WAL;
@@ -157,6 +165,18 @@ function runMigrations(db) {
         CREATE INDEX IF NOT EXISTS idx_lol_member_context_match_seen_match
             ON lol_member_context_match_seen (guild_id, match_id);
     `);
+    addColumnIfMissing(db, 'account_game_tracking', 'in_game', 'in_game INTEGER NOT NULL DEFAULT 0');
+    addColumnIfMissing(db, 'account_game_tracking', 'last_spectator_check_at', 'last_spectator_check_at INTEGER');
+    addColumnIfMissing(db, 'account_game_tracking', 'active_game_id', 'active_game_id TEXT');
+    addColumnIfMissing(db, 'account_game_tracking', 'active_queue_id', 'active_queue_id TEXT');
+    addColumnIfMissing(db, 'account_game_tracking', 'active_game_start_time', 'active_game_start_time INTEGER');
+    addColumnIfMissing(db, 'account_game_tracking', 'last_announced_in_game_key', 'last_announced_in_game_key TEXT');
+    addColumnIfMissing(db, 'account_game_tracking', 'last_announced_active_game_id', 'last_announced_active_game_id TEXT');
+    addColumnIfMissing(db, 'account_game_tracking', 'last_in_game_announcement_at', 'last_in_game_announcement_at INTEGER');
+    addColumnIfMissing(db, 'account_game_tracking', 'live_announcement_message_id', 'live_announcement_message_id TEXT');
+    addColumnIfMissing(db, 'account_game_tracking', 'live_announcement_channel_id', 'live_announcement_channel_id TEXT');
+    addColumnIfMissing(db, 'account_game_tracking', 'live_announcement_game_key', 'live_announcement_game_key TEXT');
+
 }
 
 async function openDatabase() {
