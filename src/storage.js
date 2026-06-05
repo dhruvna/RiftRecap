@@ -264,6 +264,28 @@ function getAccountFromDb(sqliteDb, guildId, accountKey) {
     return accountFromRows(accountRow, identityRows, trackingRows, notificationRow);
 }
 
+function groupRowsByAccountKey(rows) {
+    const rowsByAccountKey = new Map();
+    for (const row of rows) {
+        if (!rowsByAccountKey.has(row.account_key)) rowsByAccountKey.set(row.account_key, []);
+        rowsByAccountKey.get(row.account_key).push(row);
+    }
+    return rowsByAccountKey;
+}
+
+function listGuildAccountsFromRows(accountRows, identityRows, trackingRows, notificationRows) {
+    const identityRowsByAccountKey = groupRowsByAccountKey(identityRows);
+    const trackingRowsByAccountKey = groupRowsByAccountKey(trackingRows);
+    const notificationRowsByAccountKey = new Map(notificationRows.map((row) => [row.account_key, row]));
+
+    return accountRows.map((accountRow) => accountFromRows(
+        accountRow,
+        identityRowsByAccountKey.get(accountRow.account_key) ?? [],
+        trackingRowsByAccountKey.get(accountRow.account_key) ?? [],
+        notificationRowsByAccountKey.get(accountRow.account_key) ?? null
+    ));
+}
+
 function listGuildAccountsFromDb(sqliteDb, guildId) {
     const accountRows = sqliteDb.prepare(`
         SELECT guild_id, account_key, game_name, tag_line, region, platform, regional
@@ -271,7 +293,27 @@ function listGuildAccountsFromDb(sqliteDb, guildId) {
         WHERE guild_id = ?
         ORDER BY account_key
     `).all(guildId);
-    return accountRows.map((accountRow) => getAccountFromDb(sqliteDb, guildId, accountRow.account_key));
+    const identityRows = sqliteDb.prepare(`
+        SELECT account_key, game_key, puuid
+        FROM account_game_identity
+        WHERE guild_id = ?
+    `).all(guildId);
+    const trackingRows = sqliteDb.prepare(`
+        SELECT
+            account_key, game_key, enabled, last_match_id, last_match_at, last_rank_by_queue, recap_events,
+            in_game, last_spectator_check_at, active_game_id, active_queue_id, active_game_start_time,
+            last_announced_in_game_key, last_announced_active_game_id, last_in_game_announcement_at,
+            live_announcement_message_id, live_announcement_channel_id, live_announcement_game_key
+        FROM account_game_tracking
+        WHERE guild_id = ?
+    `).all(guildId);
+    const notificationRows = sqliteDb.prepare(`
+        SELECT account_key, lol_announcements, tft_announcements
+        FROM account_notifications
+        WHERE guild_id = ?
+    `).all(guildId);
+
+    return listGuildAccountsFromRows(accountRows, identityRows, trackingRows, notificationRows);
 }
 
 function upsertGuildAccount(sqliteDb, guildId, account) {
@@ -444,6 +486,12 @@ export function getLolTracking(account) {
 // Build a stable key used to deduplicate accounts.
 export function makeAccountKey({ gameName, tagLine, platform }) {
     return `${gameName}#${tagLine}@${platform}`.toLowerCase();
+}
+
+export async function getGuildAccountByKey(guildId, key) {
+    assertValidGuildId(guildId, 'getGuildAccountByKey');
+    const sqliteDb = await getSqliteDb();
+    return getAccountFromDb(sqliteDb, guildId, key);
 }
 
 // === Account Creation, Read, Update, Deletion ===

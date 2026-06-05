@@ -10,7 +10,7 @@ test('SQLite current schema persists live announcement tracking state', async ()
 
     process.env.DATABASE_PATH = dbPath;
 
-    const { upsertGuildAccountInStore, TRACKED_GAMES } = await import('../storage.js');
+    const { loadDb, listGuildAccounts, upsertGuildAccountInStore, TRACKED_GAMES } = await import('../storage.js');
     const guildId = '288456610366357505';
     const accountKey = 'krntiger#na1@na1';
     const liveTracking = {
@@ -65,4 +65,11 @@ test('SQLite current schema persists live announcement tracking state', async ()
     assert.equal(persistedTracking.liveAnnouncementMessageId, '123456789012345678');
     assert.equal(persistedTracking.liveAnnouncementChannelId, '234567890123456789');
     assert.equal(persistedTracking.liveAnnouncementGameKey, 'gid:5574686617');
+
+    const listedAccounts = await listGuildAccounts(guildId);
+    assert.equal(listedAccounts.length, 1);
+    assert.deepEqual(listedAccounts[0], account);
+
+    const loadedDb = await loadDb();
+    assert.deepEqual(loadedDb[guildId].accounts, [account]);
 });

@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getTftRegaliaThumbnailUrl, getProfileUrl } from '../riot.js';
 import { GAME_TYPES, TRACKING_GAME_CHOICES, queueLabel, queueChoicesForRecap } from '../constants/queues.js';
-import { getLolTracking, getTftTracking, loadDb } from '../storage.js';
+import { getGuildAccountByKey, getLolTracking, getTftTracking } from '../storage.js';
 import { respondWithAccountChoices } from '../utils/autocomplete.js';
 import { formatRankLine, formatWinrate } from '../utils/presentation.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
@@ -91,10 +91,7 @@ export default {
         // 1. Determine selected account
         const key = interaction.options.getString('account', true);
 
-        const db = await loadDb();
-        const guild = db[guildId];
-        const accountIdx = guild?.accounts?.findIndex((a) => a.key === key) ?? -1;
-        const stored = accountIdx >= 0 ? guild.accounts[accountIdx] : null;
+        const stored = await getGuildAccountByKey(guildId, key);
         
         if (!stored) {
             await interaction.editReply('The selected account is not registered in this server. Try registering again.');
