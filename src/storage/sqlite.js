@@ -23,15 +23,7 @@ function ensureDatabaseDirectory(filePath) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
-function addColumnIfMissing(db, tableName, columnName, columnDefinition) {
-    const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
-    if (columns.some((column) => column.name === columnName)) {
-        return;
-    }
-    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`);
-}
-
-function runMigrations(db) {
+function initializeCurrentSchema(db) {
     db.exec(`
         PRAGMA journal_mode = WAL;
         PRAGMA foreign_keys = ON;
@@ -98,6 +90,17 @@ function runMigrations(db) {
             last_match_at INTEGER,
             last_rank_by_queue TEXT NOT NULL DEFAULT '{}',
             recap_events TEXT NOT NULL DEFAULT '[]',
+            in_game INTEGER NOT NULL DEFAULT 0,
+            last_spectator_check_at INTEGER,
+            active_game_id TEXT,
+            active_queue_id TEXT,
+            active_game_start_time INTEGER,
+            last_announced_in_game_key TEXT,
+            last_announced_active_game_id TEXT,
+            last_in_game_announcement_at INTEGER,
+            live_announcement_message_id TEXT,
+            live_announcement_channel_id TEXT,
+            live_announcement_game_key TEXT,
             PRIMARY KEY (guild_id, account_key, game_key),
             FOREIGN KEY (guild_id, account_key) REFERENCES accounts(guild_id, account_key) ON DELETE CASCADE
         );
@@ -165,18 +168,6 @@ function runMigrations(db) {
         CREATE INDEX IF NOT EXISTS idx_lol_member_context_match_seen_match
             ON lol_member_context_match_seen (guild_id, match_id);
     `);
-    addColumnIfMissing(db, 'account_game_tracking', 'in_game', 'in_game INTEGER NOT NULL DEFAULT 0');
-    addColumnIfMissing(db, 'account_game_tracking', 'last_spectator_check_at', 'last_spectator_check_at INTEGER');
-    addColumnIfMissing(db, 'account_game_tracking', 'active_game_id', 'active_game_id TEXT');
-    addColumnIfMissing(db, 'account_game_tracking', 'active_queue_id', 'active_queue_id TEXT');
-    addColumnIfMissing(db, 'account_game_tracking', 'active_game_start_time', 'active_game_start_time INTEGER');
-    addColumnIfMissing(db, 'account_game_tracking', 'last_announced_in_game_key', 'last_announced_in_game_key TEXT');
-    addColumnIfMissing(db, 'account_game_tracking', 'last_announced_active_game_id', 'last_announced_active_game_id TEXT');
-    addColumnIfMissing(db, 'account_game_tracking', 'last_in_game_announcement_at', 'last_in_game_announcement_at INTEGER');
-    addColumnIfMissing(db, 'account_game_tracking', 'live_announcement_message_id', 'live_announcement_message_id TEXT');
-    addColumnIfMissing(db, 'account_game_tracking', 'live_announcement_channel_id', 'live_announcement_channel_id TEXT');
-    addColumnIfMissing(db, 'account_game_tracking', 'live_announcement_game_key', 'live_announcement_game_key TEXT');
-
 }
 
 async function openDatabase() {
@@ -196,7 +187,7 @@ async function openDatabase() {
         }
         db = openNodeDatabase(DatabaseSync, databasePath);
     }
-    runMigrations(db);
+    initializeCurrentSchema(db);
     return db;
 }
 

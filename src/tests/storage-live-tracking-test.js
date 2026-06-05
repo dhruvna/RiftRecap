@@ -3,33 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
-function createLegacyTrackingSchema(dbPath) {
-    const db = new DatabaseSync(dbPath);
-    db.exec(`
-        CREATE TABLE account_game_tracking (
-            guild_id TEXT NOT NULL,
-            account_key TEXT NOT NULL,
-            game_key TEXT NOT NULL,
-            enabled INTEGER NOT NULL DEFAULT 0,
-            last_match_id TEXT,
-            last_match_at INTEGER,
-            last_rank_by_queue TEXT NOT NULL DEFAULT '{}',
-            recap_events TEXT NOT NULL DEFAULT '[]',
-            PRIMARY KEY (guild_id, account_key, game_key)
-        );
-    `);
-    db.close();
-}
-
-test('SQLite migration adds and persists live announcement tracking state', async () => {
+test('SQLite current schema persists live announcement tracking state', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'riftrecap-live-tracking-'));
     const dbPath = path.join(tempDir, 'riftrecap.sqlite');
-    createLegacyTrackingSchema(dbPath);
 
     process.env.DATABASE_PATH = dbPath;
-    process.env.DATA_PATH = path.join(tempDir, 'registrations.json');
 
     const { listGuildAccounts, upsertGuildAccountInStore, TRACKED_GAMES } = await import('../storage.js');
     const guildId = '288456610366357505';
@@ -66,17 +45,23 @@ test('SQLite migration adds and persists live announcement tracking state', asyn
         },
     });
 
-    const db = new DatabaseSync(dbPath, { readOnly: true });
-    const columnNames = db.prepare('PRAGMA table_info(account_game_tracking)').all().map((column) => column.name);
-    db.close();
-    assert.ok(columnNames.includes('last_announced_in_game_key'));
-    assert.ok(columnNames.includes('live_announcement_game_key'));
+    const persistedTracking = account.trackedGames[TRACKED_GAMES.LOL];
 
-    const [account] = await listGuildAccounts(guildId);
-    assert.equal(account.trackedGames[TRACKED_GAMES.LOL].inGame, true);
-    assert.equal(account.trackedGames[TRACKED_GAMES.LOL].activeGameId, '5574686617');
-    assert.equal(account.trackedGames[TRACKED_GAMES.LOL].activeQueueId, '420');
-    assert.equal(account.trackedGames[TRACKED_GAMES.LOL].lastAnnouncedInGameKey, 'gid:5574686617');
-    assert.equal(account.trackedGames[TRACKED_GAMES.LOL].lastInGameAnnouncementAt, 1791098838404);
-    assert.equal(account.trackedGames[TRACKED_GAMES.LOL].liveAnnouncementGameKey, 'gid:5574686617');
+    assert.equal(account.key, accountKey);
+    assert.equal(persistedTracking.enabled, true);
+    assert.equal(persistedTracking.lastMatchId, 'NA1_5574686617');
+    assert.equal(persistedTracking.lastMatchAt, 1791098800000);
+    assert.deepEqual(persistedTracking.lastRankByQueue, {});
+    assert.deepEqual(persistedTracking.recapEvents, []);
+    assert.equal(persistedTracking.inGame, true);
+    assert.equal(persistedTracking.lastSpectatorCheckAt, 1791098838404);
+    assert.equal(persistedTracking.activeGameId, '5574686617');
+    assert.equal(persistedTracking.activeQueueId, '420');
+    assert.equal(persistedTracking.activeGameStartTime, 1791098700000);
+    assert.equal(persistedTracking.lastAnnouncedInGameKey, 'gid:5574686617');
+    assert.equal(persistedTracking.lastAnnouncedActiveGameId, '5574686617');
+    assert.equal(persistedTracking.lastInGameAnnouncementAt, 1791098838404);
+    assert.equal(persistedTracking.liveAnnouncementMessageId, '123456789012345678');
+    assert.equal(persistedTracking.liveAnnouncementChannelId, '234567890123456789');
+    assert.equal(persistedTracking.liveAnnouncementGameKey, 'gid:5574686617');
 });

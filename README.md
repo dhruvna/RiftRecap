@@ -49,9 +49,8 @@ Optional runtime configuration:
 - `LOG_LEVEL` (default: `info`) — one of `debug`, `info`, `warn`, or `error`. Ignored when `DEBUG=true`.
 
 Optional storage overrides:
-- `DATA_DIR` (default: `./user_data`) — base directory for default JSON storage paths.
-- `DATA_PATH` (default: `./user_data/registrations.json`) — explicit path for server/account registration data. Overrides the `DATA_DIR`-based registrations path.
-- `LOL_LINEUPS_DATA_PATH` (default: `./user_data/lol_lineups.json`) — explicit path for LoL lineup stats. Overrides the `DATA_DIR`-based lineups path.
+- `DATA_DIR` (default: `./user_data`) — base directory used to derive the default SQLite database path.
+- `DATABASE_PATH` (default: `./user_data/riftrecap.sqlite`) — explicit SQLite database path for all persistent bot data.
 
 See `.env.example` for a copyable template containing only supported public configuration values.
 
@@ -71,7 +70,7 @@ See `.env.example` for a copyable template containing only supported public conf
    ```
 
 ## Data model
-Persistent storage defaults to `./user_data/registrations.json`, with LoL lineup stats in `./user_data/lol_lineups.json`.
+Persistent storage uses SQLite only and defaults to `./user_data/riftrecap.sqlite`.
 
 At a high level, registration data is scoped by Discord `guildId`, then by registered account, and includes:
 - Riot identity fields (game name/tag) and Riot routing metadata.
@@ -81,12 +80,9 @@ At a high level, registration data is scoped by Discord `guildId`, then by regis
 - Reset metadata such as optional season cutoffs.
 
 Storage behavior:
-- `user_data/`, `registrations.json`, and `lol_lineups.json` are auto-created if missing.
-- Writes are atomic (temp file + rename).
-- `DATA_DIR`, `DATA_PATH`, and `LOL_LINEUPS_DATA_PATH` can redirect storage locations.
-
-## Data model migration note
-The data model is canonical in `registrations.json`. Migration support is a one-time script and not an ongoing runtime transform.
+- `user_data/` and the SQLite database file are auto-created if missing.
+- `DATA_DIR` can change the base directory used by the default database path.
+- `DATABASE_PATH` can redirect the SQLite database to an explicit file path.
 
 ## Known limitations
 - Some `resetranks` edge cases still need broader verification coverage.
