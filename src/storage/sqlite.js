@@ -23,7 +23,7 @@ function ensureDatabaseDirectory(filePath) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
-function initializeCurrentSchema(db) {
+function initializeSchema(db) {
     db.exec(`
         PRAGMA journal_mode = WAL;
         PRAGMA foreign_keys = ON;
@@ -187,7 +187,7 @@ async function openDatabase() {
         }
         db = openNodeDatabase(DatabaseSync, databasePath);
     }
-    initializeCurrentSchema(db);
+    initializeSchema(db);
     return db;
 }
 

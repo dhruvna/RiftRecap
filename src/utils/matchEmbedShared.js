@@ -106,22 +106,24 @@ function findTierChange({ beforeRank, afterRank }) {
 }
 
 export function buildTierChangeEmbed({ account, queueType, beforeRank, afterRank }) {
-    if (!findTierChange({ beforeRank, afterRank })) return;
-    const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
-    const beforeRankStr = formatRankWithLp(beforeRank);
-    const afterRankStr = formatRankWithLp(afterRank);
-    const tierChange = findTierChange({ beforeRank, afterRank });
-    const color = tierChange === 'promote' ? 0xf5b642 : 0xf34e3c;
-    const title = tierChange === 'promote'
-        ? '✨ Rank Promotion! ✨'
-        : '😭🤣 Rank Demotion 🤣😭';
-    const description = tierChange === 'promote'
-        ? `**${riotId}** promoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`
-        : `**${riotId}** demoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`;
-    const embed = new EmbedBuilder()
-        .setColor(color)
-        .setTitle(title)
-        .setDescription(description)
-        .setTimestamp(new Date());
-    return embed;
+  const tierChange = findTierChange({ beforeRank, afterRank });
+  if (!tierChange) return;
+
+  const riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
+  const beforeRankStr = formatRankWithLp(beforeRank);
+  const afterRankStr = formatRankWithLp(afterRank);
+  const color = tierChange === 'promote' ? 0xf5b642 : 0xf34e3c;
+  const title = tierChange === 'promote'
+    ? '✨ Rank Promotion! ✨'
+    : '😭🤣 Rank Demotion 🤣😭';
+  const description = tierChange === 'promote'
+    ? `**${riotId}** promoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`
+    : `**${riotId}** demoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`;
+
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(title)
+    .setDescription(description)
+    .setTimestamp(new Date());
+  return embed;
 }

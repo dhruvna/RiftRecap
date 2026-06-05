@@ -10,7 +10,7 @@ test('SQLite current schema persists live announcement tracking state', async ()
 
     process.env.DATABASE_PATH = dbPath;
 
-    const { listGuildAccounts, upsertGuildAccountInStore, TRACKED_GAMES } = await import('../storage.js');
+    const { upsertGuildAccountInStore, TRACKED_GAMES } = await import('../storage.js');
     const guildId = '288456610366357505';
     const accountKey = 'krntiger#na1@na1';
     const liveTracking = {
@@ -32,7 +32,7 @@ test('SQLite current schema persists live announcement tracking state', async ()
         liveAnnouncementGameKey: 'gid:5574686617',
     };
 
-    await upsertGuildAccountInStore(guildId, {
+    const { account } = await upsertGuildAccountInStore(guildId, {
         key: accountKey,
         gameName: 'krntiger',
         tagLine: 'na1',
@@ -45,6 +45,7 @@ test('SQLite current schema persists live announcement tracking state', async ()
         },
     });
 
+    assert.ok(account);
     const persistedTracking = account.trackedGames[TRACKED_GAMES.LOL];
 
     assert.equal(account.key, accountKey);
