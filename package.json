@@ -12,7 +12,6 @@
     "knip": "knip --config knip.config.js",
     "knip:strict": "knip --config knip.config.js --include files,exports,duplicates",
     "test:lineups": "node src/tests/lineup-test-setup.js",
-    "migrate:registrations": "node src/storage/migrateRegistrationsJson.js",
     "test:sql-reg": "node src/tests/storage-live-tracking-test.js"
   },
   "repository": {
