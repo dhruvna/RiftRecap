@@ -188,6 +188,28 @@ function upsertRecapConfigRow(sqliteDb, guildId, config) {
     return normalized;
 }
 
+function mergeAccountForUpsert(previous, account, key) {
+    if (!previous) return { ...account, key };
+    const safeAccount = account && typeof account === 'object' ? account : {};
+    return {
+        ...previous,
+        ...safeAccount,
+        key,
+        identity: {
+            ...(previous.identity ?? {}),
+            ...(safeAccount.identity ?? {}),
+        },
+        trackedGames: {
+            ...(previous.trackedGames ?? {}),
+            ...(safeAccount.trackedGames ?? {}),
+        },
+        notifications: {
+            ...(previous.notifications ?? {}),
+            ...(safeAccount.notifications ?? {}),
+        },
+    };
+}
+
 function accountFromRows(accountRow, identityRows, trackingRows, notificationRow) {
     const account = {
         key: accountRow.account_key,
@@ -324,7 +346,7 @@ function upsertGuildAccount(sqliteDb, guildId, account) {
         SELECT 1 FROM accounts WHERE guild_id = ? AND account_key = ?
     `).get(guildId, key));
     const previous = existed ? getAccountFromDb(sqliteDb, guildId, key) : null;
-    const merged = previous ? { ...previous, ...account, key } : { ...account, key };
+    const merged = mergeAccountForUpsert(previous, account, key);
 
     sqliteDb.prepare(`
         INSERT INTO accounts (guild_id, account_key, game_name, tag_line, region, platform, regional)
@@ -506,6 +528,31 @@ export async function upsertGuildAccountInStore(guildId, account) {
     return withSqliteTransaction((sqliteDb) => {
         const upserted = upsertGuildAccount(sqliteDb, guildId, account);
         return { ...upserted, didChange: true };
+    });
+}
+
+export async function updateGuildAccountNotificationsInStore(guildId, key, notifications) {
+    assertValidGuildId(guildId, 'updateGuildAccountNotificationsInStore');
+    return withSqliteTransaction((sqliteDb) => {
+        const account = getAccountFromDb(sqliteDb, guildId, key);
+        if (!account) return null;
+        const nextNotifications = {
+            ...(account.notifications ?? {}),
+            ...(notifications && typeof notifications === 'object' ? notifications : {}),
+        };
+        sqliteDb.prepare(`
+            INSERT INTO account_notifications (guild_id, account_key, lol_announcements, tft_announcements)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(guild_id, account_key) DO UPDATE SET
+                lol_announcements = excluded.lol_announcements,
+                tft_announcements = excluded.tft_announcements
+        `).run(
+            guildId,
+            key,
+            boolToInt(nextNotifications.lolAnnouncements !== false),
+            boolToInt(nextNotifications.tftAnnouncements !== false)
+        );
+        return getAccountFromDb(sqliteDb, guildId, key);
     });
 }
 

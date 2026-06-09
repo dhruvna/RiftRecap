@@ -13,7 +13,9 @@ import {
 import { REGION_CHOICES } from '../constants/regions.js';
 
 import {
+    getGuildAccountByKey,
     makeAccountKey,
+    updateGuildAccountNotificationsInStore,
     upsertGuildAccountInStore,
 } from '../storage.js';
 import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
@@ -48,6 +50,25 @@ export default {
         const sendMatchAlerts = interaction.options.getBoolean('send_match_alerts', false);
 
         const { platform, regional, region } = resolveRegion(regionInput);
+         const accountKey = makeAccountKey({ gameName, tagLine, platform });
+        const existingAccount = await getGuildAccountByKey(guildId, accountKey);
+        if (existingAccount) {
+            if (sendMatchAlerts === null) {
+                await interaction.editReply(`**${existingAccount.gameName}#${existingAccount.tagLine}** is already registered in this server. Use ` +
+                    '`send_match_alerts` to change whether this account appears in alerts, recaps, and leaderboards.');
+                return;
+            }
+
+            const updated = await updateGuildAccountNotificationsInStore(guildId, accountKey, {
+                lolAnnouncements: sendMatchAlerts,
+                tftAnnouncements: sendMatchAlerts,
+            });
+            const visibilityText = sendMatchAlerts ? 'will now show' : 'will no longer show';
+            await interaction.editReply(
+                `Updated **${updated.gameName}#${updated.tagLine}**: this account ${visibilityText} in alerts, recaps, and leaderboards. Rank snapshots, recap history, match cursors, and lineup stats were preserved.`
+            );
+            return;
+        }
 
         const tftSnapshot = await getRegistrationSnapshot({
                 gameType: GAME_TYPES.TFT,
@@ -88,7 +109,7 @@ export default {
         const { account: lolAccount, ...lolState } = lolSnapshot;
 
         const stored = {
-            key: makeAccountKey({ gameName: tftAccount.gameName, tagLine: tftAccount.tagLine, platform }),
+            key: accountKey,
             gameName: tftAccount.gameName,
             tagLine: tftAccount.tagLine,
             region,

@@ -11,6 +11,7 @@ import {
   gameFromQueue,
 } from '../constants/queues.js';
 
+import { isAccountVisibleForGame } from '../utils/accountVisibility.js';
 import { getRankSnapshotForQueue } from '../utils/rankSnapshot.js';
 import { formatRankWithLp, formatWinrate, medalForIndex } from '../utils/presentation.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
@@ -100,8 +101,9 @@ export default {
       return;
     }
     
+    const visibleAccounts = accounts.filter((account) => isAccountVisibleForGame(account, game));
     // Map accounts to a sortable structure (rank + computed score).
-    const ranked = accounts
+    const ranked = visibleAccounts
       .map((account) => {
         const rank = getRankSnapshotForQueue(account, queueType, game);
         return {
@@ -142,7 +144,7 @@ export default {
     const embed = new EmbedBuilder()
         .setTitle(`${game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} Leaderboard — ${queueLabelText}`)
         .setDescription(lines.join('\n'))
-        .setFooter({ text: `Showing top ${shown.length} of ${ranked.length} ranked account(s)` });
+        .setFooter({ text: `Showing top ${shown.length} of ${ranked.length} visible ranked account(s)` });
         
     await interaction.editReply({ embeds: [embed] });
   }, { defer: true, ephemeral: false, commandName: 'leaderboard' }),
