@@ -12,6 +12,8 @@ const VS_BACKGROUND = '#21283A';
 const BLUE_EMPTY = '#4B5563';
 const RED_EMPTY = '#4B5563';
 const SLOT_RADIUS = 6;
+const ICON_IMAGE_CACHE_MAX_ENTRIES = 256;
+const iconImageCache = new Map();
 
 function getLiveDraftStripLayout() {
   const sideWidth = (SLOT_COUNT_PER_SIDE * ICON_SIZE) + ((SLOT_COUNT_PER_SIDE - 1) * ICON_GAP);
@@ -37,19 +39,47 @@ function drawRoundedRect(ctx, x, y, w, h, r, fillStyle) {
   ctx.fill();
 }
 
-async function drawSlotIconOrFallback(ctx, iconUrl, x, y, fallbackColor) {
-  drawRoundedRect(ctx, x, y, ICON_SIZE, ICON_SIZE, SLOT_RADIUS, fallbackColor);
-  if (!iconUrl) return;
-  try {
-    const image = await loadImage(iconUrl);
-    ctx.save();
-    roundedRectPath(ctx, x, y, ICON_SIZE, ICON_SIZE, SLOT_RADIUS);
-    ctx.clip();
-    ctx.drawImage(image, x, y, ICON_SIZE, ICON_SIZE);
-    ctx.restore();
-  } catch {
-    // Keep fallback block if icon fetch/decoding fails.
+function evictOldIconImageCacheEntries() {
+  while (iconImageCache.size > ICON_IMAGE_CACHE_MAX_ENTRIES) {
+    const oldestIconUrl = iconImageCache.keys().next().value;
+    iconImageCache.delete(oldestIconUrl);
   }
+}
+
+function loadIconImageCached(iconUrl) {
+  if (!iconUrl) return null;
+
+  const cachedImage = iconImageCache.get(iconUrl);
+  if (cachedImage) return cachedImage;
+
+  const imagePromise = loadImage(iconUrl);
+  iconImageCache.set(iconUrl, imagePromise);
+  evictOldIconImageCacheEntries();
+
+  return imagePromise
+    .then((image) => {
+      if (iconImageCache.get(iconUrl) === imagePromise) {
+        iconImageCache.set(iconUrl, image);
+      }
+      return image;
+    })
+    .catch((error) => {
+      if (iconImageCache.get(iconUrl) === imagePromise) {
+        iconImageCache.delete(iconUrl);
+      }
+      throw error;
+    });
+}
+
+function drawSlotIconOrFallback(ctx, image, x, y, fallbackColor) {
+  drawRoundedRect(ctx, x, y, ICON_SIZE, ICON_SIZE, SLOT_RADIUS, fallbackColor);
+  if (!image) return;
+
+  ctx.save();
+  roundedRectPath(ctx, x, y, ICON_SIZE, ICON_SIZE, SLOT_RADIUS);
+  ctx.clip();
+  ctx.drawImage(image, x, y, ICON_SIZE, ICON_SIZE);
+  ctx.restore();
 }
 
 export async function buildLiveDraftImageBuffer({ blueIconUrls = [], redIconUrls = [] }) {
@@ -65,11 +95,29 @@ export async function buildLiveDraftImageBuffer({ blueIconUrls = [], redIconUrls
   const leftStart = SIDE_PADDING_X;
   const rightStart = SIDE_PADDING_X + sideWidth + VS_WIDTH;
 
+  const blueIconLoadPromises = blueIconUrls
+    .slice(0, SLOT_COUNT_PER_SIDE)
+    .map((iconUrl) => loadIconImageCached(iconUrl));
+  const redIconLoadPromises = redIconUrls
+    .slice(0, SLOT_COUNT_PER_SIDE)
+    .map((iconUrl) => loadIconImageCached(iconUrl));
+  const [blueIconLoadResults, redIconLoadResults] = await Promise.all([
+    Promise.allSettled(blueIconLoadPromises),
+    Promise.allSettled(redIconLoadPromises),
+  ]);
+
   for (let index = 0; index < SLOT_COUNT_PER_SIDE; index += 1) {
     const bx = leftStart + (index * (ICON_SIZE + ICON_GAP));
     const rx = rightStart + (index * (ICON_SIZE + ICON_GAP));
-    await drawSlotIconOrFallback(ctx, blueIconUrls[index], bx, topY, BLUE_EMPTY);
-    await drawSlotIconOrFallback(ctx, redIconUrls[index], rx, topY, RED_EMPTY);
+    const blueImage = blueIconLoadResults[index]?.status === 'fulfilled'
+      ? blueIconLoadResults[index].value
+      : null;
+    const redImage = redIconLoadResults[index]?.status === 'fulfilled'
+      ? redIconLoadResults[index].value
+      : null;
+
+    drawSlotIconOrFallback(ctx, blueImage, bx, topY, BLUE_EMPTY);
+    drawSlotIconOrFallback(ctx, redImage, rx, topY, RED_EMPTY);
   }
 
   return canvas.toBuffer('image/png');
