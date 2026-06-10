@@ -18,7 +18,10 @@ import {
     resolveQueuePresentation,
 } from './matchEmbedShared.js';
 import { resolveChampionIcon } from './lolChampionIcon.js';
-import { buildLiveDraftImageBuffer } from './liveDraftImage.js';
+import {
+    buildLiveDraftImageBuffer,
+    buildParticipantLoadoutThumbnailBuffer,
+} from './liveDraftImage.js';
 import { buildPentakillRoleMentionPayload, formatPentakillResultValue } from './lolSpecialCase.js';
 
 function formatDurationFromSeconds(seconds) {
@@ -420,19 +423,20 @@ export async function buildLolMatchResultEmbed({
     embed.addFields(...resultFields);
 
     const files = [];
-    try {
-        const loadoutBuffer = await buildLiveDraftImageBuffer({
-            blueParticipants: [{ championIconUrl, spellIconUrls, runeIconUrl }],
-            redParticipants: [],
-            slotCountPerSide: 1,
-            showVersus: false,
-        });
-        files.push({ attachment: loadoutBuffer, name: 'lol-match-loadout.png' });
-        embed.setImage('attachment://lol-match-loadout.png');
-    } catch {
+    if (championIconUrl) {
+        try {
+            const thumbnailBuffer = await buildParticipantLoadoutThumbnailBuffer({
+                championIconUrl,
+                spellIconUrls,
+                runeIconUrl,
+            });
+            files.push({ attachment: thumbnailBuffer, name: 'lol-match-thumbnail.png' });
+            embed.setThumbnail('attachment://lol-match-thumbnail.png');
+        } catch {
+            embed.setThumbnail(championIconUrl);
+        }
     }
 
-    if (championIconUrl) embed.setThumbnail(championIconUrl);
     const mentionPayload = pentakillValue
         ? await buildPentakillRoleMentionPayload(channel, { participant: trackedParticipant, summonerName: riotId })
         : {};

@@ -16,6 +16,12 @@ const RED_EMPTY = '#4B5563';
 const LOADOUT_EMPTY = '#2D3748';
 const SLOT_RADIUS = 6;
 const LOADOUT_RADIUS = 4;
+const THUMBNAIL_ICON_SIZE = 96;
+const THUMBNAIL_LOADOUT_ICON_SIZE = 24;
+const THUMBNAIL_LOADOUT_ICON_GAP = 4;
+const THUMBNAIL_LOADOUT_PADDING = 6;
+const THUMBNAIL_LOADOUT_BACKDROP_PADDING = 4;
+const THUMBNAIL_LOADOUT_BACKDROP_COLOR = 'rgba(20, 24, 34, 0.78)';
 const ICON_IMAGE_CACHE_MAX_ENTRIES = 256;
 const iconImageCache = new Map();
 
@@ -144,6 +150,49 @@ function drawParticipantSlot(ctx, { images, x, y, fallbackColor }) {
       LOADOUT_EMPTY,
     );
   }
+}
+
+function drawParticipantThumbnail(ctx, { images, x, y }) {
+  drawSlotIconOrFallback(ctx, images?.championImage, x, y, THUMBNAIL_ICON_SIZE, SLOT_RADIUS, BLUE_EMPTY);
+
+  const loadoutIconCount = 3;
+  const totalLoadoutWidth = (loadoutIconCount * THUMBNAIL_LOADOUT_ICON_SIZE)
+    + ((loadoutIconCount - 1) * THUMBNAIL_LOADOUT_ICON_GAP);
+  const loadoutStartX = Math.floor(x + ((THUMBNAIL_ICON_SIZE - totalLoadoutWidth) / 2));
+  const loadoutY = y + THUMBNAIL_ICON_SIZE - THUMBNAIL_LOADOUT_PADDING - THUMBNAIL_LOADOUT_ICON_SIZE;
+
+  drawRoundedRect(
+    ctx,
+    loadoutStartX - THUMBNAIL_LOADOUT_BACKDROP_PADDING,
+    loadoutY - THUMBNAIL_LOADOUT_BACKDROP_PADDING,
+    totalLoadoutWidth + (THUMBNAIL_LOADOUT_BACKDROP_PADDING * 2),
+    THUMBNAIL_LOADOUT_ICON_SIZE + (THUMBNAIL_LOADOUT_BACKDROP_PADDING * 2),
+    LOADOUT_RADIUS + THUMBNAIL_LOADOUT_BACKDROP_PADDING,
+    THUMBNAIL_LOADOUT_BACKDROP_COLOR,
+  );
+
+  for (let index = 0; index < loadoutIconCount; index += 1) {
+    const iconX = loadoutStartX + (index * (THUMBNAIL_LOADOUT_ICON_SIZE + THUMBNAIL_LOADOUT_ICON_GAP));
+    drawSlotIconOrFallback(
+      ctx,
+      images?.loadoutImages?.[index] ?? null,
+      iconX,
+      loadoutY,
+      THUMBNAIL_LOADOUT_ICON_SIZE,
+      LOADOUT_RADIUS,
+      LOADOUT_EMPTY,
+    );
+  }
+}
+
+export async function buildParticipantLoadoutThumbnailBuffer(participant = {}) {
+  const canvas = new Canvas(THUMBNAIL_ICON_SIZE, THUMBNAIL_ICON_SIZE);
+  const ctx = canvas.getContext('2d');
+  const images = await loadParticipantImages(participant);
+
+  drawParticipantThumbnail(ctx, { images, x: 0, y: 0 });
+
+  return canvas.toBuffer('image/png');
 }
 
 export async function buildLiveDraftImageBuffer({

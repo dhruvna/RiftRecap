@@ -90,4 +90,5 @@ Storage behavior:
 - `/season` command for looking up WR for the season, best champs, LP history.
 - Betting features.
 
+
 Historical timeline and archived notes are in [`docs/history.md`](docs/history.md).
