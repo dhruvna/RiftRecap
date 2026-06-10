@@ -1,7 +1,9 @@
 import { Canvas, loadImage } from '@napi-rs/canvas';
 
-const SLOT_COUNT_PER_SIDE = 5;
+const DEFAULT_SLOT_COUNT_PER_SIDE = 5;
 const ICON_SIZE = 48;
+const LOADOUT_ICON_SIZE = 18;
+const LOADOUT_ICON_GAP = 3;
 const ICON_GAP = 8;
 const SIDE_PADDING_X = 16;
 const CANVAS_PADDING_Y = 12;
@@ -11,15 +13,30 @@ const BACKGROUND_COLOR = '#141822';
 const VS_BACKGROUND = '#21283A';
 const BLUE_EMPTY = '#4B5563';
 const RED_EMPTY = '#4B5563';
+const LOADOUT_EMPTY = '#2D3748';
 const SLOT_RADIUS = 6;
+const LOADOUT_RADIUS = 4;
 const ICON_IMAGE_CACHE_MAX_ENTRIES = 256;
 const iconImageCache = new Map();
 
-function getLiveDraftStripLayout() {
-  const sideWidth = (SLOT_COUNT_PER_SIDE * ICON_SIZE) + ((SLOT_COUNT_PER_SIDE - 1) * ICON_GAP);
-  const width = (SIDE_PADDING_X * 2) + sideWidth + VS_WIDTH + sideWidth;
-  const height = (CANVAS_PADDING_Y * 2) + ICON_SIZE;
-  return { width, height, sideWidth };
+function normalizeParticipantSlots({ participants, iconUrls, slotCount }) {
+  const explicitParticipants = Array.isArray(participants) ? participants : [];
+  if (explicitParticipants.length > 0) {
+    return explicitParticipants.slice(0, slotCount);
+  }
+
+  return (Array.isArray(iconUrls) ? iconUrls : [])
+    .slice(0, slotCount)
+    .map((championIconUrl) => ({ championIconUrl }));
+}
+
+function getLiveDraftStripLayout({ slotCountPerSide = DEFAULT_SLOT_COUNT_PER_SIDE, showVersus = true, includeRightSide = true } = {}) {
+  const sideWidth = (slotCountPerSide * ICON_SIZE) + ((slotCountPerSide - 1) * ICON_GAP);
+  const centerWidth = showVersus ? VS_WIDTH : 0;
+  const rightSideWidth = includeRightSide ? sideWidth : 0;
+  const width = (SIDE_PADDING_X * 2) + sideWidth + centerWidth + rightSideWidth;
+  const height = (CANVAS_PADDING_Y * 2) + ICON_SIZE + LOADOUT_ICON_GAP + LOADOUT_ICON_SIZE;
+  return { width, height, sideWidth, centerWidth };
 }
 
 function roundedRectPath(ctx, x, y, w, h, r) {
@@ -71,53 +88,111 @@ function loadIconImageCached(iconUrl) {
     });
 }
 
-function drawSlotIconOrFallback(ctx, image, x, y, fallbackColor) {
-  drawRoundedRect(ctx, x, y, ICON_SIZE, ICON_SIZE, SLOT_RADIUS, fallbackColor);
+async function loadIconResult(iconUrl) {
+  if (!iconUrl) return null;
+  const result = await Promise.resolve(loadIconImageCached(iconUrl)).then(
+    (image) => ({ status: 'fulfilled', value: image }),
+    () => ({ status: 'rejected', value: null }),
+  );
+  return result.status === 'fulfilled' ? result.value : null;
+}
+
+function drawSlotIconOrFallback(ctx, image, x, y, size, radius, fallbackColor) {
+  drawRoundedRect(ctx, x, y, size, size, radius, fallbackColor);
   if (!image) return;
 
   ctx.save();
-  roundedRectPath(ctx, x, y, ICON_SIZE, ICON_SIZE, SLOT_RADIUS);
+  roundedRectPath(ctx, x, y, size, size, radius);
   ctx.clip();
-  ctx.drawImage(image, x, y, ICON_SIZE, ICON_SIZE);
+  ctx.drawImage(image, x, y, size, size);
   ctx.restore();
 }
 
-export async function buildLiveDraftImageBuffer({ blueIconUrls = [], redIconUrls = [] }) {
-  const { width, height, sideWidth } = getLiveDraftStripLayout();
+function getLoadoutIconUrls(participant) {
+  return [
+    ...(Array.isArray(participant?.spellIconUrls) ? participant.spellIconUrls : []),
+    participant?.runeIconUrl ?? null,
+  ].filter(Boolean).slice(0, 3);
+}
+
+async function loadParticipantImages(participant) {
+  const loadoutIconUrls = getLoadoutIconUrls(participant);
+  const [championImage, ...loadoutImages] = await Promise.all([
+    loadIconResult(participant?.championIconUrl),
+    ...loadoutIconUrls.map((iconUrl) => loadIconResult(iconUrl)),
+  ]);
+
+  return { championImage, loadoutImages };
+}
+
+function drawParticipantSlot(ctx, { images, x, y, fallbackColor }) {
+  drawSlotIconOrFallback(ctx, images?.championImage, x, y, ICON_SIZE, SLOT_RADIUS, fallbackColor);
+
+  const loadoutY = y + ICON_SIZE + LOADOUT_ICON_GAP;
+  const totalLoadoutWidth = (3 * LOADOUT_ICON_SIZE) + (2 * LOADOUT_ICON_GAP);
+  const loadoutStartX = Math.floor(x + ((ICON_SIZE - totalLoadoutWidth) / 2));
+
+  for (let index = 0; index < 3; index += 1) {
+    const iconX = loadoutStartX + (index * (LOADOUT_ICON_SIZE + LOADOUT_ICON_GAP));
+    drawSlotIconOrFallback(
+      ctx,
+      images?.loadoutImages?.[index] ?? null,
+      iconX,
+      loadoutY,
+      LOADOUT_ICON_SIZE,
+      LOADOUT_RADIUS,
+      LOADOUT_EMPTY,
+    );
+  }
+}
+
+export async function buildLiveDraftImageBuffer({
+  blueIconUrls = [],
+  redIconUrls = [],
+  blueParticipants = null,
+  redParticipants = null,
+  slotCountPerSide = DEFAULT_SLOT_COUNT_PER_SIDE,
+  showVersus = true,
+} = {}) {
+  const blueSlots = normalizeParticipantSlots({ participants: blueParticipants, iconUrls: blueIconUrls, slotCount: slotCountPerSide });
+  const redSlots = normalizeParticipantSlots({ participants: redParticipants, iconUrls: redIconUrls, slotCount: slotCountPerSide });
+  const includeRightSide = showVersus || redSlots.length > 0;
+  const { width, height, sideWidth, centerWidth } = getLiveDraftStripLayout({ slotCountPerSide, showVersus, includeRightSide });
   const canvas = new Canvas(width, height);
   const ctx = canvas.getContext('2d');
 
   ctx.fillStyle = BACKGROUND_COLOR;
   ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = VS_BACKGROUND;
-  ctx.fillRect(SIDE_PADDING_X + sideWidth, 0, VS_WIDTH, height);
+  if (showVersus) {
+    ctx.fillStyle = VS_BACKGROUND;
+    ctx.fillRect(SIDE_PADDING_X + sideWidth, 0, VS_WIDTH, height);
+  }
   const topY = CANVAS_PADDING_Y;
   const leftStart = SIDE_PADDING_X;
-  const rightStart = SIDE_PADDING_X + sideWidth + VS_WIDTH;
+  const rightStart = SIDE_PADDING_X + sideWidth + centerWidth;
 
-  const blueIconLoadPromises = blueIconUrls
-    .slice(0, SLOT_COUNT_PER_SIDE)
-    .map((iconUrl) => loadIconImageCached(iconUrl));
-  const redIconLoadPromises = redIconUrls
-    .slice(0, SLOT_COUNT_PER_SIDE)
-    .map((iconUrl) => loadIconImageCached(iconUrl));
-  const [blueIconLoadResults, redIconLoadResults] = await Promise.all([
-    Promise.allSettled(blueIconLoadPromises),
-    Promise.allSettled(redIconLoadPromises),
+  const [blueImageSets, redImageSets] = await Promise.all([
+    Promise.all(blueSlots.map((participant) => loadParticipantImages(participant))),
+    Promise.all(redSlots.map((participant) => loadParticipantImages(participant))),
   ]);
 
-  for (let index = 0; index < SLOT_COUNT_PER_SIDE; index += 1) {
+  for (let index = 0; index < slotCountPerSide; index += 1) {
     const bx = leftStart + (index * (ICON_SIZE + ICON_GAP));
     const rx = rightStart + (index * (ICON_SIZE + ICON_GAP));
-    const blueImage = blueIconLoadResults[index]?.status === 'fulfilled'
-      ? blueIconLoadResults[index].value
-      : null;
-    const redImage = redIconLoadResults[index]?.status === 'fulfilled'
-      ? redIconLoadResults[index].value
-      : null;
-
-    drawSlotIconOrFallback(ctx, blueImage, bx, topY, BLUE_EMPTY);
-    drawSlotIconOrFallback(ctx, redImage, rx, topY, RED_EMPTY);
+    drawParticipantSlot(ctx, {
+      images: blueImageSets[index] ?? null,
+      x: bx,
+      y: topY,
+      fallbackColor: BLUE_EMPTY,
+    });
+    if (includeRightSide) {
+      drawParticipantSlot(ctx, {
+        images: redImageSets[index] ?? null,
+        x: rx,
+        y: topY,
+        fallbackColor: RED_EMPTY,
+      });
+    }
   }
 
   return canvas.toBuffer('image/png');

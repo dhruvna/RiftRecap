@@ -84,6 +84,16 @@ export const loadLolChampions = createDatasetLoader({
     path: 'champion.json',
 });
 
+export const loadLolSummonerSpells = createDatasetLoader({
+    cacheKey: 'LoL summoner spells',
+    path: 'summoner.json',
+});
+
+export const loadLolRunes = createDatasetLoader({
+    cacheKey: 'LoL runes',
+    path: 'runesReforged.json',
+});
+
 export async function getTftRegaliaThumbnailUrl({ queueType, tier }) {
     const regalia = await loadTFTRegalia();
     const version = await getLatestDDragonVersion();
