@@ -59,8 +59,24 @@ function getParticipantRuneIds(participant) {
     return normalizeNumericIds([...flatPerkIds, ...stylePerkIds]);
 }
 
+function normalizeParticipantSpellId(value) {
+    if (value == null || value === '') return null;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function resolveParticipantSpellId(participant, primaryKey, fallbackKey) {
+    const primaryValue = normalizeParticipantSpellId(participant?.[primaryKey]);
+    if (primaryValue != null) return primaryValue;
+
+    return normalizeParticipantSpellId(participant?.[fallbackKey]);
+}
+
 function getParticipantSpellIds(participant) {
-    return [Number(participant?.spell1Id), Number(participant?.spell2Id)].filter(Number.isFinite);
+    return [
+        resolveParticipantSpellId(participant, 'spell1Id', 'summoner1Id'),
+        resolveParticipantSpellId(participant, 'spell2Id', 'summoner2Id'),
+    ].filter(Number.isFinite);
 }
 
 function normalizeTeamSide(teamId) {
@@ -80,8 +96,8 @@ function buildNormalizedTeamRosters(participants) {
             riotId: participant?.riotId ?? null,
             championId: participant?.championId ?? null,
             championName: participant?.championName ?? null,
-            spell1Id: participant?.spell1Id ?? null,
-            spell2Id: participant?.spell2Id ?? null,
+            spell1Id: participant?.spell1Id ?? participant?.summoner1Id ?? null,
+            spell2Id: participant?.spell2Id ?? participant?.summoner2Id ?? null,
             runeIds: getParticipantRuneIds(participant),
         };
 
