@@ -27,7 +27,6 @@ import { processTftAccountTick } from './matchPoller/tftProcessor.js';
 import { buildRecapEvents } from './matchPoller/shared.js';
 
 // === Polling configuration ===
-const MATCH_BACKFILL_LIMIT = 10;
 const MATCH_POLLER_WORKER_COUNT = (() => {
     const configured = Number(process.env.MATCH_POLLER_WORKERS ?? 5);
     if (!Number.isFinite(configured)) return 5;

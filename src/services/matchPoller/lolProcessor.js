@@ -102,7 +102,7 @@ function reduceLolLiveState({
     return { nextTrackingPatch, shouldAnnounceLive: true, debugReason: 'announce_live' };
 }
 
-export function normalizeLolRole(participant = {}) {
+function normalizeLolRole(participant = {}) {
     const rawRole = typeof participant?.teamPosition === 'string' && participant.teamPosition.trim()
         ? participant.teamPosition
         : participant?.lane;
@@ -113,7 +113,7 @@ export function normalizeLolRole(participant = {}) {
     return normalized;
 }
 
-export function getParticipantChampionContext(participant = {}) {
+function getParticipantChampionContext(participant = {}) {
     if (typeof participant?.championName === 'string' && participant.championName.trim()) {
         return participant.championName.trim();
     }
@@ -123,7 +123,7 @@ export function getParticipantChampionContext(participant = {}) {
     return null;
 }
 
-export function buildLineupMemberMetadata({ participants = [], byPuuid, teamId }) {
+function buildLineupMemberMetadata({ participants = [], byPuuid, teamId }) {
     const metadataByMember = {};
     const lineupMemberKeys = [];
 
@@ -146,7 +146,7 @@ export function buildLineupMemberMetadata({ participants = [], byPuuid, teamId }
     return { lineupMemberKeys, metadataByMember };
 }
 
-export function buildRegisteredLolLookup(guild = {}) {
+function buildRegisteredLolLookup(guild = {}) {
     const byPuuid = new Map();
     const accounts = Array.isArray(guild?.accounts) ? guild.accounts : [];
     for (const registeredAccount of accounts) {
@@ -159,7 +159,7 @@ export function buildRegisteredLolLookup(guild = {}) {
     return { byPuuid };
 }
 
-export async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null }) {
+async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null }) {
     const areLolAnnouncementsEnabledForAccount = account?.notifications?.lolAnnouncements !== false;
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
@@ -224,7 +224,7 @@ export async function pollLolAccountState({ riotLimiter, account, lolTracking, g
     };
 }
 
-export async function processUnseenLolMatches({
+async function processUnseenLolMatches({
     riotLimiter,
     account,
     guildId,

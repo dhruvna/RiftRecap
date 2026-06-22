@@ -1,7 +1,7 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { STAR_ICON_SIZE, STAR_ICON_SPACING, STAR_ROW_HEIGHT } from './layout.js';
 
-export function getUnitTierColor(unit) {
+function getUnitTierColor(unit) {
     // tier means star level
     // rarity seems to be a binary version of cost? 0, 1, 2, 4, 6, 7
     const rarity = Number(unit?.rarity ?? 0);
@@ -12,7 +12,7 @@ export function getUnitTierColor(unit) {
     return '#656a74';
 }
 
-export function getTraitTierColor(trait) {
+function getTraitTierColor(trait) {
     // style:
     // 0 = gray (no active bonus)
     // 1 = bronze
@@ -29,7 +29,7 @@ export function getTraitTierColor(trait) {
     return '#7b808e';
 }
 
-export function drawRoundedRect(ctx, x, y, width, height, radius) {
+function drawRoundedRect(ctx, x, y, width, height, radius) {
     const r = Math.min(radius, width / 2, height / 2);
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -48,7 +48,7 @@ export function drawBackground(ctx, width, height) {
     ctx.fillRect(0, 0, width, height);
 }
 
-export function drawTierStars(ctx, starImage, stars, x, y, width) {
+function drawTierStars(ctx, starImage, stars, x, y, width) {
     const count = Math.min(3, Math.max(0, Number(stars ?? 0)));
     if (!starImage || !Number.isFinite(count) || count <= 0) return;
 

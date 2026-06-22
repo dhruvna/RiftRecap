@@ -1,5 +1,5 @@
-export const ITEM_ROW_RATIO = 0.3;
-export const PORTRAIT_ROW_RATIO = 1 - ITEM_ROW_RATIO;
+const ITEM_ROW_RATIO = 0.3;
+const PORTRAIT_ROW_RATIO = 1 - ITEM_ROW_RATIO;
 export const STAR_ROW_HEIGHT = 16;
 export const STAR_ICON_SIZE = 11;
 export const STAR_ICON_SPACING = 3;
@@ -56,14 +56,5 @@ export function getUnitCardPosition(index, layout, options) {
     return {
         x: layout.unitGridOffsetX + padding + col * (layout.cardWidth + padding),
         y: layout.unitGridStartY + padding + row * (layout.cardHeight + padding),
-    };
-}
-
-export function getTraitIconPosition(index, layout, options) {
-    const { padding, traitIconSize } = options;
-
-    return {
-        x: layout.traitRowOffsetX + padding + index * (traitIconSize + padding),
-        y: padding,
     };
 }

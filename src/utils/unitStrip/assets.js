@@ -13,10 +13,10 @@ const COST_STAR_PATHS = {
     5: 'assets/5CostStar.svg',
 };
 
-export const starAssetCache = new Map();
-export const championImageCache = new Map();
-export const itemImageCache = new Map();
-export const traitImageCache = new Map();
+const starAssetCache = new Map();
+const championImageCache = new Map();
+const itemImageCache = new Map();
+const traitImageCache = new Map();
 
 function touchCacheEntry(cache, key) {
     const value = cache.get(key);
@@ -47,7 +47,7 @@ function memoizeImageLoad(cache, key, loader) {
     return imagePromise;
 }
 
-export async function fetchImageFromUrl(url) {
+async function fetchImageFromUrl(url) {
     if (!url) return null;
     try {
         const res = await fetch(url);
