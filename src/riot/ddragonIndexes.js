@@ -163,7 +163,7 @@ function createLolRuneLookup() {
         async getImageById(runeId) {
             const key = String(runeId ?? '').trim();
             if (!key) return null;
-            const { imageByRuneId: map, version } = await loadIndexes();
+            const { imageByRuneId: map } = await loadIndexes();
             const iconPath = map.get(key);
             if (!iconPath) return null;
             return `https://ddragon.leagueoflegends.com/cdn/img/${iconPath}`;

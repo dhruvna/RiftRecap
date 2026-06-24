@@ -592,7 +592,7 @@ export async function updateGuildRecapConfigsInStore(guildId, patch) {
             const recapConfigs = patch.recapConfigs.map((cfg, idx) =>
                 normalizeRecapConfig(cfg, idx === 0 ? DEFAULT_RECAP_CONFIG_ID : `cfg-${idx + 1}`)
             );
-            for (const config of recapConfigs) upsertRecapConfigRow(sqliteDb, guildId, config);
+            for (const recapConfig of recapConfigs) upsertRecapConfigRow(sqliteDb, guildId, recapConfig);
             return recapConfigs;
         }
 
