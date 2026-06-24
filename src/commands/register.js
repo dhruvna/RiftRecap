@@ -18,7 +18,7 @@ import {
     updateGuildAccountNotificationsInStore,
     upsertGuildAccountInStore,
 } from '../storage.js';
-import { GAME_TYPES, LOL_QUEUE_TYPES, RANKED_QUEUES_BY_GAME } from '../constants/queues.js';
+import { GAME_TYPES, RANKED_QUEUES_BY_GAME } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
 import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
 
@@ -91,10 +91,7 @@ export default {
             rankFetcher: getLolRankByPuuid,
             matchIdsFetcher: getLolMatchIdsByPuuid,
             matchFetcher: getLolMatch,
-            rankedQueues: new Set([
-                LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
-                LOL_QUEUE_TYPES.RANKED_FLEX,
-            ]),
+            rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL]),
             getMatchTimestamp: (match) => {
                 const gameEndTimestamp = Number(match?.info?.gameEndTimestamp ?? 0);
                 if (Number.isFinite(gameEndTimestamp) && gameEndTimestamp > 0) return gameEndTimestamp;

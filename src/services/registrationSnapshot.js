@@ -1,5 +1,4 @@
 import { GAME_TYPES } from '../constants/queues.js';
-import { getAccountByRiotId } from '../riot.js';
 import { toRankSnapshot } from '../utils/rankSnapshot.js';
 
 const ACCEPTED_GAME_TYPES = new Set(Object.values(GAME_TYPES));
@@ -10,6 +9,11 @@ function assertAcceptedGameType(gameType) {
         throw new Error(`Unsupported gameType for registration snapshot: ${gameType}`);
     }
     return normalizedGameType;
+}
+
+async function defaultAccountFetcher(args) {
+    const { getAccountByRiotId } = await import('../riot.js');
+    return getAccountByRiotId(args);
 }
 
 const DEFAULT_SNAPSHOT = {
@@ -32,6 +36,7 @@ export async function getRegistrationSnapshot({
     platform,
     gameName,
     tagLine,
+    accountFetcher = defaultAccountFetcher,
     rankFetcher,
     matchIdsFetcher,
     matchFetcher,
@@ -39,8 +44,8 @@ export async function getRegistrationSnapshot({
     getMatchTimestamp,
 }) {
     const normalizedGameType = assertAcceptedGameType(gameType);
-    const account = await getAccountByRiotId({ regional, gameName, tagLine, gameType: normalizedGameType });
-
+    const account = await accountFetcher({ regional, gameName, tagLine, gameType: normalizedGameType });
+    
     let lastRankByQueue = {};
     try {
         const entries = await rankFetcher({ platform, puuid: account.puuid });
