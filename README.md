@@ -12,8 +12,8 @@ A Discord bot built with **Node.js**, **discord.js**, and the **Riot Games API**
 - Full recap-oriented helper pipeline and canonical queue helpers (`gameFromQueue`, `defaultRankedQueueForGame`, `queueLabel`, `isRankedQueue`, `queueChoicesForRecap`).
 
 ### LoL-specific
-- LoL ranked Solo/Duo and Ranked Flex rank snapshots, leaderboard entries, recaps, and match announcements are supported.
-- `/lineups` shows top LoL registered-player lineup win rates from recorded ranked Solo/Duo duos and ranked Flex 2-, 3-, or 5-player groups.
+- LoL ranked Solo/Duo, Ranked Flex, and Ranked 5s rank snapshots, leaderboard entries, recaps, and match announcements are supported.
+- `/lineups` shows top LoL registered-player lineup win rates from recorded ranked Solo/Duo duos, ranked Flex 2-, 3-, or 5-player groups, and Ranked 5s lineups according to the chosen eligibility rule.
 
 ## Command reference
 - `/register` — register a Riot ID in this server and initialize TFT + LoL tracking.
@@ -23,8 +23,8 @@ A Discord bot built with **Node.js**, **discord.js**, and the **Riot Games API**
 - `/leaderboard [queue] [limit]` — show the server leaderboard for registered accounts in a selected TFT or LoL ranked queue. Defaults to Ranked TFT and shows up to 15 entries unless `limit` is provided.
 - `/recap [queue] [mode]` — post an on-demand daily or weekly recap for a selected TFT or LoL ranked queue. Defaults to Ranked TFT and daily mode when options are omitted.
 - `/recapconfig status:true` — show recap autopost status and the configured UTC schedule.
-- `/recapconfig queue:<queue> mode:<mode> enabled:<true|false>` — enable or disable autoposting for a `(queue, mode)` pair. Supports TFT and LoL ranked queues; `mode` may be daily, weekly, or both.
-- `/lineups [user] [min_games] [size]` — show the top 10 LoL lineups by win rate for this server, optionally filtered to a registered user, minimum games, or lineup size.
+- `/recapconfig queue:<queue> mode:<mode> enabled:<true|false>` — enable or disable autoposting for a `(queue, mode)` pair. Supports TFT and LoL ranked queues, including LoL Solo/Duo, Ranked Flex, and Ranked 5s; `mode` may be daily, weekly, or both.
+- `/lineups [user] [min_games] [size]` — show the top 10 LoL lineups by win rate for this server, tracking ranked Solo/Duo duos, ranked Flex 2-, 3-, or 5-player groups, and Ranked 5s 5-player lineups according to the chosen eligibility rule; optionally filter to a registered user, minimum games, or lineup size.
 - `/setchannel channel:<channel> [queue_preset]` — set the announcement channel and choose whether ranked TFT, ranked LoL, or both are announced.
 - `/resetranks confirm:true [game]` — clear stored rank snapshots and recap history for TFT, LoL, or both. Defaults to TFT when `game` is omitted and keeps match cursors by default to avoid replaying old matches.
 - `/resetranks confirm:true before_date:YYYY-MM-DD [game]` — clear only accounts whose latest tracked match for the selected game scope is before `YYYY-MM-DD 00:00:00 UTC`; also saves that season cutoff for future polling.

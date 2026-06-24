@@ -15,7 +15,7 @@ import {
     resolveTrackedParticipant,
 } from './participants.js';
 
-export async function buildLolEmbedContext({
+async function buildLolEmbedContext({
     account,
     queueId,
     queueType,

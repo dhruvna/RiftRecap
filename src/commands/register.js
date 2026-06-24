@@ -18,7 +18,7 @@ import {
     updateGuildAccountNotificationsInStore,
     upsertGuildAccountInStore,
 } from '../storage.js';
-import { GAME_TYPES, RANKED_QUEUES_BY_GAME, TFT_QUEUE_TYPES } from '../constants/queues.js';
+import { GAME_TYPES, LOL_QUEUE_TYPES, RANKED_QUEUES_BY_GAME } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
 import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
 

@@ -2,7 +2,7 @@ import { GAME_TYPES, resolveLolQueueContext } from '../../constants/queues.js';
 import { resolveQueuePresentation } from '../matchEmbedShared.js';
 
 // Extract the queue id from a match payload while handling API variations.
-export function getQueueIdFromLolMatch(match) {
+function getQueueIdFromLolMatch(match) {
     const info = match?.info;
     const q = info?.queueId ?? info?.queue_id ?? null;
     return typeof q === 'number' ? q : (q ? Number(q) : null);

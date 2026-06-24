@@ -44,7 +44,7 @@ export function getParticipantSpellIds(participant) {
     ].filter(Number.isFinite);
 }
 
-export function normalizeTeamSide(teamId) {
+function normalizeTeamSide(teamId) {
     return Number(teamId) === 200 ? 'RED' : 'BLUE';
 }
 
