@@ -18,7 +18,7 @@ import {
     updateGuildAccountNotificationsInStore,
     upsertGuildAccountInStore,
 } from '../storage.js';
-import { GAME_TYPES, LOL_QUEUE_TYPES, TFT_QUEUE_TYPES } from '../constants/queues.js';
+import { GAME_TYPES, RANKED_QUEUES_BY_GAME, TFT_QUEUE_TYPES } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
 import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
 
@@ -79,10 +79,7 @@ export default {
             rankFetcher: getTFTRankByPuuid,
             matchIdsFetcher: getTFTMatchIdsByPuuid,
             matchFetcher: getTFTMatch,
-            rankedQueues: new Set([
-                TFT_QUEUE_TYPES.RANKED,
-                TFT_QUEUE_TYPES.RANKED_DOUBLE_UP,
-            ]),
+            rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL]),
             getMatchTimestamp: (match) => match?.info?.game_datetime ?? 0,
         });
         const lolSnapshot = await getRegistrationSnapshot({
