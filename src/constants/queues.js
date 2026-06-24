@@ -21,6 +21,7 @@ export const TFT_QUEUE_TYPES = Object.freeze({
 export const LOL_QUEUE_TYPES = Object.freeze({
     RANKED_SOLO_DUO: 'RANKED_SOLO_DUO',
     RANKED_FLEX: 'RANKED_FLEX',
+    RANKED_5S: 'RANKED_5S',
     UNKNOWN: 'UNKNOWN_LOL',
 });
 
@@ -36,11 +37,13 @@ const QUEUE_ID_TO_QUEUE_TYPE = Object.freeze({
     1160: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP,
     420: LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     440: LOL_QUEUE_TYPES.RANKED_FLEX,
+    710: LOL_QUEUE_TYPES.RANKED_5S,
 });
 
 const LOL_RIOT_QUEUE_TYPE_TO_BOT_QUEUE_TYPE = Object.freeze({
     RANKED_SOLO_5x5: LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     RANKED_FLEX_SR: LOL_QUEUE_TYPES.RANKED_FLEX,
+    RANKED_TEAM_5x5: LOL_QUEUE_TYPES.RANKED_5S,
 });
 
 const QUEUE_LABELS_BY_GAME = Object.freeze({
@@ -52,6 +55,7 @@ const QUEUE_LABELS_BY_GAME = Object.freeze({
     [GAME_TYPES.LOL]: Object.freeze({
         [LOL_QUEUE_TYPES.RANKED_SOLO_DUO]: 'Ranked Solo/Duo',
         [LOL_QUEUE_TYPES.RANKED_FLEX]: 'Ranked Flex',
+        [LOL_QUEUE_TYPES.RANKED_5S]: 'Ranked 5s',
         [LOL_QUEUE_TYPES.UNKNOWN]: 'Unknown',
     }),
 });
@@ -64,6 +68,7 @@ export const RANKED_QUEUES_BY_GAME = Object.freeze({
     [GAME_TYPES.LOL]: new Set([
         LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
         LOL_QUEUE_TYPES.RANKED_FLEX,
+        LOL_QUEUE_TYPES.RANKED_5S,
     ]),
 });
 
@@ -73,6 +78,7 @@ export const DEFAULT_ANNOUNCE_QUEUES = [
     TFT_QUEUE_TYPES.RANKED_DOUBLE_UP,
     LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     LOL_QUEUE_TYPES.RANKED_FLEX,
+    LOL_QUEUE_TYPES.RANKED_5S,
 ];
 
 const TFT_QUEUE_CHOICES = Object.freeze([
@@ -83,6 +89,7 @@ const TFT_QUEUE_CHOICES = Object.freeze([
 const LOL_QUEUE_CHOICES = Object.freeze([
     { name: 'LoL Ranked Solo/Duo', value: LOL_QUEUE_TYPES.RANKED_SOLO_DUO },
     { name: 'LoL Ranked Flex', value: LOL_QUEUE_TYPES.RANKED_FLEX },
+    { name: 'LoL Ranked 5s', value: LOL_QUEUE_TYPES.RANKED_5S },
 ]);
 
 export const ALL_QUEUE_CHOICES = Object.freeze([
