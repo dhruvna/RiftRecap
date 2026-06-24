@@ -29,6 +29,10 @@ function isEligibleLolLineupSize(queueType, size) {
         return size === 2;
     }
 
+    if (queueType === LOL_QUEUE_TYPES.RANKED_5S) {
+        return size === 5;
+    }
+
     if (queueType === LOL_QUEUE_TYPES.RANKED_FLEX) {
         return size === 2 || size === 3 || size === 5;
     }
