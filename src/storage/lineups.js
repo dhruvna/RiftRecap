@@ -265,9 +265,10 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                 SELECT 1
                 FROM lineup_match_seen
                 WHERE guild_id = ?
+                  AND queue_type = ?
                   AND lineup_key = ?
                   AND match_id = ?
-             `).get(guildId, lineupKey, matchIdNormalized);
+             `).get(guildId, queueType, lineupKey, matchIdNormalized);
 
             if (existingMatch) {
                 return { recorded: false, reason: 'duplicate_match', didChange: false };
@@ -278,6 +279,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
             db.prepare(`
                 INSERT INTO lineup_stats (
                     guild_id,
+                    queue_type,
                     lineup_key,
                     lineup_size,
                     games,
@@ -285,8 +287,8 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                     losses,
                     first_seen_at,
                     last_seen_at
-                ) VALUES (?, ?, ?, 1, ?, ?, ?, ?)
-                ON CONFLICT(guild_id, lineup_key)
+                ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+                ON CONFLICT(guild_id, queue_type, lineup_key)
                 DO UPDATE SET
                     lineup_size = excluded.lineup_size,
                     games = games + 1,
@@ -295,6 +297,7 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                     last_seen_at = excluded.last_seen_at
             `),
             guildId,
+            queueType,
             lineupKey,
             lineupSize,
             didWin ? 1 : 0,
@@ -308,12 +311,14 @@ export async function recordLolLineupResult({ guildId, queueType, lineupMemberKe
                 db.prepare(`
                     INSERT INTO lineup_match_seen (
                         guild_id,
+                        queue_type,
                         lineup_key,
                         match_id,
                         seen_at
-                    ) VALUES (?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?)
                 `),
                 guildId,
+                queueType,
                 lineupKey,
                 matchIdNormalized,
                 seenAt
@@ -435,29 +440,47 @@ export async function getLolMemberContextStats(guildId, memberKey) {
     return stats;
 }
 
-export async function getGuildLineupStats(guildId, { includeMemberContextFor = null } = {}) {
+export async function getGuildLineupStats(guildId, { includeMemberContextFor = null, queueType = null } = {}) {
     if (!guildId || typeof guildId !== 'string') {
         return {};
     }
 
+    const normalizedQueueType = typeof queueType === 'string' && queueType.trim() ? queueType.trim() : null;
     const db = await getSqliteDb();
-    const statsRows = db.prepare(`
-        SELECT
-            lineup_key AS lineupKey,
-            SUM(games) AS games,
-            SUM(wins) AS wins,
-            SUM(losses) AS losses,
-            MIN(first_seen_at) AS firstSeenAt,
-            MAX(last_seen_at) AS lastSeenAt
-        FROM lineup_stats
-        WHERE guild_id = ?
-        GROUP BY lineup_key
-    `).all(guildId);
+    const statsRows = normalizedQueueType
+        ? db.prepare(`
+            SELECT
+                lineup_key AS lineupKey,
+                queue_type AS queueType,
+                SUM(games) AS games,
+                SUM(wins) AS wins,
+                SUM(losses) AS losses,
+                MIN(first_seen_at) AS firstSeenAt,
+                MAX(last_seen_at) AS lastSeenAt
+            FROM lineup_stats
+            WHERE guild_id = ?
+              AND queue_type = ?
+            GROUP BY queue_type, lineup_key
+        `).all(guildId, normalizedQueueType)
+        : db.prepare(`
+            SELECT
+                lineup_key AS lineupKey,
+                NULL AS queueType,
+                SUM(games) AS games,
+                SUM(wins) AS wins,
+                SUM(losses) AS losses,
+                MIN(first_seen_at) AS firstSeenAt,
+                MAX(last_seen_at) AS lastSeenAt
+            FROM lineup_stats
+            WHERE guild_id = ?
+            GROUP BY lineup_key
+        `).all(guildId);
 
     const lineups = Object.fromEntries(statsRows.map((row) => [
         row.lineupKey,
         {
             games: Number(row.games ?? 0),
+            queueType: row.queueType,
             wins: Number(row.wins ?? 0),
             losses: Number(row.losses ?? 0),
             firstSeenAt: Number(row.firstSeenAt ?? 0),

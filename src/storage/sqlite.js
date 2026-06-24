@@ -23,6 +23,86 @@ function ensureDatabaseDirectory(filePath) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+function getTableColumns(db, tableName) {
+    return db.prepare(`PRAGMA table_info(${tableName})`).all().map((column) => column.name);
+}
+
+function tableHasColumn(db, tableName, columnName) {
+    return getTableColumns(db, tableName).includes(columnName);
+}
+
+function migrateLineupQueueScope(db) {
+    if (!tableHasColumn(db, 'lineup_stats', 'queue_type')) {
+        db.exec(`
+            ALTER TABLE lineup_stats RENAME TO lineup_stats_legacy;
+            CREATE TABLE lineup_stats (
+                guild_id TEXT NOT NULL,
+                queue_type TEXT NOT NULL,
+                lineup_key TEXT NOT NULL,
+                lineup_size INTEGER NOT NULL,
+                games INTEGER NOT NULL DEFAULT 0,
+                wins INTEGER NOT NULL DEFAULT 0,
+                losses INTEGER NOT NULL DEFAULT 0,
+                first_seen_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                PRIMARY KEY (guild_id, queue_type, lineup_key)
+            );
+            INSERT INTO lineup_stats (
+                guild_id,
+                queue_type,
+                lineup_key,
+                lineup_size,
+                games,
+                wins,
+                losses,
+                first_seen_at,
+                last_seen_at
+            )
+            SELECT
+                guild_id,
+                'RANKED_FLEX',
+                lineup_key,
+                lineup_size,
+                games,
+                wins,
+                losses,
+                first_seen_at,
+                last_seen_at
+            FROM lineup_stats_legacy;
+            DROP TABLE lineup_stats_legacy;
+        `);
+    }
+
+    if (!tableHasColumn(db, 'lineup_match_seen', 'queue_type')) {
+        db.exec(`
+            ALTER TABLE lineup_match_seen RENAME TO lineup_match_seen_legacy;
+            CREATE TABLE lineup_match_seen (
+                guild_id TEXT NOT NULL,
+                queue_type TEXT NOT NULL,
+                lineup_key TEXT NOT NULL,
+                match_id TEXT NOT NULL,
+                seen_at INTEGER NOT NULL,
+                PRIMARY KEY (guild_id, queue_type, lineup_key, match_id)
+            );
+            INSERT INTO lineup_match_seen (
+                guild_id,
+                queue_type,
+                lineup_key,
+                match_id,
+                seen_at
+            )
+            SELECT
+                guild_id,
+                'RANKED_FLEX',
+                lineup_key,
+                match_id,
+                seen_at
+            FROM lineup_match_seen_legacy;
+            DROP TABLE lineup_match_seen_legacy;
+        `);
+    }
+}
+
 function initializeSchema(db) {
     db.exec(`
         PRAGMA journal_mode = WAL;
@@ -123,6 +203,7 @@ function initializeSchema(db) {
 
         CREATE TABLE IF NOT EXISTS lineup_stats (
             guild_id TEXT NOT NULL,
+            queue_type TEXT NOT NULL,
             lineup_key TEXT NOT NULL,
             lineup_size INTEGER NOT NULL,
             games INTEGER NOT NULL DEFAULT 0,
@@ -130,15 +211,16 @@ function initializeSchema(db) {
             losses INTEGER NOT NULL DEFAULT 0,
             first_seen_at INTEGER NOT NULL,
             last_seen_at INTEGER NOT NULL,
-            PRIMARY KEY (guild_id, lineup_key)
+            PRIMARY KEY (guild_id, queue_type, lineup_key)
         );
 
         CREATE TABLE IF NOT EXISTS lineup_match_seen (
             guild_id TEXT NOT NULL,
+            queue_type TEXT NOT NULL,
             lineup_key TEXT NOT NULL,
             match_id TEXT NOT NULL,
             seen_at INTEGER NOT NULL,
-            PRIMARY KEY (guild_id, lineup_key, match_id)
+            PRIMARY KEY (guild_id, queue_type, lineup_key, match_id)
         );
 
         CREATE TABLE IF NOT EXISTS lol_member_context_counter (
@@ -159,14 +241,17 @@ function initializeSchema(db) {
             PRIMARY KEY (guild_id, member_key, match_id)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_size_games_wins
-            ON lineup_stats (guild_id, lineup_size, games, wins);
-        CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_games
-            ON lineup_stats (guild_id, games);
         CREATE INDEX IF NOT EXISTS idx_lol_member_context_counter_query
             ON lol_member_context_counter (guild_id, member_key, context_type, games, wins);
         CREATE INDEX IF NOT EXISTS idx_lol_member_context_match_seen_match
             ON lol_member_context_match_seen (guild_id, match_id);
+    `);
+    migrateLineupQueueScope(db);
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_queue_size_games_wins
+            ON lineup_stats (guild_id, queue_type, lineup_size, games, wins);
+        CREATE INDEX IF NOT EXISTS idx_lineup_stats_guild_queue_games
+            ON lineup_stats (guild_id, queue_type, games);
     `);
 }
 

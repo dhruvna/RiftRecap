@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 import { getChampionRoleParts, getGuildLineupStats, getLolMemberContextStats } from '../storage/lineups.js';
+import { LOL_QUEUE_TYPES, GAME_TYPES, queueLabel } from '../constants/queues.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
 import { respondWithAccountChoices } from '../utils/autocomplete.js';
 
@@ -18,8 +19,9 @@ function parseLineupDisplay(lineupKey) {
     return names.join(' + ');
 }
 
-function buildLineupFiltersText({ lineupSize, minGames, selectedAccountKey }) {
+function buildLineupFiltersText({ lineupSize, minGames, selectedAccountKey, queueType }) {
     const filters = [
+        `Queue: ${queueType ? queueLabel(GAME_TYPES.LOL, queueType) : 'All ranked LoL'}`,
         `Size: ${lineupSize ?? 'All'}`,
         `Min games: ${minGames}`,
     ];
@@ -143,6 +145,17 @@ export default {
                 .setMinValue(1)
                 .setMaxValue(100)
         )
+        .addStringOption((opt) =>
+            opt
+                .setName('queue')
+                .setDescription('Only show lineups from this LoL ranked queue')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'Ranked Solo/Duo', value: LOL_QUEUE_TYPES.RANKED_SOLO_DUO },
+                    { name: 'Ranked Flex', value: LOL_QUEUE_TYPES.RANKED_FLEX },
+                    { name: 'Ranked 5s', value: LOL_QUEUE_TYPES.RANKED_5S }
+                )
+        )
         .addIntegerOption((opt) =>
             opt
                 .setName('size')
@@ -166,8 +179,9 @@ export default {
         const selectedAccountKey = interaction.options.getString('user') ?? null;
         const minGames = interaction.options.getInteger('min_games') ?? 1;
         const lineupSize = interaction.options.getInteger('size') ?? null;
+        const queueType = interaction.options.getString('queue') ?? null;
 
-        const stats = await getGuildLineupStats(guildId);
+        const stats = await getGuildLineupStats(guildId, { queueType }); 
         const entries = Object.entries(stats)
             .map(([lineupKey, value]) => {
                 const wins = Number(value?.wins ?? 0);
@@ -197,7 +211,8 @@ export default {
 
         if (entries.length === 0) {
             const sizeText = lineupSize ? ` and ${lineupSize} registered players` : '';
-            await interaction.editReply(`No lineup stats found for this server with at least ${minGames} games${sizeText}.`);
+            const queueText = queueType ? ` in ${queueLabel(GAME_TYPES.LOL, queueType)}` : '';
+            await interaction.editReply(`No lineup stats found for this server${queueText} with at least ${minGames} games${sizeText}.`);
             return;
         }
 
@@ -214,7 +229,7 @@ export default {
         const embed = new EmbedBuilder()
             .setTitle(selectedAccountKey ? 'Top LoL Lineups for User' : 'Top LoL Lineups')
             .setDescription(lines.join('\n'))
-            .setFooter({ text: buildLineupFiltersText({ lineupSize, minGames, selectedAccountKey }) });
+            .setFooter({ text: buildLineupFiltersText({ lineupSize, minGames, selectedAccountKey, queueType }) });
 
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'lineups' }),

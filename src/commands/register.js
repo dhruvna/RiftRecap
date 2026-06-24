@@ -79,7 +79,7 @@ export default {
             rankFetcher: getTFTRankByPuuid,
             matchIdsFetcher: getTFTMatchIdsByPuuid,
             matchFetcher: getTFTMatch,
-            rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL]),
+            rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.TFT]),
             getMatchTimestamp: (match) => match?.info?.game_datetime ?? 0,
         });
         const lolSnapshot = await getRegistrationSnapshot({
