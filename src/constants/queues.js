@@ -138,10 +138,13 @@ export function mapRiotLolQueueType(queueType) {
 }
 
 export function resolveLolQueueContext({ match = null, queueId = null, rawQueueType = null } = {}) {
-    const inferredQueueId = queueId ?? match?.info?.queueId ?? null;
+    const inferredQueueId = queueId ?? match?.info?.queueId ?? match?.info?.queue_id ?? null;
     const mappedFromQueueId = queueTypeFromQueueId(inferredQueueId, GAME_TYPES.LOL);
-    const mappedFromRawQueueType = mapRiotLolQueueType(rawQueueType);
-    const queueType = mappedFromRawQueueType ?? mappedFromQueueId;
+    const mappedFromRawQueueType = mapRiotLolQueueType(rawQueueType ?? match?.info?.queueType ?? match?.info?.queue_type);
+    const hasKnownQueueIdMapping = mappedFromQueueId !== LOL_QUEUE_TYPES.UNKNOWN;
+    const queueType = hasKnownQueueIdMapping
+        ? mappedFromQueueId
+        : (mappedFromRawQueueType ?? mappedFromQueueId);
     return {
         queueType,
         queueLabel: queueLabel(GAME_TYPES.LOL, queueType),

@@ -5,7 +5,8 @@ import { resolveQueuePresentation } from '../matchEmbedShared.js';
 function getQueueIdFromLolMatch(match) {
     const info = match?.info;
     const q = info?.queueId ?? info?.queue_id ?? null;
-    return typeof q === 'number' ? q : (q ? Number(q) : null);
+    const parsed = typeof q === 'number' ? q : (q ? Number(q) : null);
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 // Convert queue id into human-friendly metadata.
