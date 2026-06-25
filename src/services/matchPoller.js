@@ -42,10 +42,7 @@ export { buildRecapEvents };
 // Polls periodically for new matches and sends announcements.
 export async function startMatchPoller(client) {
     const intervalSeconds = config.matchPollIntervalSeconds;
-    const riotLimiters = {
-        [GAME_TYPES.TFT]: createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
-        [GAME_TYPES.LOL]: createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
-    };
+    const riotLimiter = createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 });
     const rankRefreshMinutes = config.rankRefreshIntervalMinutes;
     const rankRefreshMs = rankRefreshMinutes * 60 * 1000;
     let isTickRunning = false;
@@ -174,7 +171,7 @@ export async function startMatchPoller(client) {
 
                     if (canPollLol) {
                         appendPatches(await processLolAccountTick({
-                            riotLimiter: riotLimiters[GAME_TYPES.LOL],
+                            riotLimiter,
                             account,
                             guild,
                             channel,
@@ -195,7 +192,7 @@ export async function startMatchPoller(client) {
                     }
                     if (canPollTft) {
                         appendPatches(await processTftAccountTick({
-                            riotLimiter: riotLimiters[GAME_TYPES.TFT],
+                            riotLimiter,
                             account,
                             channel,
                             channelIdForGuild,
