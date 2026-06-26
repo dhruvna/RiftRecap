@@ -20,7 +20,13 @@ import {
 } from '../storage.js';
 import { GAME_TYPES, RANKED_QUEUES_BY_GAME } from '../constants/queues.js';
 import { getRegistrationSnapshot } from '../services/registrationSnapshot.js';
+import { createRiotRateLimiter } from '../utils/rateLimiter.js';
 import { respondToCommandError, withGuildCommand } from '../utils/withGuildCommand.js';
+
+const registrationRiotLimiters = Object.freeze({
+    [GAME_TYPES.TFT]: createRiotRateLimiter(),
+    [GAME_TYPES.LOL]: createRiotRateLimiter(),
+});
 
 export default {
     data: new SlashCommandBuilder()
@@ -71,7 +77,7 @@ export default {
         }
 
         const tftSnapshot = await getRegistrationSnapshot({
-                gameType: GAME_TYPES.TFT,
+            gameType: GAME_TYPES.TFT,
             regional,
             platform,
             gameName,
@@ -81,6 +87,7 @@ export default {
             matchFetcher: getTFTMatch,
             rankedQueues: new Set(RANKED_QUEUES_BY_GAME[GAME_TYPES.TFT]),
             getMatchTimestamp: (match) => match?.info?.game_datetime ?? 0,
+            limiter: registrationRiotLimiters[GAME_TYPES.TFT],
         });
         const lolSnapshot = await getRegistrationSnapshot({
             gameType: GAME_TYPES.LOL,
@@ -97,6 +104,7 @@ export default {
                 if (Number.isFinite(gameEndTimestamp) && gameEndTimestamp > 0) return gameEndTimestamp;
                 return Number(match?.info?.gameCreation ?? 0);
             },
+            limiter: registrationRiotLimiters[GAME_TYPES.LOL],
         });
     
         const { account: tftAccount, ...tftState } = tftSnapshot;

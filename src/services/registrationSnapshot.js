@@ -42,13 +42,14 @@ export async function getRegistrationSnapshot({
     matchFetcher,
     rankedQueues,
     getMatchTimestamp,
+    limiter,
 }) {
     const normalizedGameType = assertAcceptedGameType(gameType);
-    const account = await accountFetcher({ regional, gameName, tagLine, gameType: normalizedGameType });
+    const account = await accountFetcher({ regional, gameName, tagLine, gameType: normalizedGameType, limiter });
     
     let lastRankByQueue = {};
     try {
-        const entries = await rankFetcher({ platform, puuid: account.puuid });
+        const entries = await rankFetcher({ platform, puuid: account.puuid, limiter });
         lastRankByQueue = toRankSnapshot(entries, { rankedQueues });
     } catch (err) {
         logSnapshotError({
@@ -62,11 +63,11 @@ export async function getRegistrationSnapshot({
     let lastMatchId = null;
     let lastMatchAt = null;
     try {
-        const ids = await matchIdsFetcher({ regional, puuid: account.puuid, count: 1 });
+        const ids = await matchIdsFetcher({ regional, puuid: account.puuid, count: 1, limiter });
         lastMatchId = Array.isArray(ids) && ids.length > 0 ? ids[0] : null;
 
         if (lastMatchId) {
-            const latestMatch = await matchFetcher({ regional, matchId: lastMatchId });
+            const latestMatch = await matchFetcher({ regional, matchId: lastMatchId, limiter });
             const timestamp = Number(getMatchTimestamp(latestMatch));
             lastMatchAt = Number.isFinite(timestamp) && timestamp > 0 ? timestamp : null;
         }
