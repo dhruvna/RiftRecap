@@ -8,6 +8,12 @@ export function resolveRegion(regionMaybe) {
 
 const RIOT_TFT_API_KEY = config.riotTftApiKey;
 const RIOT_LOL_API_KEY = config.riotLolApiKey;
+
+const sharedRiotLimiters = Object.freeze({
+    [GAME_TYPES.TFT]: createRiotRateLimiter(),
+    [GAME_TYPES.LOL]: createRiotRateLimiter(),
+});
+
 const sharedRiotLimiter = createRiotRateLimiter();
 
 async function riotFetchJson(url, gameType = 'TFT', limiter = sharedRiotLimiter) {

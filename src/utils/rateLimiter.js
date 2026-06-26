@@ -79,8 +79,15 @@ class CompositeRateLimiter {
 }
 
 // === Riot-specific defaults ===
-// Riot has both per-second and per-2-minute limits, so we enforce both.
-export function createRiotRateLimiter({ perSecond = 18, perTwoMinutes = 95 } = {}) {
+// Riot app/key limits allow 20 requests per second and 100 requests per 2 minutes.
+// Enforce both windows so callers stay within the expected Riot limits by default.
+export const RIOT_DEFAULT_PER_SECOND_LIMIT = 20;
+export const RIOT_DEFAULT_PER_TWO_MINUTES_LIMIT = 100;
+
+export function createRiotRateLimiter({
+  perSecond = RIOT_DEFAULT_PER_SECOND_LIMIT,
+  perTwoMinutes = RIOT_DEFAULT_PER_TWO_MINUTES_LIMIT,
+} = {}) {
   const perSecondBucket = new TokenBucket({
     capacity: perSecond,
     refillPerMs: perSecond / 1000,
