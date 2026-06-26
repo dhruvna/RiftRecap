@@ -10,15 +10,30 @@ export function resolveRegion(regionMaybe) {
 const RIOT_TFT_API_KEY = config.riotTftApiKey;
 const RIOT_LOL_API_KEY = config.riotLolApiKey;
 
+console.log(`Creating shared Riot limiters for ${GAME_TYPES.TFT} and ${GAME_TYPES.LOL}`);
+
+const sharedAppLimiter = RIOT_TFT_API_KEY && RIOT_TFT_API_KEY === RIOT_LOL_API_KEY
+    ? createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 })
+    : null;
+
 export const sharedRiotLimiters = Object.freeze({
-    [GAME_TYPES.TFT]: createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
-    [GAME_TYPES.LOL]: createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
+    [GAME_TYPES.TFT]: sharedAppLimiter ?? createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
+    [GAME_TYPES.LOL]: sharedAppLimiter ?? createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
 });
 
 function normalizeGameType(gameType = GAME_TYPES.TFT) {
     return String(gameType ?? GAME_TYPES.TFT).toUpperCase() === GAME_TYPES.LOL
         ? GAME_TYPES.LOL
         : GAME_TYPES.TFT;
+}
+
+function parseRetryAfterMs(retryAfter) {
+    if (!retryAfter) return 1000;
+    const asSeconds = Number(retryAfter);
+    if (Number.isFinite(asSeconds)) return Math.max(1000, Math.ceil(asSeconds * 1000));
+    const asDate = Date.parse(retryAfter);
+    if (Number.isFinite(asDate)) return Math.max(1000, asDate - Date.now());
+    return 1000;
 }
 
 async function riotFetchJson(url, gameType = GAME_TYPES.TFT, limiter = null) {
@@ -30,8 +45,18 @@ async function riotFetchJson(url, gameType = GAME_TYPES.TFT, limiter = null) {
         await effectiveLimiter.acquire();
     }
 
-    const res = await fetch(url, { headers: { 'X-Riot-Token': apiKey } });
-    if (!res.ok) {
+    const maxAttempts = 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const res = await fetch(url, { headers: { 'X-Riot-Token': apiKey } });
+        if (res.ok) return res.json();
+
+        if (res.status === 429 && attempt < maxAttempts) {
+            const retryAfterMs = parseRetryAfterMs(res.headers?.get?.('Retry-After'));
+            effectiveLimiter?.penalize?.(retryAfterMs);
+            await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+            if (effectiveLimiter) await effectiveLimiter.acquire();
+            continue;
+        }
         const body = await res.text();
         const err = new Error(`Riot API request failed: ${res.status} on ${url}`);
         err.status = res.status;
@@ -40,7 +65,7 @@ async function riotFetchJson(url, gameType = GAME_TYPES.TFT, limiter = null) {
         throw err;
     }
 
-    return res.json();
+    throw new Error(`Riot API request failed before response handling on ${url}`);
 }
 
 const { regional: DEFAULT_REGIONAL } = resolveRegion();

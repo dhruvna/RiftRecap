@@ -28,14 +28,11 @@ class TokenBucket {
     return Math.ceil(deficit / this.refillPerMs);
   }
 
-  // Attempt to consume tokens immediately; return false if insufficient.
-  tryConsume(count = 1, now = Date.now()) {
-    this.refill(now);
-    if (this.tokens >= count) {
-      this.tokens -= count;
-      return true;
-    }
-    return false;
+  // Empty the bucket and restart refill timing from now. Used after upstream
+  // rate-limit responses so queued callers do not immediately retry as a burst.
+  drain(now = Date.now()) {
+    this.tokens = 0;
+    this.lastRefill = now;
   }
 }
 
@@ -44,9 +41,11 @@ class TokenBucket {
 class CompositeRateLimiter {
   constructor(buckets = []) {
     this.buckets = buckets;
+    this.blockedUntil = 0;
   }
 
   canConsume(count = 1, now = Date.now()) {
+    if (now < this.blockedUntil) return false;
     return this.buckets.every((bucket) => {
       bucket.refill(now);
       return bucket.tokens >= count;
@@ -56,6 +55,22 @@ class CompositeRateLimiter {
   consume(count = 1) {
     for (const bucket of this.buckets) {
       bucket.tokens -= count;
+    }
+  }
+  
+  get waitMsForCooldown() {
+    return Math.max(0, this.blockedUntil - Date.now());
+  }
+
+  // Penalize the limiter after a 429. Riot can return a Retry-After header for
+  // method/app limits; preserve that cooldown and drain buckets so all shared
+  // callers pace themselves after the upstream limit resets.
+  penalize(retryAfterMs = 1000) {
+    const now = Date.now();
+    const safeRetryAfterMs = Math.max(1000, Number(retryAfterMs) || 0);
+    this.blockedUntil = Math.max(this.blockedUntil, now + safeRetryAfterMs);
+    for (const bucket of this.buckets) {
+      bucket.drain(now);
     }
   }
 
@@ -68,9 +83,11 @@ class CompositeRateLimiter {
         this.consume(count);
         return;
       }
+
       
       const waitMs = Math.max(
         1,
+        this.waitMsForCooldown,
         ...this.buckets.map((bucket) => bucket.waitMsForToken)
       );
       await new Promise((resolve) => setTimeout(resolve, waitMs));
