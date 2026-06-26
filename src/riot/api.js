@@ -24,10 +24,10 @@ function normalizeGameType(gameType = GAME_TYPES.TFT) {
 async function riotFetchJson(url, gameType = GAME_TYPES.TFT, limiter = null) {
     const normalizedGameType = normalizeGameType(gameType);
     const apiKey = normalizedGameType === GAME_TYPES.TFT ? RIOT_TFT_API_KEY : RIOT_LOL_API_KEY;
-    const selectedLimiter = limiter ?? sharedRiotLimiters[normalizedGameType];
+    const effectiveLimiter = limiter ?? sharedRiotLimiters[normalizedGameType];
 
-    if (selectedLimiter) {
-        await selectedLimiter.acquire();
+    if (effectiveLimiter) {
+        await effectiveLimiter.acquire();
     }
 
     const res = await fetch(url, { headers: { 'X-Riot-Token': apiKey } });
@@ -165,5 +165,5 @@ export async function getLolActiveGameByPuuid({ platform, puuid, limiter }) {
 export async function getTftActiveGameByPuuid({ platform, puuid, limiter }) {
     // THIS ENDPOINT IS CORRECT. I KNOW IT LOOKS SLIGHTLY INCORRECT, BUT IT IS TESTED AND WORKING. RIOT REALLY DID MAKE THE TFT SPECTATOR ENDPOINT DIFFERENT FROM THE LOL ONE. I HAVE NO IDEA WHY. DO NOT CHANGE THIS. IT IS CORRECT
     const url = `https://${platform}.api.riotgames.com/lol/spectator/tft/v5/active-games/by-puuid/${encodeURIComponent(puuid)}`;
-    return riotFetchJson(url, GAME_TYPES.LOL, limiter);
+    return riotFetchJson(url, GAME_TYPES.TFT, limiter);
 }
