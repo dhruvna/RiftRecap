@@ -88,6 +88,7 @@ export function createRiotRateLimiter({
   perSecond = RIOT_DEFAULT_PER_SECOND_LIMIT,
   perTwoMinutes = RIOT_DEFAULT_PER_TWO_MINUTES_LIMIT,
 } = {}) {
+  console.log(`Creating Riot rate limiter with perSecond: ${perSecond}, perTwoMinutes: ${perTwoMinutes}`);
   const perSecondBucket = new TokenBucket({
     capacity: perSecond,
     refillPerMs: perSecond / 1000,

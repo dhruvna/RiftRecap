@@ -11,6 +11,7 @@ export {
     getTftActiveGameByPuuid,
     getProfileUrl,
     getMatchUrl,
+    sharedRiotLimiters,
 } from './riot/api.js';
 
 export {

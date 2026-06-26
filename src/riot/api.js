@@ -10,9 +10,9 @@ export function resolveRegion(regionMaybe) {
 const RIOT_TFT_API_KEY = config.riotTftApiKey;
 const RIOT_LOL_API_KEY = config.riotLolApiKey;
 
-const sharedRiotLimiters = Object.freeze({
-    [GAME_TYPES.TFT]: createRiotRateLimiter(),
-    [GAME_TYPES.LOL]: createRiotRateLimiter(),
+export const sharedRiotLimiters = Object.freeze({
+    [GAME_TYPES.TFT]: createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
+    [GAME_TYPES.LOL]: createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 }),
 });
 
 function normalizeGameType(gameType = GAME_TYPES.TFT) {
