@@ -51,7 +51,7 @@ function compareRecapEventsDesc(left, right) {
     return String(left?.matchId ?? '').localeCompare(String(right?.matchId ?? ''));
 }
 
-export function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, gameMs }) {
+export function buildRecapEvents({ recapEvents, matchId, queueType, delta, placement, gameMs, kills = null, deaths = null, assists = null }) {
     const already = recapEvents.some((event) => event.matchId === matchId);
     if (already) return recapEvents;
 
@@ -61,6 +61,9 @@ export function buildRecapEvents({ recapEvents, matchId, queueType, delta, place
         queueType,
         delta: Number(delta ?? 0),
         placement: Number(placement ?? 0),
+        ...(kills != null ? { kills: Number(kills ?? 0) } : {}),
+        ...(deaths != null ? { deaths: Number(deaths ?? 0) } : {}),
+        ...(assists != null ? { assists: Number(assists ?? 0) } : {}),
     };
     const nextEvents = [...recapEvents, nextEvent].sort(compareRecapEventsDesc);
     if (nextEvents.length > 250) nextEvents.length = 250;

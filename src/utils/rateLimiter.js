@@ -98,8 +98,8 @@ class CompositeRateLimiter {
 // === Riot-specific defaults ===
 // Riot app/key limits allow 20 requests per second and 100 requests per 2 minutes.
 // Enforce both windows so callers stay within the expected Riot limits by default.
-export const RIOT_DEFAULT_PER_SECOND_LIMIT = 20;
-export const RIOT_DEFAULT_PER_TWO_MINUTES_LIMIT = 100;
+const RIOT_DEFAULT_PER_SECOND_LIMIT = 15;
+const RIOT_DEFAULT_PER_TWO_MINUTES_LIMIT = 75;
 
 export function createRiotRateLimiter({
   perSecond = RIOT_DEFAULT_PER_SECOND_LIMIT,

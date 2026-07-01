@@ -2,7 +2,7 @@
 // Recap output is rendered into Discord embeds, with queue labels for clarity.
 
 import { EmbedBuilder } from 'discord.js';
-import { GAME_TYPES, queueLabel } from '../constants/queues.js';
+import { GAME_TYPES, RANKED_QUEUES_BY_GAME, queueLabel } from '../constants/queues.js';
 import { modeLabel } from '../constants/recap.js';
 import { medalForIndex } from './presentation.js';
 import { getLolTracking, getTftTracking } from '../storage.js';
@@ -22,12 +22,32 @@ function accountName(a) {
   return `${a.gameName}#${a.tagLine}`;
 }
 
+function isFiniteKdaStat(value) {
+  return Number.isFinite(Number(value));
+}
+
+function formatDailyKda({ kills, deaths, assists }) {
+  const k = Number(kills ?? 0);
+  const d = Number(deaths ?? 0);
+  const a = Number(assists ?? 0);
+  const ratio = d === 0 ? 'Perfect' : ((k + a) / d).toFixed(2);
+  return `${k}/${d}/${a} (${ratio})`;
+}
+
+function getTrackingForGame(account, game) {
+  return game === GAME_TYPES.LOL ? getLolTracking(account) : getTftTracking(account);
+}
+
+function getRecapEventsForAccount(account, game) {
+  const tracking = getTrackingForGame(account, game);
+  return Array.isArray(tracking.recapEvents) ? tracking.recapEvents : [];
+}
+
 // === Recap aggregation ===
-// Compute per-account stats inside the requested time window
+// Compute per-account stats inside the requested time window for the selected queue.
 export function computeRecapRows(accounts, cutoffMs, wantedQueue, game = GAME_TYPES.TFT) {
   return accounts.filter((account) => isAccountVisibleForGame(account, game)).map((account) => {
-    const tracking = game === GAME_TYPES.LOL ? getLolTracking(account) : getTftTracking(account);
-    const events = Array.isArray(tracking.recapEvents) ? tracking.recapEvents : [];
+    const events = getRecapEventsForAccount(account, game);
     const filtered = events.filter(
       (e) => Number(e?.at ?? 0) >= cutoffMs && e.queueType === wantedQueue
     );
@@ -37,6 +57,34 @@ export function computeRecapRows(accounts, cutoffMs, wantedQueue, game = GAME_TY
       games: filtered.length,
       delta: filtered.reduce((s, e) => s + Number(e.delta ?? 0), 0),
       _nameKey: accountName(account).toLowerCase(), // for consistent sorting
+    };
+  });
+}
+
+// Compute daily LoL KDA across every ranked queue, regardless of the recap's selected queue.
+export function computeDailyKdaRows(accounts, cutoffMs) {
+  const rankedLolQueues = RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL] ?? new Set();
+  return accounts.filter((account) => isAccountVisibleForGame(account, GAME_TYPES.LOL)).map((account) => {
+    const events = getRecapEventsForAccount(account, GAME_TYPES.LOL);
+    const filtered = events.filter((event) => (
+      Number(event?.at ?? 0) >= cutoffMs
+      && rankedLolQueues.has(event?.queueType)
+      && isFiniteKdaStat(event?.kills)
+      && isFiniteKdaStat(event?.deaths)
+      && isFiniteKdaStat(event?.assists)
+    ));
+
+    const kills = filtered.reduce((sum, event) => sum + Number(event.kills ?? 0), 0);
+    const deaths = filtered.reduce((sum, event) => sum + Number(event.deaths ?? 0), 0);
+    const assists = filtered.reduce((sum, event) => sum + Number(event.assists ?? 0), 0);
+
+    return {
+      account,
+      games: filtered.length,
+      kills,
+      deaths,
+      assists,
+      _nameKey: accountName(account).toLowerCase(),
     };
   });
 }
@@ -63,6 +111,18 @@ function sortByLosses(rows) {
     });
 }
 
+function sortByKdaGames(rows) {
+  return rows
+    .filter((row) => row.games > 0)
+    .sort((a, b) => {
+      if (b.games !== a.games) return b.games - a.games;
+      const bRatio = b.deaths === 0 ? Number.POSITIVE_INFINITY : (b.kills + b.assists) / b.deaths;
+      const aRatio = a.deaths === 0 ? Number.POSITIVE_INFINITY : (a.kills + a.assists) / a.deaths;
+      if (bRatio !== aRatio) return bRatio - aRatio;
+      return a._nameKey.localeCompare(b._nameKey);
+    });
+}
+
 // Build line entries with medals and optional game counts.
 function buildLines(rows, limit) {
   return rows.slice(0, limit).map((r, i) => {
@@ -71,13 +131,21 @@ function buildLines(rows, limit) {
   });
 }
 
+function buildDailyKdaLines(rows, limit) {
+  return rows.slice(0, limit).map((row, index) => {
+    const games = row.games === 1 ? '1 game' : `${row.games} games`;
+    return `${medalForIndex(index)} **${accountName(row.account)}** ${formatDailyKda(row)} — ${games}`;
+  });
+}
+
 // === Embed construction ===
 // Translate recap rows into a Discord embed for posting.
-export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hours }) {
+export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hours, dailyKdaRows = [] }) {
   const totalGames = rows.reduce((s, r) => s + r.games, 0);
 
   const gains = sortByGains(rows);
   const losses = sortByLosses(rows);
+  const kdaRows = sortByKdaGames(dailyKdaRows);
 
   const gainsText = (buildLines(gains, 25).join('\n') || '—').slice(0, 1024);
   const lossesText =
@@ -85,7 +153,7 @@ export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hour
       ? buildLines(losses, 10).join('\n').slice(0, 1024)
       : '—';
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setTitle(`${modeLabel(mode)} Recap`)
     .addFields(
       { name: 'Top gains', value: gainsText, inline: true },
@@ -95,4 +163,13 @@ export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hour
       text: `${rows.length} players | ${totalGames} games • ${queueLabel(game, queue)} • last ${hours}h`,
     })
     .setTimestamp(new Date());
+    if (mode === 'DAILY' && kdaRows.length > 0) {
+    embed.addFields({
+      name: 'Daily KDA',
+      value: buildDailyKdaLines(kdaRows, 10).join('\n').slice(0, 1024),
+      inline: false,
+    });
+  }
+
+  return embed;
 }

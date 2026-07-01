@@ -349,7 +349,17 @@ async function processUnseenLolMatches({
         const delta = isLatestRankedMatch ? (deltas?.[queueType] ?? 0) : 0;
         if (isRanked && me) {
             const placement = me.win ? 1 : 2;
-            lolRecapEvents = buildRecapEvents({ recapEvents: lolRecapEvents, matchId, queueType, delta, placement, gameMs });
+            lolRecapEvents = buildRecapEvents({
+                recapEvents: lolRecapEvents,
+                matchId,
+                queueType,
+                delta,
+                placement,
+                gameMs,
+                kills: me.kills,
+                deaths: me.deaths,
+                assists: me.assists,
+            });
         }
         const shouldAnnounce = account?.notifications?.lolAnnouncements !== false
             && (!announceQueueLookup || announceQueueLookup.has(queueType));

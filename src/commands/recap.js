@@ -3,6 +3,7 @@ import { SlashCommandBuilder } from 'discord.js';
 import { listGuildAccounts } from '../storage.js';
 import {
   buildRecapEmbed,
+  computeDailyKdaRows,
   computeRecapRows,
 } from '../utils/recap.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
@@ -22,8 +23,7 @@ export default {
     .setName('recap')
     .setDescription('Show a queue-based recap now, daily or weekly.')
     .addStringOption((opt) =>
-      opt
-        .setName('queue')
+      opt        .setName('queue')
         .setDescription('Queue to recap (TFT + LoL options)')
         .setRequired(false)
         .addChoices(...ALL_QUEUE_CHOICES)
@@ -61,6 +61,7 @@ export default {
         }
 
         const rows = computeRecapRows(accounts, cutoff, queue, game);
+        const dailyKdaRows = mode === 'DAILY' ? computeDailyKdaRows(accounts, cutoff) : [];
         logger.info('recap_generated', {
             service: 'recap-command',
             event: 'recap_generated',
@@ -71,7 +72,7 @@ export default {
             accounts: accounts.length,
             cutoffIso: new Date(cutoff).toISOString(),
         });
-        const embed = buildRecapEmbed({ rows, mode, game, queue, hours });
+        const embed = buildRecapEmbed({ rows, mode, game, queue, hours, dailyKdaRows });
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'recap' }),
 };
