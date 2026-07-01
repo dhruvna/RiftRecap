@@ -3,7 +3,7 @@ import { SlashCommandBuilder } from 'discord.js';
 import { listGuildAccounts } from '../storage.js';
 import {
   buildRecapEmbed,
-  computeDailyKdaRows,
+  computeRecapKdaRows,
   computeRecapRows,
 } from '../utils/recap.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
@@ -61,7 +61,7 @@ export default {
         }
 
         const rows = computeRecapRows(accounts, cutoff, queue, game);
-        const dailyKdaRows = mode === 'DAILY' ? computeDailyKdaRows(accounts, cutoff) : [];
+        const kdaRows = computeRecapKdaRows(accounts, cutoff, queue, game);
         logger.info('recap_generated', {
             service: 'recap-command',
             event: 'recap_generated',
@@ -72,7 +72,7 @@ export default {
             accounts: accounts.length,
             cutoffIso: new Date(cutoff).toISOString(),
         });
-        const embed = buildRecapEmbed({ rows, mode, game, queue, hours, dailyKdaRows });
+        const embed = buildRecapEmbed({ rows, mode, game, queue, hours, kdaRows });
         await interaction.editReply({ embeds: [embed] });
     }, { defer: true, ephemeral: false, commandName: 'recap' }),
 };

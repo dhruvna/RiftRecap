@@ -3,7 +3,7 @@
 import { getKnownGuildIds, loadDb, updateGuildRecapLastSentYmdByIdInStore } from '../storage.js';
 import { GAME_TYPES, defaultRankedQueueForGame } from '../constants/queues.js';
 import { hoursForMode, parseRecapMode } from '../constants/recap.js';
-import { buildRecapEmbed, computeDailyKdaRows, computeRecapRows } from '../utils/recap.js';
+import { buildRecapEmbed, computeRecapKdaRows, computeRecapRows } from '../utils/recap.js';
 import config from '../config.js';
 import logger from '../utils/logger.js';
 
@@ -95,8 +95,8 @@ async function postRecapForConfig({
         const cutoff = getRecapCutoffTimestamp({ now, hours });
         const accounts = guild?.accounts ?? [];
         const rows = computeRecapRows(accounts, cutoff, queue, game);
-        const dailyKdaRows = effectiveMode === 'DAILY' ? computeDailyKdaRows(accounts, cutoff) : [];
-        const embed = buildRecapEmbed({ rows, mode: effectiveMode, game, queue, hours, dailyKdaRows });
+        const kdaRows = computeRecapKdaRows(accounts, cutoff, queue, game);
+        const embed = buildRecapEmbed({ rows, mode: effectiveMode, game, queue, hours, kdaRows });
 
         await channel.send({ embeds: [embed] });
 

@@ -2,7 +2,7 @@
 // Recap output is rendered into Discord embeds, with queue labels for clarity.
 
 import { EmbedBuilder } from 'discord.js';
-import { GAME_TYPES, RANKED_QUEUES_BY_GAME, queueLabel } from '../constants/queues.js';
+import { GAME_TYPES, queueLabel } from '../constants/queues.js';
 import { modeLabel } from '../constants/recap.js';
 import { medalForIndex } from './presentation.js';
 import { getLolTracking, getTftTracking } from '../storage.js';
@@ -26,7 +26,7 @@ function isFiniteKdaStat(value) {
   return Number.isFinite(Number(value));
 }
 
-function formatDailyKda({ kills, deaths, assists }) {
+function formatKda({ kills, deaths, assists }) {
   const k = Number(kills ?? 0);
   const d = Number(deaths ?? 0);
   const a = Number(assists ?? 0);
@@ -61,14 +61,14 @@ export function computeRecapRows(accounts, cutoffMs, wantedQueue, game = GAME_TY
   });
 }
 
-// Compute daily LoL KDA across every ranked queue, regardless of the recap's selected queue.
-export function computeDailyKdaRows(accounts, cutoffMs) {
-  const rankedLolQueues = RANKED_QUEUES_BY_GAME[GAME_TYPES.LOL] ?? new Set();
+// Compute LoL KDA from the same recap events used by the selected recap.
+export function computeRecapKdaRows(accounts, cutoffMs, wantedQueue, game = GAME_TYPES.TFT) {
+  if (game !== GAME_TYPES.LOL) return [];
   return accounts.filter((account) => isAccountVisibleForGame(account, GAME_TYPES.LOL)).map((account) => {
     const events = getRecapEventsForAccount(account, GAME_TYPES.LOL);
     const filtered = events.filter((event) => (
       Number(event?.at ?? 0) >= cutoffMs
-      && rankedLolQueues.has(event?.queueType)
+      && event?.queueType === wantedQueue
       && isFiniteKdaStat(event?.kills)
       && isFiniteKdaStat(event?.deaths)
       && isFiniteKdaStat(event?.assists)
@@ -131,21 +131,21 @@ function buildLines(rows, limit) {
   });
 }
 
-function buildDailyKdaLines(rows, limit) {
+function buildKdaLines(rows, limit) {
   return rows.slice(0, limit).map((row, index) => {
     const games = row.games === 1 ? '1 game' : `${row.games} games`;
-    return `${medalForIndex(index)} **${accountName(row.account)}** ${formatDailyKda(row)} — ${games}`;
+    return `${medalForIndex(index)} **${accountName(row.account)}** ${formatKda(row)} — ${games}`;
   });
 }
 
 // === Embed construction ===
 // Translate recap rows into a Discord embed for posting.
-export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hours, dailyKdaRows = [] }) {
+export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hours, kdaRows = [] }) {
   const totalGames = rows.reduce((s, r) => s + r.games, 0);
 
   const gains = sortByGains(rows);
   const losses = sortByLosses(rows);
-  const kdaRows = sortByKdaGames(dailyKdaRows);
+  const sortedKdaRows = sortByKdaGames(kdaRows);
 
   const gainsText = (buildLines(gains, 25).join('\n') || '—').slice(0, 1024);
   const lossesText =
@@ -163,10 +163,10 @@ export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hour
       text: `${rows.length} players | ${totalGames} games • ${queueLabel(game, queue)} • last ${hours}h`,
     })
     .setTimestamp(new Date());
-    if (mode === 'DAILY' && kdaRows.length > 0) {
+  if (game === GAME_TYPES.LOL && sortedKdaRows.length > 0) {
     embed.addFields({
-      name: 'Daily KDA',
-      value: buildDailyKdaLines(kdaRows, 10).join('\n').slice(0, 1024),
+      name: 'KDA',
+      value: buildKdaLines(sortedKdaRows, 10).join('\n').slice(0, 1024),
       inline: false,
     });
   }
