@@ -10,6 +10,7 @@ import { TFT_QUEUE_TYPES } from './constants/queues.js';
 import { getRankSnapshotForQueue } from './utils/rankSnapshot.js';
 import { loadCommands } from './commands/loadCommands.js';
 import logger from './utils/logger.js';
+import { ephemeralResponseOptions } from './utils/interactionOptions.js';
 
 // === Configuration ===
 // Grab the token once so the login call is simple and we avoid reading config
@@ -125,12 +126,12 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.replied || interaction.deferred) {
             await interaction.followUp({
                 content: 'Something wrong',
-                ephemeral: true,
+                ...ephemeralResponseOptions(),
             });
         } else {
             await interaction.reply({
                 content: 'Something wrong',
-                ephemeral: true,
+                ...ephemeralResponseOptions(),
             });
         }
     }

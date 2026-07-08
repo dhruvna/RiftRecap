@@ -5,6 +5,7 @@ import { getGuildAccountByKey, getLolTracking, getTftTracking } from '../storage
 import { respondWithAccountChoices } from '../utils/autocomplete.js';
 import { formatRankLine, formatWinrate } from '../utils/presentation.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
+import { ephemeralResponseOptions } from '../utils/interactionOptions.js';
 
 /* Add a section for a specific queue type to the fields array 
    - A header field with the rank line
@@ -139,7 +140,7 @@ export default {
         // 5. Send reply with embeds (one main reply + up to 9 follow-ups if multiple queues)
         await interaction.editReply({ embeds: [embeds[0]] });
         for (let i = 1; i < embeds.length && i < 10; i++) {
-                await interaction.followUp({ embeds: [embeds[i]], ephemeral: true });
+                await interaction.followUp({ embeds: [embeds[i]], ...ephemeralResponseOptions });
         }
     }, { defer: true, ephemeral: true, commandName: 'rank' }),
 };

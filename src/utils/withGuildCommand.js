@@ -1,4 +1,5 @@
 import logger from './logger.js';
+import { ephemeralResponseOptions, maybeEphemeralResponseOptions } from './interactionOptions.js';
 
 function normalizeErrorMessage(error) {
     const status = error?.status;
@@ -23,7 +24,7 @@ export async function respondToCommandError(interaction, error, { commandName = 
         return;
     }
 
-    await interaction.reply({ content: message, ephemeral: true });
+    await interaction.reply({ content: message, ...ephemeralResponseOptions() });
 }
 
 export function withGuildCommand(handler, options = {}) {
@@ -39,14 +40,14 @@ export function withGuildCommand(handler, options = {}) {
         if (!guildId) {
             await interaction.reply({
                 content: 'This command can only be used inside a server (not DMs).',
-                ephemeral: true,
+                ...ephemeralResponseOptions(),
             });
             return;
         }
 
         try {
             if (defer) {
-                await interaction.deferReply({ ephemeral });
+                await interaction.deferReply(maybeEphemeralResponseOptions({}, ephemeral));
             }
             await handler(interaction, { guildId });
         } catch (error) {

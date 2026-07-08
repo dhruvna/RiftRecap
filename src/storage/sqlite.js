@@ -4,7 +4,6 @@ const DEFAULT_DATABASE_PATH = path.join(process.env.DATA_DIR ?? 'user_data', 'ri
 const DATABASE_PATH = process.env.DATABASE_PATH ?? DEFAULT_DATABASE_PATH;
 
 const betterSqlitePromise = import('better-sqlite3').catch(() => null);
-const nodeSqlitePromise = import('node:sqlite').catch(() => null);
 
 let dbPromise = null;
 
@@ -265,7 +264,7 @@ async function openDatabase() {
     if (Database) {
         db = openBetterSqliteDatabase(Database, databasePath);
     } else {
-        const nodeSqliteModule = await nodeSqlitePromise;
+        const nodeSqliteModule = await import('node:sqlite').catch(() => null);
         const DatabaseSync = nodeSqliteModule?.DatabaseSync;
         if (!DatabaseSync) {
             throw new Error('[sqlite] Install better-sqlite3 or run on a Node.js version with node:sqlite support.');

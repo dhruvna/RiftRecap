@@ -7,6 +7,7 @@ import {
     updateGuildGameConfigInStore,
 } from '../storage.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
+import { ephemeralResponseOptions } from '../utils/interactionOptions.js';
 
 function parseCutoffDateOrNull(input) {
     if (!input) return null;
@@ -72,7 +73,7 @@ export default {
         if (!confirm) {
             await interaction.reply({
                 content: 'Reset cancelled. Re-run with `confirm:true` to perform the reset.',
-                ephemeral: true,
+                ...ephemeralResponseOptions(),
             });
             return;
         }
@@ -85,7 +86,7 @@ export default {
         if (Number.isNaN(cutoffMs)) {
             await interaction.reply({
                 content: 'Invalid `before_date`. Use `YYYY-MM-DD` format, for example `2026-04-01`.',
-                ephemeral: true,
+                ...ephemeralResponseOptions(),
             });
             return;
         }
@@ -107,7 +108,7 @@ export default {
         if ((result?.totalAccounts ?? 0) === 0) {
             await interaction.reply({
                 content: 'No registered accounts were found for this server.',
-                ephemeral: true,
+                ...ephemeralResponseOptions(),
             });
             return;
         }
@@ -122,7 +123,7 @@ export default {
                 `${beforeDate ? `Saved guild ${formatGameScope(selectedGame)} season cutoff to **${beforeDate} 00:00:00 UTC** for future polling.\n` : ''}` +
                 'Cleared each selected game\'s \'lastRankByQueue\' and \'recapEvents\'' +
                 `${clearMatchCursor ? ", plus 'lastMatchId' and 'lastMatchAt'." : ". (Kept 'lastMatchId' and 'lastMatchAt' to avoid replaying old matches.)"}`,
-            ephemeral: true,
+            ...ephemeralResponseOptions(),
         });
     }, { commandName: 'resetranks' }),
 };

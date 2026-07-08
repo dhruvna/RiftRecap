@@ -11,6 +11,7 @@ import {
 } from '../constants/recap.js';
 import config from '../config.js';
 import { withGuildCommand } from '../utils/withGuildCommand.js';
+import { ephemeralResponseOptions } from '../utils/interactionOptions.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -45,14 +46,14 @@ export default {
       
       return interaction.reply({
         content: `**Recap autopost status**\n• Time: **${scheduleText}**\n${lines.length ? lines.join('\n') : 'No configs set.'}`,
-        ephemeral: true,
+        ...ephemeralResponseOptions(),
       });
     }
 
     if (!modeOk) {
       await interaction.reply({
         content: modeError,
-        ephemeral: true,
+        ...ephemeralResponseOptions(),
       });
       return;
     }
@@ -60,7 +61,7 @@ export default {
     if (!rawQueue || mode === null || enabled === null) {
       return interaction.reply({
         content: 'When `status` is false, you must provide `queue`, `mode`, and `enabled`.',
-        ephemeral: true,
+        ...ephemeralResponseOptions(),
       });
     }
 
@@ -89,7 +90,7 @@ export default {
 
     return interaction.reply({
       content: `✅ Saved recap config: ${updated.enabled ? 'Enabled' : 'Disabled'} • ${updated.game === GAME_TYPES.LOL ? 'LoL' : 'TFT'} / ${queueLabel(updated.game ?? GAME_TYPES.TFT, updated.queue)} • ${modeLabel(updated.mode)} • posts at **${scheduleText}**`,
-      ephemeral: true,
+      ...ephemeralResponseOptions(),
     });
   }, { commandName: 'recapconfig' }),
 };
