@@ -111,17 +111,29 @@ function sortByLosses(rows) {
     });
 }
 
-function sortByKdaGames(rows) {
+function sortByKda(rows) {
   return rows
     .filter((row) => row.games > 0)
     .sort((a, b) => {
-      if (b.games !== a.games) return b.games - a.games;
       const bRatio = b.deaths === 0 ? Number.POSITIVE_INFINITY : (b.kills + b.assists) / b.deaths;
       const aRatio = a.deaths === 0 ? Number.POSITIVE_INFINITY : (a.kills + a.assists) / a.deaths;
       if (bRatio !== aRatio) return bRatio - aRatio;
+      if (b.games !== a.games) return b.games - a.games;
       return a._nameKey.localeCompare(b._nameKey);
     });
 }
+
+// function sortByKdaGames(rows) {
+//   return rows
+//     .filter((row) => row.games > 0)
+//     .sort((a, b) => {
+//       if (b.games !== a.games) return b.games - a.games;
+//       const bRatio = b.deaths === 0 ? Number.POSITIVE_INFINITY : (b.kills + b.assists) / b.deaths;
+//       const aRatio = a.deaths === 0 ? Number.POSITIVE_INFINITY : (a.kills + a.assists) / a.deaths;
+//       if (bRatio !== aRatio) return bRatio - aRatio;
+//       return a._nameKey.localeCompare(b._nameKey);
+//     });
+// }
 
 // Build line entries with medals and optional game counts.
 function buildLines(rows, limit) {
@@ -145,7 +157,7 @@ export function buildRecapEmbed({ rows, mode, game = GAME_TYPES.TFT, queue, hour
 
   const gains = sortByGains(rows);
   const losses = sortByLosses(rows);
-  const sortedKdaRows = sortByKdaGames(kdaRows);
+  const sortedKdaRows = sortByKda(kdaRows);
 
   const gainsText = (buildLines(gains, 25).join('\n') || '—').slice(0, 1024);
   const lossesText =

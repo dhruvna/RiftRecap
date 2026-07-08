@@ -36,6 +36,20 @@ function parseRetryAfterMs(retryAfter) {
     return 1000;
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getTransientRetryDelayMs(attempt) {
+    const baseDelayMs = 500 * 2 ** (attempt - 1);
+    const jitterMs = Math.floor(Math.random() * 250);
+    return baseDelayMs + jitterMs;
+}
+
+function isRetryableRiotStatus(status) {
+    return status === 429 || status === 502 || status === 503 || status === 504;
+}
+
 async function riotFetchJson(url, gameType = GAME_TYPES.TFT, limiter = null) {
     const normalizedGameType = normalizeGameType(gameType);
     const apiKey = normalizedGameType === GAME_TYPES.TFT ? RIOT_TFT_API_KEY : RIOT_LOL_API_KEY;
@@ -45,23 +59,28 @@ async function riotFetchJson(url, gameType = GAME_TYPES.TFT, limiter = null) {
         await effectiveLimiter.acquire();
     }
 
-    const maxAttempts = 2;
+    const maxAttempts = 4;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         const res = await fetch(url, { headers: { 'X-Riot-Token': apiKey } });
         if (res.ok) return res.json();
 
-        if (res.status === 429 && attempt < maxAttempts) {
-            const retryAfterMs = parseRetryAfterMs(res.headers?.get?.('Retry-After'));
+        const shouldRetry = attempt < maxAttempts && isRetryableRiotStatus(res.status);
+        if (shouldRetry) {
+            const retryAfterMs = res.status === 429
+                ? parseRetryAfterMs(res.headers?.get?.('Retry-After'))
+                : getTransientRetryDelayMs(attempt);
             effectiveLimiter?.penalize?.(retryAfterMs);
-            await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+            await sleep(retryAfterMs);
             if (effectiveLimiter) await effectiveLimiter.acquire();
             continue;
         }
+
         const body = await res.text();
         const err = new Error(`Riot API request failed: ${res.status} on ${url}`);
         err.status = res.status;
         err.responseText = body || null;
         err.endpoint = url;
+        err.attempts = attempt;
         throw err;
     }
 
