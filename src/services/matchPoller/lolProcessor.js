@@ -13,7 +13,7 @@ import {
     GAME_TYPES,
     LOL_QUEUE_TYPES,
     resolveLolQueueContext,
-    isRankedQueue,
+    isLiveAnnounceQueue,
 } from '../../constants/queues.js';
 import { detectUnseenMatchIds } from './matchDiscovery.js';
 import {
@@ -183,12 +183,12 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
             queueId: lolSpectatorState?.activeGame?.gameQueueConfigId ?? lolSpectatorState?.activeQueueId ?? null,
         });
         const queueType = queueContext?.queueType ?? LOL_QUEUE_TYPES.UNKNOWN;
-        const isRankedLiveQueue = isRankedQueue(GAME_TYPES.LOL, queueType);
+        const isLiveAnnounceableQueue = isLiveAnnounceQueue(GAME_TYPES.LOL, queueType);
         const isAllowedByGuildQueueConfig = !announceQueueLookup || announceQueueLookup.has(queueType);
-        const shouldAnnounceBasedOnQueue = (!config.liveAnnounceRankedOnly || isRankedLiveQueue) && isAllowedByGuildQueueConfig;
+        const shouldAnnounceBasedOnQueue = (!config.liveAnnounceRankedOnly || isLiveAnnounceableQueue) && isAllowedByGuildQueueConfig;
 
         if (!shouldAnnounceBasedOnQueue) {
-            logger.debug(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=queue_gated queue=${queueType} rankedOnly=${config.liveAnnounceRankedOnly} ranked=${isRankedLiveQueue} allowed=${isAllowedByGuildQueueConfig}`);
+            logger.debug(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=queue_gated queue=${queueType} rankedOnly=${config.liveAnnounceRankedOnly} liveAnnounceable=${isLiveAnnounceableQueue} allowed=${isAllowedByGuildQueueConfig}`);
             return {
                 lolSpectatorState,
                 trackingPatch: liveTransitionDecision.nextTrackingPatch,

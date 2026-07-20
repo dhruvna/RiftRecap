@@ -22,6 +22,8 @@ export const LOL_QUEUE_TYPES = Object.freeze({
     RANKED_SOLO_DUO: 'RANKED_SOLO_DUO',
     RANKED_FLEX: 'RANKED_FLEX',
     RANKED_5S: 'RANKED_5S',
+    CLASH_SR: 'CLASH_SR',
+    CLASH_ARAM: 'CLASH_ARAM',
     UNKNOWN: 'UNKNOWN_LOL',
 });
 
@@ -37,6 +39,8 @@ const QUEUE_ID_TO_QUEUE_TYPE = Object.freeze({
     1160: TFT_QUEUE_TYPES.RANKED_DOUBLE_UP,
     420: LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     440: LOL_QUEUE_TYPES.RANKED_FLEX,
+    700: LOL_QUEUE_TYPES.CLASH_SR,
+    720: LOL_QUEUE_TYPES.CLASH_ARAM,
     710: LOL_QUEUE_TYPES.RANKED_5S,
 });
 
@@ -56,6 +60,8 @@ const QUEUE_LABELS_BY_GAME = Object.freeze({
         [LOL_QUEUE_TYPES.RANKED_SOLO_DUO]: 'Ranked Solo/Duo',
         [LOL_QUEUE_TYPES.RANKED_FLEX]: 'Ranked Flex',
         [LOL_QUEUE_TYPES.RANKED_5S]: 'Ranked 5s',
+        [LOL_QUEUE_TYPES.CLASH_SR]: "CLASH • Summoner's Rift",
+        [LOL_QUEUE_TYPES.CLASH_ARAM]: 'CLASH • ARAM',
         [LOL_QUEUE_TYPES.UNKNOWN]: 'Unknown',
     }),
 });
@@ -68,7 +74,7 @@ export const RANKED_QUEUES_BY_GAME = Object.freeze({
     [GAME_TYPES.LOL]: new Set([
         LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
         LOL_QUEUE_TYPES.RANKED_FLEX,
-        LOL_QUEUE_TYPES.RANKED_5S,
+        LOL_QUEUE_TYPES.CLASH_SR,
     ]),
 });
 
@@ -79,7 +85,14 @@ export const DEFAULT_ANNOUNCE_QUEUES = [
     LOL_QUEUE_TYPES.RANKED_SOLO_DUO,
     LOL_QUEUE_TYPES.RANKED_FLEX,
     LOL_QUEUE_TYPES.RANKED_5S,
+    LOL_QUEUE_TYPES.CLASH_SR,
+    LOL_QUEUE_TYPES.CLASH_ARAM,
 ];
+
+const LOL_CLASH_QUEUE_TYPES = new Set([
+    LOL_QUEUE_TYPES.CLASH_SUMMONERS_RIFT,
+    LOL_QUEUE_TYPES.CLASH_ARAM,
+]);
 
 const TFT_QUEUE_CHOICES = Object.freeze([
     { name: 'Ranked TFT', value: TFT_QUEUE_TYPES.RANKED },
@@ -90,6 +103,8 @@ const LOL_QUEUE_CHOICES = Object.freeze([
     { name: 'LoL Ranked Solo/Duo', value: LOL_QUEUE_TYPES.RANKED_SOLO_DUO },
     { name: 'LoL Ranked Flex', value: LOL_QUEUE_TYPES.RANKED_FLEX },
     { name: 'LoL Ranked 5s', value: LOL_QUEUE_TYPES.RANKED_5S },
+    { name: 'Summoners Rift Clash', value: LOL_QUEUE_TYPES.CLASH_SR },
+    { name: 'ARAM CLASH', value: LOL_QUEUE_TYPES.CLASH_ARAM },
 ]);
 
 export const ALL_QUEUE_CHOICES = Object.freeze([
@@ -124,6 +139,14 @@ export function queueLabel(game, queueType) {
 export function isRankedQueue(game, queueType) {
     const ranked = RANKED_QUEUES_BY_GAME[game];
     return ranked ? ranked.has(queueType) : false;
+}
+
+export function isLolClashQueue(queueType) {
+    return LOL_CLASH_QUEUE_TYPES.has(queueType);
+}
+
+export function isLiveAnnounceQueue(game, queueType) {
+    return isRankedQueue(game, queueType) || (game === GAME_TYPES.LOL && isLolClashQueue(queueType));
 }
 
 export function queueTypeFromQueueId(queueId, game = GAME_TYPES.TFT) {

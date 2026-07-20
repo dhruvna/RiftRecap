@@ -46,7 +46,7 @@ export async function buildLolMatchResultEmbed({
 
     const trackedParticipant = dto.trackedPlayer.participant;
     const { matchUrl, gameStartTimestamp } = dto.game;
-    const { queueLabel } = dto.queue;
+    const { queueLabel, queueType: resolvedQueueType } = dto.queue;
     const { riotId } = dto.trackedPlayer;
     const { championIconUrl, spellIconUrls, runeIconUrl } = dto.display;
 
@@ -64,6 +64,7 @@ export async function buildLolMatchResultEmbed({
     const resultPresentation = resolveMatchResultPresentation({
         didWin,
         queueLabel,
+        queueType: resolvedQueueType,
         riotId,
         game: GAME_TYPES.LOL,
     });
@@ -130,6 +131,7 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
 
     const presentation = resolveLiveGamePresentation({
         queueLabel: model.queueLabel,
+        queueType: model.queueType,
         riotId: model.trackedPlayer.riotId,
         game: GAME_TYPES.LOL,
     });

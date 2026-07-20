@@ -204,6 +204,7 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
                 runeIds: getParticipantRuneIds(tracked),
             } : null,
         },
+        queueType: dto.queue.queueType,
         queueLabel: dto.queue.queueLabel,
         gameStartEpochSeconds: dto.game.gameStartEpochSeconds,
         display: dto.display,
