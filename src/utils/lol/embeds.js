@@ -7,7 +7,7 @@ import {
     resolveMatchResultPresentation,
 } from '../matchEmbedShared.js';
 import {
-    buildLiveDraftImageBuffer,
+    buildLolLiveMatchCardBuffer,
     buildParticipantLoadoutThumbnailBuffer,
 } from '../liveDraftImage.js';
 import { buildPentakillRoleMentionPayload, formatPentakillResultValue } from '../lolSpecialCase.js';
@@ -126,8 +126,8 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const model = await buildLolLiveTeamPresentationModel({ account, activeGame });
 
     const files = [];
-    const blueParticipants = model.sides.blue;
-    const redParticipants = model.sides.red;
+    // const blueParticipants = model.sides.blue;
+    // const redParticipants = model.sides.red;
 
     const presentation = resolveLiveGamePresentation({
         queueLabel: model.queueLabel,
@@ -148,8 +148,10 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     }
 
     try {
-        const stripBuffer = await buildLiveDraftImageBuffer({ blueParticipants, redParticipants });
-        files.push({ attachment: stripBuffer, name: 'lol-live-draft.png' });
+        const cardBuffer = await buildLolLiveMatchCardBuffer(model);
+        files.push({ attachment: cardBuffer, name: 'lol-live-draft.png' });
+        // const stripBuffer = await buildLiveDraftImageBuffer({ blueParticipants, redParticipants });
+        // files.push({ attachment: stripBuffer, name: 'lol-live-draft.png' });
         embed.setImage('attachment://lol-live-draft.png');
     } catch {
     }        
