@@ -227,10 +227,6 @@ async function processUnseenTftMatches({
             continue;
         }
 
-        logger.info(
-            `[match-poller] NEW match guild=${guildId} ${account.key} match=${matchId} queue=${queueType} place=${normPlacement} delta=${delta}`
-        );
-
         const resultAnnouncementContext = {
             buildEmbed: buildMatchResultEmbed,
             channel,

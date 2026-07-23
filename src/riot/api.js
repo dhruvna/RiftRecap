@@ -10,8 +10,6 @@ export function resolveRegion(regionMaybe) {
 const RIOT_TFT_API_KEY = config.riotTftApiKey;
 const RIOT_LOL_API_KEY = config.riotLolApiKey;
 
-console.log(`Creating shared Riot limiters for ${GAME_TYPES.TFT} and ${GAME_TYPES.LOL}`);
-
 const sharedAppLimiter = RIOT_TFT_API_KEY && RIOT_TFT_API_KEY === RIOT_LOL_API_KEY
     ? createRiotRateLimiter({ perSecond: 20, perTwoMinutes: 100 })
     : null;

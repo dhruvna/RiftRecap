@@ -43,43 +43,32 @@ export function formatRankAndLpFields({ isRanked, delta = 0, didWin = null, afte
 }
 
 export function resolveMatchResultPresentation({ didWin, queueLabel, queueType, riotId, game }) {
-  let username = null;
   if (game === GAME_TYPES.LOL && isLolClashQueue(queueType)) {
     const result = didWin === true ? 'VICTORY' : didWin === false ? 'DEFEAT' : 'RESULT';
     const color = didWin === true ? MATCH_RESULT_COLORS.WIN : didWin === false ? MATCH_RESULT_COLORS.LOSS : MATCH_RESULT_COLORS.NEUTRAL;
     return { color, title: `🏆 ${queueLabel} • ${result} • ${riotId}` };
   }
   if (didWin === true) {
-    if (riotId === "LoneRonin#SABI" || riotId === "Robotros#017") {
-      username = "Terrorist#GotCarried";
-    }
     return {
       color: MATCH_RESULT_COLORS.WIN,
-      title: `${queueLabel} • Victory • ${username || riotId}`,
+      title: `${queueLabel} • Victory • ${riotId}`,
     };
   }
 
   if (didWin === false) {
-    if (riotId === "LoneRonin#SABI" || riotId === "Robotros#017") {
-      username = "LuckRanOut#Inter";
-    }
     return {
       color: MATCH_RESULT_COLORS.LOSS,
-      title: `${queueLabel} • Defeat • ${username || riotId}`,
+      title: `${queueLabel} • Defeat • ${riotId}`,
     };
   }
 
   return {
     color: MATCH_RESULT_COLORS.NEUTRAL,
-    title: `${queueLabel} • Result • ${username || riotId}`,
+    title: `${queueLabel} • Result • ${riotId}`,
   };
 }
 
 export function resolveLiveGamePresentation({ queueLabel, queueType, riotId, game }) {
-  let username = null;
-  if (riotId === "LoneRonin#SABI" || riotId === "Robotros#017") {
-    username = "CoinFlipEnthusiast#NOOB";
-  }
   if (game === GAME_TYPES.LOL && isLolClashQueue(queueType)) {
     return {
       color: LIVE_GAME_COLORS.DEFAULT,
@@ -88,7 +77,7 @@ export function resolveLiveGamePresentation({ queueLabel, queueType, riotId, gam
   }
   return {
     color: LIVE_GAME_COLORS.DEFAULT,
-    title: `${queueLabel} Game in Progress for ${username || riotId}`,
+    title: `${queueLabel} Game in Progress for ${riotId}`,
   };
 }
 
@@ -130,15 +119,15 @@ export function buildTierChangeEmbed({ account, queueType, beforeRank, afterRank
   if (!tierChange) return;
 
   let riotId = null;
-  if (account?.gameName === "LoneRonin") {
-    riotId = "The Rift Terrorist";
-  } 
-  else if (account?.gameName === "Robotros") {
-    riotId = "The Rift Robot";
-  }
-  else {
-    riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
-  }
+  // if (account?.gameName === "LoneRonin") {
+  //   riotId = "The Rift Terrorist";
+  // } 
+  // else if (account?.gameName === "Robotros") {
+  //   riotId = "The Rift Robot";
+  // }
+  // else {
+  //   riotId = `${account?.gameName ?? 'Unknown'}#${account?.tagLine ?? ''}`;
+  // }
   const beforeRankStr = formatRankWithLp(beforeRank);
   const afterRankStr = formatRankWithLp(afterRank);
   const color = tierChange === 'promote' ? 0xf5b642 : 0xf34e3c;
@@ -146,8 +135,8 @@ export function buildTierChangeEmbed({ account, queueType, beforeRank, afterRank
     ? '✨ Rank Promotion! ✨'
     : '😭🤣 Rank Demotion 🤣😭';
   const description = tierChange === 'promote'
-    ? `**${riotId}** promoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`
-    : `**${riotId}** demoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`;
+    ? `**${account?.gameName || riotId}** promoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`
+    : `**${account?.gameName || riotId}** demoted from ${beforeRankStr} to ${afterRankStr} in ${queueType}`;
 
   const embed = new EmbedBuilder()
     .setColor(color)
