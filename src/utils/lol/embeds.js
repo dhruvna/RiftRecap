@@ -126,8 +126,6 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     const model = await buildLolLiveTeamPresentationModel({ account, activeGame });
 
     const files = [];
-    // const blueParticipants = model.sides.blue;
-    // const redParticipants = model.sides.red;
 
     const presentation = resolveLiveGamePresentation({
         queueLabel: model.queueLabel,
@@ -150,8 +148,6 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     try {
         const cardBuffer = await buildLolLiveMatchCardBuffer(model);
         files.push({ attachment: cardBuffer, name: 'lol-live-draft.png' });
-        // const stripBuffer = await buildLiveDraftImageBuffer({ blueParticipants, redParticipants });
-        // files.push({ attachment: stripBuffer, name: 'lol-live-draft.png' });
         embed.setImage('attachment://lol-live-draft.png');
     } catch {
     }        

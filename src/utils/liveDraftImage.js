@@ -1,18 +1,8 @@
 import { Canvas, loadImage } from '@napi-rs/canvas';
 
 const DEFAULT_SLOT_COUNT_PER_SIDE = 5;
-const ICON_SIZE = 48;
-const LOADOUT_ICON_SIZE = 18;
-const LOADOUT_ICON_GAP = 3;
-const ICON_GAP = 8;
-const SIDE_PADDING_X = 16;
-const CANVAS_PADDING_Y = 12;
-const VS_WIDTH = 42;
-
-const BACKGROUND_COLOR = '#141822';
-const VS_BACKGROUND = '#21283A';
+// Dimensions and styling for the match-result thumbnail.
 const BLUE_EMPTY = '#4B5563';
-const RED_EMPTY = '#4B5563';
 const LOADOUT_EMPTY = 'rgba(45, 55, 72, 0.55)';
 const SLOT_RADIUS = 6;
 const LOADOUT_RADIUS = 4;
@@ -22,9 +12,12 @@ const THUMBNAIL_LOADOUT_ICON_GAP = 4;
 const THUMBNAIL_LOADOUT_PADDING = 6;
 const THUMBNAIL_LOADOUT_BACKDROP_PADDING = 4;
 const THUMBNAIL_LOADOUT_BACKDROP_COLOR = 'rgba(20, 24, 34, 0.45)';
+
+// Cache remote icon loads so a shared icon is fetched only once per process.
 const ICON_IMAGE_CACHE_MAX_ENTRIES = 256;
 const iconImageCache = new Map();
 
+// Dimensions for the live-game card attached to Discord embeds.
 const LIVE_CARD_WIDTH = 1320;
 const LIVE_CARD_HEIGHT = 760;
 const LIVE_CARD_PADDING = 32;
@@ -36,6 +29,14 @@ const LIVE_CARD_CHAMPION_SIZE = 64;
 const LIVE_CARD_LOADOUT_SIZE = 26;
 const LIVE_CARD_RUNE_SIZE = 30;
 
+/**
+ * Shortens text until it fits within the current canvas font's available width.
+ *
+ * @param {CanvasRenderingContext2D} ctx Canvas context with the intended font configured.
+ * @param {unknown} value Text to render.
+ * @param {number} maxWidth Maximum rendered width in pixels.
+ * @returns {string} The original text, or an ellipsis-truncated equivalent.
+ */
 function truncateText(ctx, value, maxWidth) {
   const text = String(value ?? '').trim() || 'Unknown player';
   if (ctx.measureText(text).width <= maxWidth) return text;
@@ -46,35 +47,9 @@ function truncateText(ctx, value, maxWidth) {
   return end > 0 ? `${text.slice(0, end)}${ellipsis}` : ellipsis;
 }
 
-function formatLiveElapsedTime(gameStartEpochSeconds, now = Date.now()) {
-  const startSeconds = Number(gameStartEpochSeconds);
-  if (!Number.isFinite(startSeconds) || startSeconds <= 0) return '--:--';
-
-  const elapsedSeconds = Math.max(0, Math.floor((now / 1000) - startSeconds));
-  const minutes = Math.floor(elapsedSeconds / 60);
-  return `${minutes}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
-}
-
-function normalizeParticipantSlots({ participants, iconUrls, slotCount }) {
-  const explicitParticipants = Array.isArray(participants) ? participants : [];
-  if (explicitParticipants.length > 0) {
-    return explicitParticipants.slice(0, slotCount);
-  }
-
-  return (Array.isArray(iconUrls) ? iconUrls : [])
-    .slice(0, slotCount)
-    .map((championIconUrl) => ({ championIconUrl }));
-}
-
-function getLiveDraftStripLayout({ slotCountPerSide = DEFAULT_SLOT_COUNT_PER_SIDE, showVersus = true, includeRightSide = true } = {}) {
-  const sideWidth = (slotCountPerSide * ICON_SIZE) + ((slotCountPerSide - 1) * ICON_GAP);
-  const centerWidth = showVersus ? VS_WIDTH : 0;
-  const rightSideWidth = includeRightSide ? sideWidth : 0;
-  const width = (SIDE_PADDING_X * 2) + sideWidth + centerWidth + rightSideWidth;
-  const height = (CANVAS_PADDING_Y * 2) + ICON_SIZE + LOADOUT_ICON_GAP + LOADOUT_ICON_SIZE;
-  return { width, height, sideWidth, centerWidth };
-}
-
+/**
+ * Creates a reusable path for a rectangle with corners constrained to its bounds.
+ */
 function roundedRectPath(ctx, x, y, w, h, r) {
   const radius = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
@@ -86,12 +61,18 @@ function roundedRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/**
+ * Fills a rounded rectangle using the supplied canvas color or gradient.
+ */
 function drawRoundedRect(ctx, x, y, w, h, r, fillStyle) {
   roundedRectPath(ctx, x, y, w, h, r);
   ctx.fillStyle = fillStyle;
   ctx.fill();
 }
 
+/**
+ * Removes the least-recently inserted cache entries after a new image is added.
+ */
 function evictOldIconImageCacheEntries() {
   while (iconImageCache.size > ICON_IMAGE_CACHE_MAX_ENTRIES) {
     const oldestIconUrl = iconImageCache.keys().next().value;
@@ -99,6 +80,10 @@ function evictOldIconImageCacheEntries() {
   }
 }
 
+/**
+ * Loads an icon once and stores both pending requests and resolved images by URL.
+ * Failed requests are removed so a later render may retry them.
+ */
 function loadIconImageCached(iconUrl) {
   if (!iconUrl) return null;
 
@@ -124,6 +109,9 @@ function loadIconImageCached(iconUrl) {
     });
 }
 
+/**
+ * Loads one optional icon without allowing a bad remote URL to fail the full card.
+ */
 async function loadIconResult(iconUrl) {
   if (!iconUrl) return null;
   const result = await Promise.resolve(loadIconImageCached(iconUrl)).then(
@@ -133,6 +121,9 @@ async function loadIconResult(iconUrl) {
   return result.status === 'fulfilled' ? result.value : null;
 }
 
+/**
+ * Draws a clipped icon above a rounded fallback color when an image is available.
+ */
 function drawSlotIconOrFallback(ctx, image, x, y, size, radius, fallbackColor) {
   drawRoundedRect(ctx, x, y, size, size, radius, fallbackColor);
   if (!image) return;
@@ -144,6 +135,9 @@ function drawSlotIconOrFallback(ctx, image, x, y, size, radius, fallbackColor) {
   ctx.restore();
 }
 
+/**
+ * Fetches a participant's champion, spell, and rune art in parallel.
+ */
 function getLoadoutIconUrls(participant) {
   return [
     ...(Array.isArray(participant?.spellIconUrls) ? participant.spellIconUrls : []),
@@ -161,27 +155,9 @@ async function loadParticipantImages(participant) {
   return { championImage, loadoutImages };
 }
 
-function drawParticipantSlot(ctx, { images, x, y, fallbackColor }) {
-  drawSlotIconOrFallback(ctx, images?.championImage, x, y, ICON_SIZE, SLOT_RADIUS, fallbackColor);
-
-  const loadoutY = y + ICON_SIZE + LOADOUT_ICON_GAP;
-  const totalLoadoutWidth = (3 * LOADOUT_ICON_SIZE) + (2 * LOADOUT_ICON_GAP);
-  const loadoutStartX = Math.floor(x + ((ICON_SIZE - totalLoadoutWidth) / 2));
-
-  for (let index = 0; index < 3; index += 1) {
-    const iconX = loadoutStartX + (index * (LOADOUT_ICON_SIZE + LOADOUT_ICON_GAP));
-    drawSlotIconOrFallback(
-      ctx,
-      images?.loadoutImages?.[index] ?? null,
-      iconX,
-      loadoutY,
-      LOADOUT_ICON_SIZE,
-      LOADOUT_RADIUS,
-      LOADOUT_EMPTY,
-    );
-  }
-}
-
+/**
+ * Renders the square match-result thumbnail, overlaying the compact loadout row.
+ */
 function drawParticipantThumbnail(ctx, { images, x, y }) {
   drawSlotIconOrFallback(ctx, images?.championImage, x, y, THUMBNAIL_ICON_SIZE, SLOT_RADIUS, BLUE_EMPTY);
 
@@ -215,6 +191,10 @@ function drawParticipantThumbnail(ctx, { images, x, y }) {
   }
 }
 
+/**
+ * Creates the PNG thumbnail used on a completed-match embed.
+ * Missing or inaccessible icon art is represented with the configured fallback colors.
+ */
 export async function buildParticipantLoadoutThumbnailBuffer(participant = {}) {
   const canvas = new Canvas(THUMBNAIL_ICON_SIZE, THUMBNAIL_ICON_SIZE);
   const ctx = canvas.getContext('2d');
@@ -225,57 +205,6 @@ export async function buildParticipantLoadoutThumbnailBuffer(participant = {}) {
   return canvas.toBuffer('image/png');
 }
 
-export async function buildLiveDraftImageBuffer({
-  blueIconUrls = [],
-  redIconUrls = [],
-  blueParticipants = null,
-  redParticipants = null,
-  slotCountPerSide = DEFAULT_SLOT_COUNT_PER_SIDE,
-  showVersus = true,
-} = {}) {
-  const blueSlots = normalizeParticipantSlots({ participants: blueParticipants, iconUrls: blueIconUrls, slotCount: slotCountPerSide });
-  const redSlots = normalizeParticipantSlots({ participants: redParticipants, iconUrls: redIconUrls, slotCount: slotCountPerSide });
-  const includeRightSide = showVersus || redSlots.length > 0;
-  const { width, height, sideWidth, centerWidth } = getLiveDraftStripLayout({ slotCountPerSide, showVersus, includeRightSide });
-  const canvas = new Canvas(width, height);
-  const ctx = canvas.getContext('2d');
-
-  ctx.fillStyle = BACKGROUND_COLOR;
-  ctx.fillRect(0, 0, width, height);
-  if (showVersus) {
-    ctx.fillStyle = VS_BACKGROUND;
-    ctx.fillRect(SIDE_PADDING_X + sideWidth, 0, VS_WIDTH, height);
-  }
-  const topY = CANVAS_PADDING_Y;
-  const leftStart = SIDE_PADDING_X;
-  const rightStart = SIDE_PADDING_X + sideWidth + centerWidth;
-
-  const [blueImageSets, redImageSets] = await Promise.all([
-    Promise.all(blueSlots.map((participant) => loadParticipantImages(participant))),
-    Promise.all(redSlots.map((participant) => loadParticipantImages(participant))),
-  ]);
-
-  for (let index = 0; index < slotCountPerSide; index += 1) {
-    const bx = leftStart + (index * (ICON_SIZE + ICON_GAP));
-    const rx = rightStart + (index * (ICON_SIZE + ICON_GAP));
-    drawParticipantSlot(ctx, {
-      images: blueImageSets[index] ?? null,
-      x: bx,
-      y: topY,
-      fallbackColor: BLUE_EMPTY,
-    });
-    if (includeRightSide) {
-      drawParticipantSlot(ctx, {
-        images: redImageSets[index] ?? null,
-        x: rx,
-        y: topY,
-        fallbackColor: RED_EMPTY,
-      });
-    }
-  }
-
-  return canvas.toBuffer('image/png');
-}
 
 function drawLiveCardFallback(ctx, x, y, size) {
   drawRoundedRect(ctx, x, y, size, size, 6, '#394150');
@@ -286,12 +215,17 @@ function drawLiveCardFallback(ctx, x, y, size) {
   ctx.fillText('?', x + (size / 2), y + (size / 2) + 1);
 }
 
-function drawLiveCardIcon(ctx, image, x, y, size, fallback = true) {
-  if (!image && fallback) {
+/**
+ * Draws the question-mark placeholder used for unavailable live-card icon art.
+ */
+/**
+ * Draws a rounded live-card icon, or a placeholder when its art is unavailable.
+ */
+function drawLiveCardIcon(ctx, image, x, y, size) {
+  if (!image) {
     drawLiveCardFallback(ctx, x, y, size);
     return;
   }
-  if (!image) return;
 
   ctx.save();
   roundedRectPath(ctx, x, y, size, size, 6);
@@ -300,6 +234,10 @@ function drawLiveCardIcon(ctx, image, x, y, size, fallback = true) {
   ctx.restore();
 }
 
+/**
+ * Renders one player row, including its team accent, champion, loadout, and name.
+ * Red-team names are right-aligned to visually mirror the blue-team panel.
+ */
 function drawLiveTeamRow(ctx, { participant, images, x, y, width, accent, side }) {
   const isRed = side === 'red';
   drawRoundedRect(ctx, x, y, width, LIVE_CARD_ROW_HEIGHT - 8, 10, '#202735');
@@ -326,7 +264,8 @@ function drawLiveTeamRow(ctx, { participant, images, x, y, width, accent, side }
 }
 
 /**
- * Builds a mobile-legible 16:9-ish live match card from buildLolLiveTeamPresentationModel.
+ * Builds a mobile-legible live-match PNG from buildLolLiveTeamPresentationModel.
+ * Each side is always rendered with five rows so incomplete live-game data preserves the layout.
  */
 export async function buildLolLiveMatchCardBuffer(model = {}) {
   const canvas = new Canvas(LIVE_CARD_WIDTH, LIVE_CARD_HEIGHT);
@@ -349,11 +288,6 @@ export async function buildLolLiveMatchCardBuffer(model = {}) {
   ctx.font = '700 30px sans-serif';
   ctx.fillText(truncateText(ctx, model?.queueLabel || 'League of Legends', 720), LIVE_CARD_PADDING, 40);
 
-  drawRoundedRect(ctx, LIVE_CARD_PADDING, 57, 76, 28, 14, '#1FAD72');
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = '700 15px sans-serif';
-  ctx.fillText('LIVE', LIVE_CARD_PADDING + 38, 71);
   const blueX = LIVE_CARD_PADDING;
   const redX = blueX + LIVE_CARD_PANEL_WIDTH + LIVE_CARD_GUTTER;
   const sectionY = LIVE_CARD_HEADER_HEIGHT + 19;
