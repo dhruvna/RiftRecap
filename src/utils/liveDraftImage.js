@@ -238,7 +238,6 @@ function drawLiveCardIcon(ctx, image, x, y, size) {
  * Renders one player row, including its team accent, champion, loadout, name, and ban.
  */
 function drawLiveTeamRow(ctx, { participant, images, banImage, x, y, width, accent }) {
-  const isRed = side === 'red';
   drawRoundedRect(ctx, x, y, width, LIVE_CARD_ROW_HEIGHT - 8, 10, '#202735');
   drawRoundedRect(ctx, x, y, 5, LIVE_CARD_ROW_HEIGHT - 8, 3, accent);
 

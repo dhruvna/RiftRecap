@@ -10,6 +10,9 @@ import {
     buildLolLiveMatchCardBuffer,
     buildParticipantLoadoutThumbnailBuffer,
 } from '../liveDraftImage.js';
+
+import logger from '../logger.js';
+
 import { buildPentakillRoleMentionPayload, formatPentakillResultValue } from '../lolSpecialCase.js';
 import { buildLolGameDto, buildLolLiveTeamPresentationModel } from './gameDto.js';
 
@@ -149,10 +152,12 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         const cardBuffer = await buildLolLiveMatchCardBuffer(model);
         files.push({ attachment: cardBuffer, name: 'lol-live-draft.png' });
         embed.setImage('attachment://lol-live-draft.png');
-    } catch {
-    }        
-
-    // if (model.display.championIconUrl) embed.setThumbnail(model.display.championIconUrl);
-
+    } catch (error) {
+        logger.warn('Unable to render live League of Legends draft card', {
+            event: 'lol_live_draft_card_render_failed',
+            error,
+        });
+    }
+    
     return { embed, files };
 }

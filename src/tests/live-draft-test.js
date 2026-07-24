@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildNormalizedTeamBans } from '../utils/lol/participants.js';
+import { buildLolLiveMatchCardBuffer } from '../utils/liveDraftImage.js';
 
 test('buildNormalizedTeamBans puts each ban in its team draft order', () => {
     const bans = buildNormalizedTeamBans([
@@ -25,4 +26,19 @@ test('buildNormalizedTeamBans ignores unavailable champion selections', () => {
     ]);
 
     assert.deepEqual(bans, { BLUE: [], RED: [] });
+});
+
+test('buildLolLiveMatchCardBuffer renders rows with banned champions', async () => {
+    const card = await buildLolLiveMatchCardBuffer({
+        queueLabel: 'Ranked Solo/Duo',
+        sides: {
+            blue: [{ riotId: 'Blue Player' }],
+            red: [{ riotId: 'Red Player' }],
+            blueBans: [{ championId: 17 }],
+            redBans: [{ championId: 22 }],
+        },
+    });
+
+    assert.ok(Buffer.isBuffer(card));
+    assert.ok(card.length > 0);
 });
