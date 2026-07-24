@@ -125,7 +125,7 @@ export async function buildLolMatchResultEmbed({
     return { embed, files, ...mentionPayload };
 }
 
-export async function buildLolLiveGameEmbed({ account, activeGame }) {
+export async function buildLolLiveGameEmbed({ account, activeGame, liveGameContext = {} }) {
     const model = await buildLolLiveTeamPresentationModel({ account, activeGame });
 
     const files = [];
@@ -135,6 +135,7 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
         queueType: model.queueType,
         riotId: model.trackedPlayer.riotId,
         game: GAME_TYPES.LOL,
+        registeredPlayerCount: liveGameContext.registeredPlayerCount,
     });
 
     const embed = new EmbedBuilder()

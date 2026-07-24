@@ -68,10 +68,18 @@ export function resolveMatchResultPresentation({ didWin, queueLabel, queueType, 
   };
 }
 
-export function resolveLiveGamePresentation({ queueLabel }) {
+export function resolveLiveGamePresentation({
+  queueLabel,
+  riotId,
+  game,
+  registeredPlayerCount = 0,
+}) {
+  const isSharedLolGame = game === GAME_TYPES.LOL && Number(registeredPlayerCount) > 1;
   return {
     color: LIVE_GAME_COLORS.DEFAULT,
-    title: `${queueLabel} game in progress!`,
+    title: isSharedLolGame
+      ? `${queueLabel} game in progress!`
+      : `${queueLabel} game in progress! • ${riotId}`,
   };
 }
 

@@ -87,10 +87,6 @@ async function postRecapForConfig({
 
         if (!shouldFire) continue;
 
-        logger.info(
-            `[recap-autopost] firing guild=${guildId} config=${configId} mode=${mode} effectiveMode=${effectiveMode} game=${game} queue=${queue}`
-        );
-
         const hours = hoursForMode(effectiveMode);
         const cutoff = getRecapCutoffTimestamp({ now, hours });
         const accounts = guild?.accounts ?? [];
@@ -105,7 +101,7 @@ async function postRecapForConfig({
             [effectiveMode]: today,
         };
         const updated = await updateGuildRecapLastSentYmdByIdInStore(guildId, configId, today, effectiveMode);
-                logger.info(`[recap-autopost] sent guild=${guildId} config=${configId} mode=${mode} effectiveMode=${effectiveMode} game=${game} queue=${queue} today=${today} stored=${updated}`);
+        logger.info(`[recap-autopost] sent guild=${guildId} config=${configId} mode=${mode} effectiveMode=${effectiveMode} game=${game} queue=${queue} today=${today} stored=${updated}`);
     }
 }
 

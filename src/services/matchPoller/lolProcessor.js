@@ -159,7 +159,21 @@ function buildRegisteredLolLookup(guild = {}) {
     return { byPuuid };
 }
 
-async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null, liveAnnouncementRegistry = null }) {
+function buildLolLiveGameContext({ guild, activeGame }) {
+    const { byPuuid } = buildRegisteredLolLookup(guild);
+    const participants = Array.isArray(activeGame?.participants) ? activeGame.participants : [];
+    const registeredPlayerKeys = new Set();
+
+    for (const participant of participants) {
+        const puuid = typeof participant?.puuid === 'string' ? participant.puuid.trim() : '';
+        const accountKey = puuid ? byPuuid.get(puuid) : null;
+        if (accountKey) registeredPlayerKeys.add(accountKey);
+    }
+
+    return { registeredPlayerCount: registeredPlayerKeys.size };
+}
+
+async function pollLolAccountState({ riotLimiter, account, guild, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null, liveAnnouncementRegistry = null }) {
     const areLolAnnouncementsEnabledForAccount = account?.notifications?.lolAnnouncements !== false;
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
@@ -217,6 +231,10 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
             channelId: channelIdForGuild,
             account,
             activeGame: lolSpectatorState.activeGame,
+            liveGameContext: buildLolLiveGameContext({
+                guild,
+                activeGame: lolSpectatorState.activeGame,
+            }),
         });
         if (sentMessage) {
             liveTransitionDecision.nextTrackingPatch.liveAnnouncementMessageId = sentMessage.id ?? null;
@@ -514,6 +532,7 @@ export async function processLolAccountTick({
     const liveStateResult = await pollLolAccountState({
         riotLimiter,
         account,
+        guild,
         lolTracking,
         guildId: guild?.id,
         channel,

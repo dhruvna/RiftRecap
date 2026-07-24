@@ -69,6 +69,8 @@ export async function buildTftLiveGameEmbed({ account, activeGame }) {
         queueLabel: queueLabelText,
         riotId,
         game: GAME_TYPES.TFT,
+        // TFT announcements remain participant-specific, even when a game has multiple registered players.
+        registeredPlayerCount: 0,
     });
 
     const embed = new EmbedBuilder()
