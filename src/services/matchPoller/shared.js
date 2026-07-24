@@ -15,6 +15,31 @@ import logger from '../../utils/logger.js';
 
 export const MATCH_BACKFILL_LIMIT = 10;
 
+// This registry is shared by all account workers during one poll.  A Riot game
+// can contain several registered accounts, so account-level transition state
+// alone cannot prevent each worker from posting the same live announcement.
+export function createLiveAnnouncementRegistry() {
+    const announcedGames = new Set();
+
+    const keyFor = ({ guildId, game, gameKey }) => {
+        if (!guildId || !game || !gameKey) return null;
+        return `${guildId}:${game}:${gameKey}`;
+    };
+
+    return {
+        claim({ guildId, game, gameKey }) {
+            const key = keyFor({ guildId, game, gameKey });
+            if (!key || announcedGames.has(key)) return false;
+            announcedGames.add(key);
+            return true;
+        },
+        remember({ guildId, game, gameKey }) {
+            const key = keyFor({ guildId, game, gameKey });
+            if (key) announcedGames.add(key);
+        },
+    };
+}
+
 export async function fetchMatch({ riotLimiter, account, matchId, game }) {
     if (game === GAME_TYPES.TFT) {
         return getTFTMatch({

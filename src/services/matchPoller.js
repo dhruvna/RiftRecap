@@ -23,7 +23,7 @@ import logger from '../utils/logger.js';
 
 import { processLolAccountTick } from './matchPoller/lolProcessor.js';
 import { processTftAccountTick } from './matchPoller/tftProcessor.js';
-import { buildRecapEvents } from './matchPoller/shared.js';
+import { buildRecapEvents, createLiveAnnouncementRegistry } from './matchPoller/shared.js';
 import { sharedRiotLimiters } from '../riot.js';
 
 // === Polling configuration ===
@@ -60,6 +60,7 @@ export async function startMatchPoller(client) {
         try {
             const channelCache = new Map(); // channelId -> channel (cache per tick)
             const pendingUpsertsByGuild = new Map();
+            const liveAnnouncementRegistry = createLiveAnnouncementRegistry();
 
             const stageTrackingUpsert = ({ guildId, account, gameKey, trackingPatch }) => {
                 if (!trackingPatch) return;
@@ -94,6 +95,13 @@ export async function startMatchPoller(client) {
             for (const guildId of guildIds) {
                 const guild = Object.freeze({ ...(db[guildId] ?? {}), id: guildId });
                 const accounts = guild?.accounts ?? [];
+                for (const account of accounts) {
+                    for (const [game, tracking] of Object.entries(account?.trackedGames ?? {})) {
+                        if (tracking?.inGame === true && tracking?.lastAnnouncedInGameKey) {
+                            liveAnnouncementRegistry.remember({ guildId, game, gameKey: tracking.lastAnnouncedInGameKey });
+                        }
+                    }
+                }
                 const channelIdForGuild = guild?.channelId;
                 const guildTftConfig = getGuildTftConfig(db, guildId);
                 const guildLolConfig = getGuildLolConfig(db, guildId);
@@ -183,6 +191,7 @@ export async function startMatchPoller(client) {
                                 rankSnapshotBeforeRefresh: lolRankSnapshotBeforeRefresh,
                             },
                             announceQueueLookup,
+                            liveAnnouncementRegistry,
                             seasonCutoff: {
                                 seasonCutoffMs: lolSeasonCutoffMs,
                                 hasSeasonCutoff: hasLolSeasonCutoff,
@@ -208,6 +217,7 @@ export async function startMatchPoller(client) {
                                 hasSeasonCutoff: hasTftSeasonCutoff,
                             },
                             guildId,
+                            liveAnnouncementRegistry,
                         }));
                     }
                 } catch (err) {

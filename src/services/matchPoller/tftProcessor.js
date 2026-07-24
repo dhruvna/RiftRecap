@@ -30,7 +30,7 @@ import {
     findLatestRankedIndex,
 } from './shared.js';
 
-async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId, channel, channelIdForGuild, spectatorState = null }) {
+async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId, channel, channelIdForGuild, spectatorState = null, liveAnnouncementRegistry = null }) {
     const tftSpectatorState = spectatorState
         ?? await probeSpectatorState({ riotLimiter, account, tracking: tftTracking, game: GAME_TYPES.TFT });
     const nextTftTrackingPatch = {
@@ -50,6 +50,17 @@ async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId,
         logger.info(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=${nextTftInGameKey ?? 'none'}`);
         const shouldAnnounceTftLiveGame = !(previousTftInGameKey && nextTftInGameKey && previousTftInGameKey === nextTftInGameKey);
         if (shouldAnnounceTftLiveGame && account?.notifications?.tftAnnouncements !== false) {
+            if (liveAnnouncementRegistry && !liveAnnouncementRegistry.claim({
+                guildId,
+                game: GAME_TYPES.TFT,
+                gameKey: nextTftInGameKey,
+            })) {
+                logger.debug(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=game_already_announced gameKey=${nextTftInGameKey ?? 'none'}`);
+                nextTftTrackingPatch.lastAnnouncedInGameKey = nextTftInGameKey;
+                nextTftTrackingPatch.lastAnnouncedActiveGameId = nextTftTrackingPatch.activeGameId ?? null;
+                nextTftTrackingPatch.lastInGameAnnouncementAt = Date.now();
+                return { tftSpectatorState, trackingPatch: nextTftTrackingPatch };
+            }
             try {
                 const sentMessage = await announceGameMatchToDiscord({
                     buildEmbed: buildTftLiveGameEmbed,
@@ -331,6 +342,7 @@ export async function processTftAccountTick({
     spectatorState = null,
     rankContext = {},
     announceQueueLookup,
+    liveAnnouncementRegistry,
     seasonCutoff = {},
     guildId = null,
 }) {
@@ -360,6 +372,7 @@ export async function processTftAccountTick({
         guildId,
         channel,
         channelIdForGuild,
+        liveAnnouncementRegistry,
         spectatorState,
     });
     stagedPatches.push({ gameKey: 'tft', trackingPatch: stateResult.trackingPatch });

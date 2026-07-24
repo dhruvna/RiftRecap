@@ -159,7 +159,7 @@ function buildRegisteredLolLookup(guild = {}) {
     return { byPuuid };
 }
 
-async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null }) {
+async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null, liveAnnouncementRegistry = null }) {
     const areLolAnnouncementsEnabledForAccount = account?.notifications?.lolAnnouncements !== false;
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
@@ -199,6 +199,17 @@ async function pollLolAccountState({ riotLimiter, account, lolTracking, guildId,
             activeGameStartTime: lolSpectatorState?.activeGame?.gameStartTime ?? lolSpectatorState?.activeGameStartTime ?? null,
             activeQueueId: lolSpectatorState?.activeGame?.gameQueueConfigId ?? lolSpectatorState?.activeQueueId ?? null,
         });
+        if (liveAnnouncementRegistry && !liveAnnouncementRegistry.claim({
+            guildId,
+            game: GAME_TYPES.LOL,
+            gameKey: liveAnnouncementGameKey,
+        })) {
+            logger.debug(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=game_already_announced gameKey=${liveAnnouncementGameKey ?? 'none'}`);
+            return {
+                lolSpectatorState,
+                trackingPatch: liveTransitionDecision.nextTrackingPatch,
+            };
+        }
         const sentMessage = await announceGameMatchToDiscord({
             buildEmbed: buildLolLiveGameEmbed,
             channel,
@@ -475,6 +486,7 @@ export async function processLolAccountTick({
     tracking,
     rankContext = {},
     announceQueueLookup,
+    liveAnnouncementRegistry,
     seasonCutoff = {},
 }) {
     const stagedPatches = [];
@@ -504,6 +516,7 @@ export async function processLolAccountTick({
         channel,
         channelIdForGuild,
         announceQueueLookup,
+        liveAnnouncementRegistry,
     });
     stagedPatches.push({ gameKey: 'lol', trackingPatch: liveStateResult.trackingPatch });
 

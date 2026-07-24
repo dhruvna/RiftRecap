@@ -1,4 +1,4 @@
-import { GAME_TYPES, isLolClashQueue, isRankedQueue, queueLabel } from '../constants/queues.js';
+import { isRankedQueue, queueLabel } from '../constants/queues.js';
 import { formatDelta, formatRankWithLp } from './presentation.js';
 import { EmbedBuilder } from 'discord.js';
 
@@ -68,16 +68,10 @@ export function resolveMatchResultPresentation({ didWin, queueLabel, queueType, 
   };
 }
 
-export function resolveLiveGamePresentation({ queueLabel, queueType, riotId, game }) {
-  if (game === GAME_TYPES.LOL && isLolClashQueue(queueType)) {
-    return {
-      color: LIVE_GAME_COLORS.DEFAULT,
-      title: `🏆 ${queueLabel} • IN PROGRESS • ${riotId}`,
-    };
-  }
+export function resolveLiveGamePresentation({ queueLabel }) {
   return {
     color: LIVE_GAME_COLORS.DEFAULT,
-    title: `${queueLabel} Game in Progress for ${riotId}`,
+    title: `${queueLabel} game in progress!`,
   };
 }
 
