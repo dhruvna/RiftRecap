@@ -152,7 +152,7 @@ export async function buildLolLiveGameEmbed({ account, activeGame }) {
     } catch {
     }        
 
-    if (model.display.championIconUrl) embed.setThumbnail(model.display.championIconUrl);
+    // if (model.display.championIconUrl) embed.setThumbnail(model.display.championIconUrl);
 
     return { embed, files };
 }

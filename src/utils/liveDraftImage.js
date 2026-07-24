@@ -235,10 +235,9 @@ function drawLiveCardIcon(ctx, image, x, y, size) {
 }
 
 /**
- * Renders one player row, including its team accent, champion, loadout, and name.
- * Red-team names are right-aligned to visually mirror the blue-team panel.
+ * Renders one player row, including its team accent, champion, loadout, name, and ban.
  */
-function drawLiveTeamRow(ctx, { participant, images, x, y, width, accent, side }) {
+function drawLiveTeamRow(ctx, { participant, images, banImage, x, y, width, accent }) {
   const isRed = side === 'red';
   drawRoundedRect(ctx, x, y, width, LIVE_CARD_ROW_HEIGHT - 8, 10, '#202735');
   drawRoundedRect(ctx, x, y, 5, LIVE_CARD_ROW_HEIGHT - 8, 3, accent);
@@ -252,15 +251,16 @@ function drawLiveTeamRow(ctx, { participant, images, x, y, width, accent, side }
   drawLiveCardIcon(ctx, images?.loadoutImages?.[1], loadoutX, championY + LIVE_CARD_LOADOUT_SIZE + 7, LIVE_CARD_LOADOUT_SIZE);
   drawLiveCardIcon(ctx, images?.loadoutImages?.[2], loadoutX + LIVE_CARD_LOADOUT_SIZE + 9, championY + 17, LIVE_CARD_RUNE_SIZE);
 
+  const banX = x + width - 20 - LIVE_CARD_CHAMPION_SIZE;
   const nameX = loadoutX + (LIVE_CARD_LOADOUT_SIZE * 2) + 28;
-  const textWidth = width - (nameX - x) - 18;
+  const textWidth = banX - nameX - 18;
   const playerName = participant?.riotId || participant?.summonerName || 'Unknown player';
-  ctx.textAlign = isRed ? 'right' : 'left';
-  const alignedNameX = isRed ? x + width - 18 : nameX;
+  ctx.textAlign = 'left';
   ctx.fillStyle = '#F4F7FB';
   ctx.font = '700 22px sans-serif';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(truncateText(ctx, playerName, textWidth), alignedNameX, y + 43);
+  ctx.fillText(truncateText(ctx, playerName, textWidth), nameX, y + 43);
+  drawLiveCardIcon(ctx, banImage, banX, championY, LIVE_CARD_CHAMPION_SIZE);
 }
 
 /**
@@ -272,8 +272,13 @@ export async function buildLolLiveMatchCardBuffer(model = {}) {
   const ctx = canvas.getContext('2d');
   const blueParticipants = Array.isArray(model?.sides?.blue) ? model.sides.blue.slice(0, DEFAULT_SLOT_COUNT_PER_SIDE) : [];
   const redParticipants = Array.isArray(model?.sides?.red) ? model.sides.red.slice(0, DEFAULT_SLOT_COUNT_PER_SIDE) : [];
+  const blueBans = Array.isArray(model?.sides?.blueBans) ? model.sides.blueBans.slice(0, DEFAULT_SLOT_COUNT_PER_SIDE) : [];
+  const redBans = Array.isArray(model?.sides?.redBans) ? model.sides.redBans.slice(0, DEFAULT_SLOT_COUNT_PER_SIDE) : [];
   const slots = [...blueParticipants, ...redParticipants];
-  const imageSets = await Promise.all(slots.map((participant) => loadParticipantImages(participant)));
+  const [imageSets, banImages] = await Promise.all([
+    Promise.all(slots.map((participant) => loadParticipantImages(participant))),
+    Promise.all([...blueBans, ...redBans].map((ban) => loadIconResult(ban?.championIconUrl))),
+  ]);
 
   ctx.fillStyle = '#111622';
   ctx.fillRect(0, 0, LIVE_CARD_WIDTH, LIVE_CARD_HEIGHT);
@@ -304,12 +309,12 @@ export async function buildLolLiveMatchCardBuffer(model = {}) {
   for (let index = 0; index < DEFAULT_SLOT_COUNT_PER_SIDE; index += 1) {
     const rowY = LIVE_CARD_HEADER_HEIGHT + 36 + (index * LIVE_CARD_ROW_HEIGHT);
     drawLiveTeamRow(ctx, {
-      participant: blueParticipants[index], images: imageSets[index], x: blueX, y: rowY,
-      width: LIVE_CARD_PANEL_WIDTH, accent: '#358FFF', side: 'blue',
+      participant: blueParticipants[index], images: imageSets[index], banImage: banImages[index], x: blueX, y: rowY,
+      width: LIVE_CARD_PANEL_WIDTH, accent: '#358FFF',
     });
     drawLiveTeamRow(ctx, {
-      participant: redParticipants[index], images: imageSets[blueParticipants.length + index], x: redX, y: rowY,
-      width: LIVE_CARD_PANEL_WIDTH, accent: '#ED4F6A', side: 'red',
+      participant: redParticipants[index], images: imageSets[blueParticipants.length + index], banImage: banImages[blueBans.length + index], x: redX, y: rowY,
+      width: LIVE_CARD_PANEL_WIDTH, accent: '#ED4F6A',
     });
   }
 

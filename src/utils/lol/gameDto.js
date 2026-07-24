@@ -9,6 +9,7 @@ import { GAME_TYPES, resolveLolQueueContext } from '../../constants/queues.js';
 import { resolveQueuePresentation } from '../matchEmbedShared.js';
 import { resolveChampionIcon } from '../lolChampionIcon.js';
 import {
+    buildNormalizedTeamBans,
     buildNormalizedTeamRosters,
     getParticipantRuneIds,
     getParticipantSpellIds,
@@ -191,6 +192,13 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
 
     const red = dto.rosters.bySide?.RED ?? [];
     const blue = dto.rosters.bySide?.BLUE ?? [];
+    const bansBySide = buildNormalizedTeamBans(activeGame?.bannedChampions);
+    const banChampionIds = [...bansBySide.BLUE, ...bansBySide.RED].map((ban) => ban.championId);
+    const banChampionImagesById = await getLolChampionImagesByIds(banChampionIds);
+    const addBanIconUrl = (ban) => ({
+        ...ban,
+        championIconUrl: banChampionImagesById.get(String(ban.championId)) ?? null,
+    });
 
     const tracked = dto.trackedPlayer?.participant ?? null;
 
@@ -208,6 +216,11 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
         queueLabel: dto.queue.queueLabel,
         gameStartEpochSeconds: dto.game.gameStartEpochSeconds,
         display: dto.display,
-        sides: { red, blue },
+        sides: {
+            red,
+            blue,
+            redBans: bansBySide.RED.map(addBanIconUrl),
+            blueBans: bansBySide.BLUE.map(addBanIconUrl),
+        },
     };
 }

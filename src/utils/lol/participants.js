@@ -48,6 +48,41 @@ function normalizeTeamSide(teamId) {
     return Number(teamId) === 200 ? 'RED' : 'BLUE';
 }
 
+/**
+ * Groups spectator bans by team and preserves each team's draft sequence.
+ * Spectator-v5 uses pickTurn values 1–10: blue bans on odd turns and red bans
+ * on even turns, including the second ban phase.
+ */
+export function buildNormalizedTeamBans(bannedChampions) {
+    if (!Array.isArray(bannedChampions) || bannedChampions.length === 0) {
+        return { BLUE: [], RED: [] };
+    }
+
+    const bans = bannedChampions.reduce((accumulator, ban, index) => {
+        const championId = Number(ban?.championId);
+        if (!Number.isFinite(championId) || championId <= 0) return accumulator;
+
+        const pickTurn = Number(ban?.pickTurn);
+        accumulator[normalizeTeamSide(ban?.teamId)].push({
+            championId,
+            pickTurn: Number.isFinite(pickTurn) ? pickTurn : null,
+            originalIndex: index,
+        });
+        return accumulator;
+    }, { BLUE: [], RED: [] });
+
+    for (const side of ['BLUE', 'RED']) {
+        bans[side].sort((left, right) => {
+            if (left.pickTurn == null && right.pickTurn == null) return left.originalIndex - right.originalIndex;
+            if (left.pickTurn == null) return 1;
+            if (right.pickTurn == null) return -1;
+            return left.pickTurn - right.pickTurn || left.originalIndex - right.originalIndex;
+        });
+    }
+
+    return bans;
+}
+
 export function buildNormalizedTeamRosters(participants) {
     if (!Array.isArray(participants) || participants.length === 0) {
         return { BLUE: [], RED: [] };
