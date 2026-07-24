@@ -1,4 +1,4 @@
-import { isRankedQueue, queueLabel } from '../constants/queues.js';
+import { GAME_TYPES, isRankedQueue, queueLabel } from '../constants/queues.js';
 import { formatDelta, formatRankWithLp } from './presentation.js';
 import { EmbedBuilder } from 'discord.js';
 

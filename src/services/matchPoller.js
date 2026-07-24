@@ -221,10 +221,16 @@ export async function startMatchPoller(client) {
                         }));
                     }
                 } catch (err) {
-                logger.error(
-                        `Error polling matches for account ${account.key} (guild=${guildId}):`,
-                        err
-                    );
+                // logger accepts metadata as its second argument. Passing the
+                    // Error directly discarded it, leaving production logs with
+                    // no cause or stack trace when an account poll failed.
+                    logger.error('match_poller_account_failed', {
+                        service: 'match-poller',
+                        event: 'account_poll_failed',
+                        guildId,
+                        accountKey: account.key,
+                        error: err,
+                    });
                 }
                 return stagedPatches;
             };

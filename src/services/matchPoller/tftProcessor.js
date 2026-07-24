@@ -358,10 +358,13 @@ export async function processTftAccountTick({
             refreshedRankSnapshotsByGame[GAME_TYPES.TFT] = refreshed;
             stagedPatches.push({ gameKey: 'tft', trackingPatch: { lastRankByQueue: refreshed } });
         } catch (err) {
-            logger.error(
-                `Error refreshing rank for account ${account.key} (guild=${guildId ?? 'unknown'}):`,
-                err
-            );
+            logger.error('tft_rank_refresh_failed', {
+                service: 'match-poller',
+                event: 'tft_rank_refresh_failed',
+                guildId,
+                accountKey: account.key,
+                error: err,
+            });
         }
     }
 

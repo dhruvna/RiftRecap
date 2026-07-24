@@ -501,10 +501,13 @@ export async function processLolAccountTick({
             refreshedRankSnapshotsByGame[GAME_TYPES.LOL] = refreshedLol;
             stagedPatches.push({ gameKey: 'lol', trackingPatch: { lastRankByQueue: refreshedLol } });
         } catch (err) {
-            logger.error(
-                `Error refreshing LoL rank for account ${account.key} (guild=${guild?.id ?? 'unknown'}):`,
-                err
-            );
+            logger.error('lol_rank_refresh_failed', {
+                service: 'match-poller',
+                event: 'lol_rank_refresh_failed',
+                guildId: guild?.id ?? null,
+                accountKey: account.key,
+                error: err,
+            });
         }
     }
 
