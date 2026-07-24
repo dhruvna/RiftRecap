@@ -1,4 +1,5 @@
 import { Canvas, loadImage } from '@napi-rs/canvas';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_SLOT_COUNT_PER_SIDE = 5;
 // Dimensions and styling for the match-result thumbnail.
@@ -28,6 +29,9 @@ const LIVE_CARD_PANEL_WIDTH = (LIVE_CARD_WIDTH - (LIVE_CARD_PADDING * 2) - LIVE_
 const LIVE_CARD_CHAMPION_SIZE = 64;
 const LIVE_CARD_LOADOUT_SIZE = 26;
 const LIVE_CARD_RUNE_SIZE = 30;
+const LIVE_CARD_BAN_X_COLOR = '#FF3D57';
+const LIVE_CARD_BAN_X_SHADOW_COLOR = 'rgba(24, 8, 14, 0.78)';
+const LIVE_CARD_BAN_PLACEHOLDER_PATH = fileURLToPath(new URL('../../assets/ban-placeholder.png', import.meta.url));
 
 /**
  * Shortens text until it fits within the current canvas font's available width.
@@ -235,9 +239,43 @@ function drawLiveCardIcon(ctx, image, x, y, size) {
 }
 
 /**
+ * Draws a high-contrast X over a banned champion while preserving the icon beneath it. TODO: Make the X slightly transparent so that the champion icon is still visible behind it. The X should be centered within the square and have a slight shadow to make it stand out against the champion icon.
+ */
+function drawBanMarker(ctx, x, y, size) {
+  ctx.globalAlpha = 0.5;
+  const inset = Math.round(size * 0.15);
+  const lineWidth = Math.max(4, Math.round(size * 0.1));
+
+  ctx.save();
+  roundedRectPath(ctx, x, y, size, size, 6);
+  ctx.clip();
+  ctx.lineCap = 'round';
+  ctx.lineWidth = lineWidth + 4;
+  ctx.strokeStyle = LIVE_CARD_BAN_X_SHADOW_COLOR;
+  ctx.beginPath();
+  ctx.moveTo(x + inset, y + inset);
+  ctx.lineTo(x + size - inset, y + size - inset);
+  ctx.moveTo(x + size - inset, y + inset);
+  ctx.lineTo(x + inset, y + size - inset);
+  ctx.stroke();
+  
+
+  ctx.lineWidth = lineWidth;
+  ctx.strokeStyle = LIVE_CARD_BAN_X_COLOR;
+  ctx.beginPath();
+  ctx.moveTo(x + inset, y + inset);
+  ctx.lineTo(x + size - inset, y + size - inset);
+  ctx.moveTo(x + size - inset, y + inset);
+  ctx.lineTo(x + inset, y + size - inset);
+  ctx.stroke();
+  ctx.restore();
+  ctx.globalAlpha = 1.0;
+}
+
+/**
  * Renders one player row, including its team accent, champion, loadout, name, and ban.
  */
-function drawLiveTeamRow(ctx, { participant, images, banImage, x, y, width, accent }) {
+function drawLiveTeamRow(ctx, { participant, images, ban, banImage, x, y, width, accent }) {
   drawRoundedRect(ctx, x, y, width, LIVE_CARD_ROW_HEIGHT - 8, 10, '#202735');
   drawRoundedRect(ctx, x, y, 5, LIVE_CARD_ROW_HEIGHT - 8, 3, accent);
 
@@ -260,6 +298,7 @@ function drawLiveTeamRow(ctx, { participant, images, banImage, x, y, width, acce
   ctx.textBaseline = 'alphabetic';
   ctx.fillText(truncateText(ctx, playerName, textWidth), nameX, y + 43);
   drawLiveCardIcon(ctx, banImage, banX, championY, LIVE_CARD_CHAMPION_SIZE);
+  if (Number(ban?.championId) > 0) drawBanMarker(ctx, banX, championY, LIVE_CARD_CHAMPION_SIZE);
 }
 
 /**
@@ -276,7 +315,9 @@ export async function buildLolLiveMatchCardBuffer(model = {}) {
   const slots = [...blueParticipants, ...redParticipants];
   const [imageSets, banImages] = await Promise.all([
     Promise.all(slots.map((participant) => loadParticipantImages(participant))),
-    Promise.all([...blueBans, ...redBans].map((ban) => loadIconResult(ban?.championIconUrl))),
+    Promise.all([...blueBans, ...redBans].map((ban) => loadIconResult(
+      ban?.isPlaceholder ? LIVE_CARD_BAN_PLACEHOLDER_PATH : ban?.championIconUrl,
+    ))),
   ]);
 
   ctx.fillStyle = '#111622';
@@ -295,24 +336,32 @@ export async function buildLolLiveMatchCardBuffer(model = {}) {
   const blueX = LIVE_CARD_PADDING;
   const redX = blueX + LIVE_CARD_PANEL_WIDTH + LIVE_CARD_GUTTER;
   const sectionY = LIVE_CARD_HEADER_HEIGHT + 19;
-  for (const [label, x, color, align] of [
-    ['BLUE TEAM', blueX, '#4CA7FF', 'left'],
-    ['RED TEAM', redX, '#FF657C', 'right'],
+  for (const [label, x, color] of [
+    ['BLUE TEAM', blueX + 20, '#4CA7FF'],
+    ['RED TEAM', redX + 20, '#FF657C'],
   ]) {
-    ctx.textAlign = align;
+    ctx.textAlign = 'left';
     ctx.fillStyle = color;
     ctx.font = '700 17px sans-serif';
-    ctx.fillText(label, align === 'right' ? x + LIVE_CARD_PANEL_WIDTH : x, sectionY);
+    ctx.fillText(label, x, sectionY);
+  }
+
+  for (const x of [blueX, redX]) {
+    const banColumnCenter = x + LIVE_CARD_PANEL_WIDTH - 20 - (LIVE_CARD_CHAMPION_SIZE / 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#B9C3D5';
+    ctx.font = '700 17px sans-serif';
+    ctx.fillText('BANS', banColumnCenter, sectionY);
   }
 
   for (let index = 0; index < DEFAULT_SLOT_COUNT_PER_SIDE; index += 1) {
     const rowY = LIVE_CARD_HEADER_HEIGHT + 36 + (index * LIVE_CARD_ROW_HEIGHT);
     drawLiveTeamRow(ctx, {
-      participant: blueParticipants[index], images: imageSets[index], banImage: banImages[index], x: blueX, y: rowY,
+      participant: blueParticipants[index], images: imageSets[index], ban: blueBans[index], banImage: banImages[index], x: blueX, y: rowY,
       width: LIVE_CARD_PANEL_WIDTH, accent: '#358FFF',
     });
     drawLiveTeamRow(ctx, {
-      participant: redParticipants[index], images: imageSets[blueParticipants.length + index], banImage: banImages[blueBans.length + index], x: redX, y: rowY,
+      participant: redParticipants[index], images: imageSets[blueParticipants.length + index], ban: redBans[index], banImage: banImages[blueBans.length + index], x: redX, y: rowY,
       width: LIVE_CARD_PANEL_WIDTH, accent: '#ED4F6A',
     });
   }

@@ -60,7 +60,8 @@ export function buildNormalizedTeamBans(bannedChampions) {
 
     const bans = bannedChampions.reduce((accumulator, ban, index) => {
         const championId = Number(ban?.championId);
-        if (!Number.isFinite(championId) || championId <= 0) return accumulator;
+        const isPlaceholder = championId === -1;
+        if (!Number.isFinite(championId) || (championId <= 0 && !isPlaceholder)) return accumulator;
 
         const pickTurn = Number(ban?.pickTurn);
         const teamId = Number(ban?.teamId);
@@ -69,6 +70,7 @@ export function buildNormalizedTeamBans(bannedChampions) {
 
         accumulator[side].push({
             championId,
+            isPlaceholder,
             pickTurn: Number.isFinite(pickTurn) ? pickTurn : null,
             originalIndex: index,
         });
@@ -87,6 +89,11 @@ export function buildNormalizedTeamBans(bannedChampions) {
     return bans;
 }
 
+/**
+ * Groups spectator participants by team without changing the API's player order.
+ * The live draft card uses that order to keep each pick on the same row as its
+ * team's corresponding ban sequence.
+ */
 export function buildNormalizedTeamRosters(participants) {
     if (!Array.isArray(participants) || participants.length === 0) {
         return { BLUE: [], RED: [] };
@@ -109,12 +116,6 @@ export function buildNormalizedTeamRosters(participants) {
         return accumulator;
 
     }, { BLUE: [], RED: [] });
-
-    const stableSort = (left, right) =>
-        String(left?.summonerName ?? left?.riotId ?? left?.puuid ?? '')
-            .localeCompare(String(right?.summonerName ?? right?.riotId ?? right?.puuid ?? ''), undefined, { sensitivity: 'base' });
-    rosters.BLUE.sort(stableSort);
-    rosters.RED.sort(stableSort);
 
     return rosters;
 }

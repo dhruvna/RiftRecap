@@ -193,11 +193,13 @@ export async function buildLolLiveTeamPresentationModel({ account, activeGame, i
     const red = dto.rosters.bySide?.RED ?? [];
     const blue = dto.rosters.bySide?.BLUE ?? [];
     const bansBySide = buildNormalizedTeamBans(activeGame?.bannedChampions);
-    const banChampionIds = [...bansBySide.BLUE, ...bansBySide.RED].map((ban) => ban.championId);
+    const banChampionIds = [...bansBySide.BLUE, ...bansBySide.RED]
+        .filter((ban) => !ban.isPlaceholder)
+        .map((ban) => ban.championId);
     const banChampionImagesById = await getLolChampionImagesByIds(banChampionIds);
     const addBanIconUrl = (ban) => ({
         ...ban,
-        championIconUrl: banChampionImagesById.get(String(ban.championId)) ?? null,
+        championIconUrl: ban.isPlaceholder ? null : (banChampionImagesById.get(String(ban.championId)) ?? null),
     });
 
     const tracked = dto.trackedPlayer?.participant ?? null;
