@@ -146,6 +146,7 @@ export default {
         }
     
         await interaction.editReply(`Successfully registered **${stored.gameName}#${stored.tagLine}** for this server.`);
+        console.log(`[register] Registered ${stored.gameName}#${stored.tagLine} in guild ${guildId}`);
     }, {
         defer: true,
         ephemeral: true,
