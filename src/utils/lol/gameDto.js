@@ -1,6 +1,7 @@
 import {
     getMatchUrl,
     getLolChampionImagesByIds,
+    getLolChampionSkinImagesBySelections,
     getLolSpellImagesByIds,
     getLolRuneImagesByIds,
 } from '../../riot.js';
@@ -100,8 +101,13 @@ export async function buildLolGameDto({
         runeIds.push(...getParticipantRuneIds(trackedParticipant));
     }
 
-    const [championImagesById, spellImagesById, runeImagesById] = await Promise.all([
+    const skinSelections = participants.map((p) => ({
+        championId: p?.championId,
+        skinNum: p?.lastSelectedSkinIndex,
+    }));
+    const [championImagesById, championSkinImagesBySelection, spellImagesById, runeImagesById] = await Promise.all([
         getLolChampionImagesByIds(championIds),
+        getLolChampionSkinImagesBySelections(skinSelections),
         getLolSpellImagesByIds(spellIds),
         getLolRuneImagesByIds(runeIds),
     ]);
@@ -122,6 +128,9 @@ export async function buildLolGameDto({
         teamRostersBySide[side] = teamRostersBySide[side].map((entry) => ({
             ...entry,
             championIconUrl: championImagesById.get(String(entry?.championId ?? '')) ?? null,
+            championSkinTileUrl: championSkinImagesBySelection.get(
+                `${String(entry?.championId ?? '').trim()}:${entry?.lastSelectedSkinIndex}`,
+            ) ?? null,
             spellIconUrls: getParticipantSpellIds(entry)
                 .map((spellId) => spellImagesById.get(String(spellId)) ?? null)
                 .filter(Boolean),

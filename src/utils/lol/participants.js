@@ -48,6 +48,12 @@ function normalizeTeamSide(teamId) {
     return Number(teamId) === 200 ? 'RED' : 'BLUE';
 }
 
+function normalizeSelectedSkinIndex(value) {
+    if (value == null || (typeof value === 'string' && value.trim() === '')) return null;
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) && numericValue >= 0 ? numericValue : null;
+}
+
 /**
  * Groups spectator bans by team and preserves each team's draft sequence.
  * Spectator-v5 uses pickTurn values 1–10. The second ban phase begins with
@@ -107,6 +113,7 @@ export function buildNormalizedTeamRosters(participants) {
             riotId: participant?.riotId ?? null,
             championId: participant?.championId ?? null,
             championName: participant?.championName ?? null,
+            lastSelectedSkinIndex: normalizeSelectedSkinIndex(participant?.lastSelectedSkinIndex),
             spell1Id: participant?.spell1Id ?? participant?.summoner1Id ?? null,
             spell2Id: participant?.spell2Id ?? participant?.summoner2Id ?? null,
             runeIds: getParticipantRuneIds(participant),

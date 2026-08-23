@@ -44,38 +44,44 @@ function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
     };
 }
 
-function createLolChampionLookup() {
+export function createLolChampionLookup({
+    getVersion = getLatestDDragonVersion,
+    loadChampions = loadLolChampions,
+} = {}) {
     let imageByChampionId = null;
+    let canonicalIdByChampionId = null;
     let cachedVersion = null;
 
     async function loadIndexes() {
-        const latestVersion = await getLatestDDragonVersion();
+        const latestVersion = await getVersion();
         if (imageByChampionId && cachedVersion === latestVersion) {
-            return { imageByChampionId, version: cachedVersion };
+            return { imageByChampionId, canonicalIdByChampionId, version: cachedVersion };
         }
 
-        const dataset = await loadLolChampions();
+        const dataset = await loadChampions();
         const entries = Object.values(dataset?.data ?? {});
         const nextImageByChampionId = new Map();
+        const nextCanonicalIdByChampionId = new Map();
 
         for (const entry of entries) {
             const imageFile = entry?.image?.full;
-            if (!imageFile) continue;
-
             const championKey = String(entry?.key ?? '').trim();
             const championId = String(entry?.id ?? '').trim();
 
             if (championKey) {
-                nextImageByChampionId.set(championKey, imageFile);
+                if (imageFile) nextImageByChampionId.set(championKey, imageFile);
+                if (championId) nextCanonicalIdByChampionId.set(championKey, championId);
             }
             if (championId) {
-                nextImageByChampionId.set(championId, imageFile);
+                if (imageFile) nextImageByChampionId.set(championId, imageFile);
+                nextCanonicalIdByChampionId.set(championId, championId);
             }
         }
 
         imageByChampionId = nextImageByChampionId;
+        canonicalIdByChampionId = nextCanonicalIdByChampionId;
         cachedVersion = latestVersion;
-        return { imageByChampionId, version: cachedVersion };
+        return { imageByChampionId, canonicalIdByChampionId, version: cachedVersion };
     }
 
     return {
@@ -86,6 +92,17 @@ function createLolChampionLookup() {
             const file = map.get(key);
             if (!file) return null;
             return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${file}`;
+        },
+        async getSkinImage(championId, skinNum) {
+            const championKey = String(championId ?? '').trim();
+            if (!championKey || skinNum == null || (typeof skinNum === 'string' && skinNum.trim() === '')) return null;
+            const normalizedSkinNum = Number(skinNum);
+            if (!Number.isFinite(normalizedSkinNum) || normalizedSkinNum < 0) return null;
+
+            const { canonicalIdByChampionId: map, version } = await loadIndexes();
+            const canonicalChampionId = map.get(championKey);
+            if (!canonicalChampionId) return null;
+            return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/tiles/${canonicalChampionId}_${normalizedSkinNum}.jpg`;
         },
     };
 }
@@ -220,6 +237,22 @@ export function getTftTraitImageById(traitId) {
 
 export function getLolChampionImagesByIds(ids) {
     return resolveImageMap(ids, lolChampionLookup);
+}
+
+export async function getLolChampionSkinImagesBySelections(selections, lookup = lolChampionLookup) {
+    const resolved = new Map();
+    await Promise.all((Array.isArray(selections) ? selections : []).map(async (selection) => {
+        const championId = String(selection?.championId ?? '').trim();
+        const skinValue = selection?.skinNum;
+        if (!championId || skinValue == null || (typeof skinValue === 'string' && skinValue.trim() === '')) return;
+        const skinNum = Number(skinValue);
+        if (!Number.isFinite(skinNum) || skinNum < 0) return;
+        const key = `${championId}:${skinNum}`;
+        if (resolved.has(key)) return;
+        const imageUrl = await lookup.getSkinImage(championId, skinNum);
+        if (imageUrl) resolved.set(key, imageUrl);
+    }));
+    return resolved;
 }
 
 export function getLolSpellImagesByIds(ids) {

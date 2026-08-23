@@ -151,8 +151,12 @@ function getLoadoutIconUrls(participant) {
 
 async function loadParticipantImages(participant) {
   const loadoutIconUrls = getLoadoutIconUrls(participant);
+  const loadChampionImage = async () => {
+    const skinImage = await loadIconResult(participant?.championSkinTileUrl);
+    return skinImage ?? loadIconResult(participant?.championIconUrl);
+  };
   const [championImage, ...loadoutImages] = await Promise.all([
-    loadIconResult(participant?.championIconUrl),
+    loadChampionImage(),
     ...loadoutIconUrls.map((iconUrl) => loadIconResult(iconUrl)),
   ]);
 

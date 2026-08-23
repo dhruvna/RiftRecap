@@ -23,6 +23,7 @@ export {
     getTftItemImageById,
     getTftTraitImageById,
     getLolChampionImagesByIds,
+    getLolChampionSkinImagesBySelections,
     getLolSpellImagesByIds,
     getLolRuneImagesByIds,
 } from './riot/ddragonIndexes.js';

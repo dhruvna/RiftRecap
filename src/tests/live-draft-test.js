@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildNormalizedTeamBans } from '../utils/lol/participants.js';
+import { buildNormalizedTeamBans, buildNormalizedTeamRosters } from '../utils/lol/participants.js';
 import { buildLolLiveMatchCardBuffer } from '../utils/liveDraftImage.js';
 
 test('buildNormalizedTeamBans puts each ban in its team draft order', () => {
@@ -28,6 +28,20 @@ test('buildNormalizedTeamBans ignores unavailable champion selections', () => {
     assert.deepEqual(bans, { BLUE: [], RED: [] });
 });
 
+test('buildNormalizedTeamRosters normalizes selected skin numbers without treating them as indexes', () => {
+    const rosters = buildNormalizedTeamRosters([
+        { teamId: 100, championId: 1, lastSelectedSkinIndex: 0 },
+        { teamId: 100, championId: 2, lastSelectedSkinIndex: 65 },
+        { teamId: 100, championId: 3, lastSelectedSkinIndex: '12' },
+        { teamId: 200, championId: 4 },
+        { teamId: 200, championId: 5, lastSelectedSkinIndex: -1 },
+        { teamId: 200, championId: 6, lastSelectedSkinIndex: 'invalid' },
+    ]);
+
+    assert.deepEqual(rosters.BLUE.map((entry) => entry.lastSelectedSkinIndex), [0, 65, 12]);
+    assert.deepEqual(rosters.RED.map((entry) => entry.lastSelectedSkinIndex), [null, null, null]);
+});
+
 test('buildLolLiveMatchCardBuffer renders rows with banned champions', async () => {
     const card = await buildLolLiveMatchCardBuffer({
         queueLabel: 'Ranked Solo/Duo',
@@ -41,4 +55,20 @@ test('buildLolLiveMatchCardBuffer renders rows with banned champions', async () 
 
     assert.ok(Buffer.isBuffer(card));
     assert.ok(card.length > 0);
+});
+
+test('buildLolLiveMatchCardBuffer falls back to the champion icon when a skin tile is unavailable', async () => {
+    const card = await buildLolLiveMatchCardBuffer({
+        sides: {
+            blue: [{
+                riotId: 'Fallback Player',
+                championSkinTileUrl: '/definitely/missing/skin-tile.jpg',
+                championIconUrl: new URL('../../assets/RiotLogo.png', import.meta.url).pathname,
+            }],
+            red: [],
+        },
+    });
+
+    assert.ok(Buffer.isBuffer(card));
+    assert.deepEqual([...card.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });

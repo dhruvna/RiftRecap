@@ -81,7 +81,7 @@ export const loadTFTTraits = createDatasetLoader({
 
 export const loadLolChampions = createDatasetLoader({
     cacheKey: 'LoL champion',
-    path: 'champion.json',
+    path: 'champion.json',  
 });
 
 export const loadLolSummonerSpells = createDatasetLoader({
