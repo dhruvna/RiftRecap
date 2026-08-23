@@ -60,11 +60,11 @@ function reduceLolLiveState({
         const nextDedupeKey = getLolInGameDedupeKey(nextTracking);
         const sameLolGame = Boolean(nextDedupeKey) && nextDedupeKey === previousDedupeKey;
         if (!sameLolGame) {
-            logger.info(`[match-poller] match started guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL} dedupeKey=${nextDedupeKey ?? 'none'}`);
+            logger.info(`[match-poller] match started account=${accountKey} game=${GAME_TYPES.LOL} queueId=${nextTrackingPatch.activeQueueId ?? 'none'}`);
         }
     }
     if (wasLolInGame && !isLolInGame) {
-        logger.info(`[match-poller] match ended guild=${guildId} account=${accountKey} game=${GAME_TYPES.LOL}`);
+        logger.info(`[match-poller] match ended account=${accountKey} game=${GAME_TYPES.LOL}`);
     }
 
     if (wasLolInGame || !isLolInGame) {

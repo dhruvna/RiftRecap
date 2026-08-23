@@ -47,7 +47,7 @@ async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId,
     const nextTftInGameKey = getTftInGameDedupeKey(nextTftTracking);
 
     if (!wasTftInGame && isTftInGame) {
-        logger.info(`[match-poller] match started guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT} dedupeKey=${nextTftInGameKey ?? 'none'}`);
+        logger.info(`[match-poller] match started account=${account.key} game=${GAME_TYPES.TFT} activeQueueId=${nextTftTrackingPatch.activeQueueId ?? 'none'}`);
         const shouldAnnounceTftLiveGame = !(previousTftInGameKey && nextTftInGameKey && previousTftInGameKey === nextTftInGameKey);
         if (shouldAnnounceTftLiveGame && account?.notifications?.tftAnnouncements !== false) {
             if (liveAnnouncementRegistry && !liveAnnouncementRegistry.claim({
@@ -89,7 +89,7 @@ async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId,
         }
     }
     if (wasTftInGame && !isTftInGame) {
-        logger.info(`[match-poller] match ended guild=${guildId} account=${account.key} game=${GAME_TYPES.TFT}`);
+        logger.info(`[match-poller] match ended  account=${account.key} game=${GAME_TYPES.TFT}`);
         nextTftTrackingPatch.lastAnnouncedInGameKey = null;
         nextTftTrackingPatch.lastAnnouncedActiveGameId = null;
     }
