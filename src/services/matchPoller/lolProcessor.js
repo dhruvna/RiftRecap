@@ -38,7 +38,6 @@ function reduceLolLiveState({
     spectatorState = {},
     dedupeWindowMs = LIVE_ANNOUNCE_DEDUPE_WINDOW_MS,
     now = Date.now(),
-    guildId,
     accountKey,
 }) {
     const nextTrackingPatch = {
