@@ -99,10 +99,12 @@ export function createLolChampionLookup({
             const normalizedSkinNum = Number(skinNum);
             if (!Number.isFinite(normalizedSkinNum) || normalizedSkinNum < 0) return null;
 
-            const { canonicalIdByChampionId: map, version } = await loadIndexes();
+            const { canonicalIdByChampionId: map } = await loadIndexes();
             const canonicalChampionId = map.get(championKey);
             if (!canonicalChampionId) return null;
-            return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/tiles/${canonicalChampionId}_${normalizedSkinNum}.jpg`;
+            // Splash-derived assets are served from Data Dragon's unversioned CDN
+            // path. Only the champion icon endpoint is scoped to a patch version.
+            return `https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/${canonicalChampionId}_${normalizedSkinNum}.jpg`;
         },
     };
 }

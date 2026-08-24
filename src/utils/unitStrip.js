@@ -1,8 +1,8 @@
-import { createCanvas } from '@napi-rs/canvas';
 import { loadCostStarImage, loadItemImage, loadTraitImage, loadUnitImage } from './unitStrip/assets.js';
 import { drawBackground, drawTraitSection, drawUnitCard } from './unitStrip/draw.js';
 import { calculateUnitStripLayout, getUnitCardPosition } from './unitStrip/layout.js';
 import { normalizeTraits, normalizeUnits } from './unitStrip/model.js';
+import { createHighResolutionCanvas } from './highResolutionCanvas.js';
 
 const DEFAULT_TILE_SIZE = 76;
 const DEFAULT_PADDING = 10;
@@ -39,8 +39,7 @@ export async function buildUnitStripImage(units, options = {}) {
     if (normalized.length === 0) return null;
 
     const layout = calculateUnitStripLayout(normalized.length, normalizedTraits.length, renderOptions);
-    const canvas = createCanvas(layout.width, layout.height);
-    const ctx = canvas.getContext('2d');
+    const { canvas, ctx } = createHighResolutionCanvas(layout.width, layout.height);
     
     drawBackground(ctx, layout.width, layout.height);
     const traitImages = await Promise.all(

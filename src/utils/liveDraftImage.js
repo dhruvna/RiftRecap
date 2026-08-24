@@ -1,5 +1,6 @@
-import { Canvas, loadImage } from '@napi-rs/canvas';
+import { loadImage } from '@napi-rs/canvas';
 import { fileURLToPath } from 'node:url';
+import { createHighResolutionCanvas } from './highResolutionCanvas.js';
 
 const DEFAULT_SLOT_COUNT_PER_SIDE = 5;
 // Dimensions and styling for the match-result thumbnail.
@@ -204,8 +205,7 @@ function drawParticipantThumbnail(ctx, { images, x, y }) {
  * Missing or inaccessible icon art is represented with the configured fallback colors.
  */
 export async function buildParticipantLoadoutThumbnailBuffer(participant = {}) {
-  const canvas = new Canvas(THUMBNAIL_ICON_SIZE, THUMBNAIL_ICON_SIZE);
-  const ctx = canvas.getContext('2d');
+  const { canvas, ctx } = createHighResolutionCanvas(THUMBNAIL_ICON_SIZE, THUMBNAIL_ICON_SIZE);
   const images = await loadParticipantImages(participant);
 
   drawParticipantThumbnail(ctx, { images, x: 0, y: 0 });
@@ -310,8 +310,7 @@ function drawLiveTeamRow(ctx, { participant, images, ban, banImage, x, y, width,
  * Each side is always rendered with five rows so incomplete live-game data preserves the layout.
  */
 export async function buildLolLiveMatchCardBuffer(model = {}) {
-  const canvas = new Canvas(LIVE_CARD_WIDTH, LIVE_CARD_HEIGHT);
-  const ctx = canvas.getContext('2d');
+  const { canvas, ctx } = createHighResolutionCanvas(LIVE_CARD_WIDTH, LIVE_CARD_HEIGHT);
   const blueParticipants = Array.isArray(model?.sides?.blue) ? model.sides.blue.slice(0, DEFAULT_SLOT_COUNT_PER_SIDE) : [];
   const redParticipants = Array.isArray(model?.sides?.red) ? model.sides.red.slice(0, DEFAULT_SLOT_COUNT_PER_SIDE) : [];
   const blueBans = Array.isArray(model?.sides?.blueBans) ? model.sides.blueBans.slice(0, DEFAULT_SLOT_COUNT_PER_SIDE) : [];

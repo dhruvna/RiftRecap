@@ -1,4 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
+import { IMAGE_RENDER_SCALE } from '../highResolutionCanvas.js';
 import { STAR_ICON_SIZE, STAR_ICON_SPACING, STAR_ROW_HEIGHT } from './layout.js';
 
 function getUnitTierColor(unit) {
@@ -66,8 +67,11 @@ function drawMonochromeTraitIcon(ctx, traitImage, x, y, size) {
     if (!traitImage) return;
 
     try {
-        const offscreen = createCanvas(size, size);
+        const offscreen = createCanvas(size * IMAGE_RENDER_SCALE, size * IMAGE_RENDER_SCALE);
         const offscreenCtx = offscreen.getContext('2d');
+        offscreenCtx.scale(IMAGE_RENDER_SCALE, IMAGE_RENDER_SCALE);
+        offscreenCtx.imageSmoothingEnabled = true;
+        offscreenCtx.imageSmoothingQuality = 'high';
 
         offscreenCtx.drawImage(traitImage, 0, 0, size, size);
         offscreenCtx.globalCompositeOperation = 'source-atop';

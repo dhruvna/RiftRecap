@@ -27,14 +27,14 @@ test('LoL champion lookup resolves a numeric champion ID to its icon and canonic
     );
     assert.equal(
         await lookup.getSkinImage(1, 65),
-        'https://ddragon.leagueoflegends.com/cdn/99.1.2/img/champion/tiles/Annie_65.jpg',
+        'https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/Annie_65.jpg',
     );
 });
 
 test('LoL skin lookup uses special canonical Data Dragon identifiers', async () => {
     assert.equal(
         await createLookup().getSkinImage(62, '3'),
-        'https://ddragon.leagueoflegends.com/cdn/99.1.2/img/champion/tiles/MonkeyKing_3.jpg',
+        'https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/MonkeyKing_3.jpg',
     );
 });
 
@@ -58,7 +58,7 @@ test('batched LoL skin lookup keys results by champion ID and skin number', asyn
     ], createLookup());
 
     assert.deepEqual([...images], [
-        ['1:0', 'https://ddragon.leagueoflegends.com/cdn/99.1.2/img/champion/tiles/Annie_0.jpg'],
-        ['62:3', 'https://ddragon.leagueoflegends.com/cdn/99.1.2/img/champion/tiles/MonkeyKing_3.jpg'],
+        ['1:0', 'https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/Annie_0.jpg'],
+        ['62:3', 'https://ddragon.leagueoflegends.com/cdn/img/champion/tiles/MonkeyKing_3.jpg'],
     ]);
 });

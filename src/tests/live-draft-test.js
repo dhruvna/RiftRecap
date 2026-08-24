@@ -1,8 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { loadImage } from '@napi-rs/canvas';
 
 import { buildNormalizedTeamBans, buildNormalizedTeamRosters } from '../utils/lol/participants.js';
-import { buildLolLiveMatchCardBuffer } from '../utils/liveDraftImage.js';
+import {
+    buildLolLiveMatchCardBuffer,
+    buildParticipantLoadoutThumbnailBuffer,
+} from '../utils/liveDraftImage.js';
+
+test('generated match thumbnails use high-density pixel dimensions', async () => {
+    const thumbnail = await buildParticipantLoadoutThumbnailBuffer();
+    const image = await loadImage(thumbnail);
+
+    assert.equal(image.width, 192);
+    assert.equal(image.height, 192);
+});
 
 test('buildNormalizedTeamBans puts each ban in its team draft order', () => {
     const bans = buildNormalizedTeamBans([
@@ -55,6 +67,9 @@ test('buildLolLiveMatchCardBuffer renders rows with banned champions', async () 
 
     assert.ok(Buffer.isBuffer(card));
     assert.ok(card.length > 0);
+    const image = await loadImage(card);
+    assert.equal(image.width, 2640);
+    assert.equal(image.height, 1520);
 });
 
 test('buildLolLiveMatchCardBuffer falls back to the champion icon when a skin tile is unavailable', async () => {
