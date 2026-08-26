@@ -16,7 +16,7 @@ A Discord bot built with **Node.js**, **discord.js**, and the **Riot Games API**
 - `/lineups` shows top LoL registered-player lineup win rates from recorded ranked Solo/Duo duos, ranked Flex 2-, 3-, or 5-player groups, and Ranked 5s lineups according to the chosen eligibility rule.
 
 ## Command reference
-- `/register` — register a Riot ID in this server and initialize TFT + LoL tracking.
+- `/register gamename:<name> tagline:<tag> region:<region> [send_match_alerts]` — register a Riot ID and initialize TFT + LoL tracking. Set `send_match_alerts:false` to exclude that account from TFT and LoL live alerts, match-result announcements, recaps, and leaderboards. Re-run the same registration later with `send_match_alerts:true` or `false` to change the setting without resetting its history.
 - `/unregister` — remove a Riot ID from this server.
 - `/list` — list currently registered accounts in this server.
 - `/rank` — show stored rank snapshots for TFT, LoL, or both.

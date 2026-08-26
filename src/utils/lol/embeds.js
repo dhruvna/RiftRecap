@@ -61,8 +61,8 @@ export async function buildLolMatchResultEmbed({
     const isRankedMatch = dto.queue.isRanked;
 
     const embed = new EmbedBuilder()
-        .setURL(matchUrl)
-        .setTimestamp(normalizeEmbedTimestamp(gameStartTimestamp?.getTime?.() ?? gameMs));
+        .setURL(matchUrl);
+        // .setTimestamp(normalizeEmbedTimestamp(gameStartTimestamp?.getTime?.() ?? gameMs));
 
     const resultPresentation = resolveMatchResultPresentation({
         didWin,

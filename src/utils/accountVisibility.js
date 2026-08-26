@@ -6,3 +6,13 @@ export function isAccountVisibleForGame(account, game) {
     if (game === GAME_TYPES.TFT) return notifications.tftAnnouncements !== false;
     return true;
 }
+
+export function areMatchAnnouncementsEnabledForGame(account, game) {
+    return isAccountVisibleForGame(account, game);
+}
+
+export function shouldAnnounceAccountMatch({ account, game, queueType, announceQueueLookup = null }) {
+    if (!areMatchAnnouncementsEnabledForGame(account, game)) return false;
+    return !announceQueueLookup || announceQueueLookup.has(queueType);
+}
+

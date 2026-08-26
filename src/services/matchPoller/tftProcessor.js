@@ -3,6 +3,7 @@ import config from '../../config.js';
 import logger from '../../utils/logger.js';
 import { buildTierChangeEmbed } from '../../utils/matchEmbedShared.js';
 import { computeRankSnapshotDeltas } from '../../utils/rankSnapshot.js';
+import { areMatchAnnouncementsEnabledForGame, shouldAnnounceAccountMatch } from '../../utils/accountVisibility.js';
 import {
     buildMatchResultEmbed,
     buildTftLiveGameEmbed,
@@ -13,6 +14,7 @@ import {
     GAME_TYPES,
     TFT_QUEUE_TYPES,
     isRankedQueue,
+    queueTypeFromQueueId,
 } from '../../constants/queues.js';
 import { detectUnseenMatchIds } from './matchDiscovery.js';
 import {
@@ -30,7 +32,7 @@ import {
     findLatestRankedIndex,
 } from './shared.js';
 
-async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId, channel, channelIdForGuild, spectatorState = null, liveAnnouncementRegistry = null }) {
+async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId, channel, channelIdForGuild, spectatorState = null, announceQueueLookup = null, liveAnnouncementRegistry = null }) {
     const tftSpectatorState = spectatorState
         ?? await probeSpectatorState({ riotLimiter, account, tracking: tftTracking, game: GAME_TYPES.TFT });
     const nextTftTrackingPatch = {
@@ -49,7 +51,11 @@ async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId,
     if (!wasTftInGame && isTftInGame) {
         logger.info(`[match-poller] match started account=${account.key} game=${GAME_TYPES.TFT} activeQueueId=${nextTftTrackingPatch.activeQueueId ?? 'none'}`);
         const shouldAnnounceTftLiveGame = !(previousTftInGameKey && nextTftInGameKey && previousTftInGameKey === nextTftInGameKey);
-        if (shouldAnnounceTftLiveGame && account?.notifications?.tftAnnouncements !== false) {
+        const liveQueueType = queueTypeFromQueueId(nextTftTracking.activeQueueId, GAME_TYPES.TFT);
+        const isAllowedByAccount = areMatchAnnouncementsEnabledForGame(account, GAME_TYPES.TFT);
+        const isAllowedByQueue = !announceQueueLookup || announceQueueLookup.has(liveQueueType);
+        const isLiveAnnounceable = !config.liveAnnounceRankedOnly || isRankedQueue(GAME_TYPES.TFT, liveQueueType);
+        if (shouldAnnounceTftLiveGame && isAllowedByAccount && isAllowedByQueue && isLiveAnnounceable) {
             if (liveAnnouncementRegistry && !liveAnnouncementRegistry.claim({
                 guildId,
                 game: GAME_TYPES.TFT,
@@ -86,6 +92,8 @@ async function pollTftAccountState({ riotLimiter, account, tftTracking, guildId,
             } catch (err) {
                 logger.warn(`[match-poller] TFT live announce failed guild=${guildId} account=${account.key}: ${err?.message ?? err}`);
             }
+        } else if (shouldAnnounceTftLiveGame) {
+            logger.debug(`[match-poller] skip live announce guild=${guildId} account=${account.key} reason=announcement_gated queue=${liveQueueType} accountAllowed=${isAllowedByAccount} queueAllowed=${isAllowedByQueue} liveAnnounceable=${isLiveAnnounceable}`);
         }
     }
     if (wasTftInGame && !isTftInGame) {
@@ -227,11 +235,18 @@ async function processUnseenTftMatches({
                 gameMs,
             });
         }
-        const shouldAnnounce = account?.notifications?.tftAnnouncements !== false
-            && (!announceQueueLookup || announceQueueLookup.has(queueType));
+        const shouldAnnounce = shouldAnnounceAccountMatch({
+            account,
+            game: GAME_TYPES.TFT,
+            queueType,
+            announceQueueLookup,
+        });
         if (!shouldAnnounce) {
+            const skipReason = areMatchAnnouncementsEnabledForGame(account, GAME_TYPES.TFT)
+                ? 'not in announceQueues'
+                : 'announcements disabled';
             logger.info(
-                `[match-poller] skipping announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (not in announceQueues)`
+               `[match-poller] skipping announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (${skipReason})`
             );
             lastProcessedMatchId = matchId;
             lastProcessedMatchAt = gameMs;
@@ -377,6 +392,7 @@ export async function processTftAccountTick({
         channelIdForGuild,
         liveAnnouncementRegistry,
         spectatorState,
+        announceQueueLookup,
     });
     stagedPatches.push({ gameKey: 'tft', trackingPatch: stateResult.trackingPatch });
 

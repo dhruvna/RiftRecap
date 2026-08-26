@@ -9,6 +9,7 @@ import {
 } from '../../utils/lol.js';
 import { buildTierChangeEmbed } from '../../utils/matchEmbedShared.js';
 import { computeRankSnapshotDeltas } from '../../utils/rankSnapshot.js';
+import { areMatchAnnouncementsEnabledForGame, shouldAnnounceAccountMatch } from '../../utils/accountVisibility.js';
 import {
     GAME_TYPES,
     LOL_QUEUE_TYPES,
@@ -173,7 +174,7 @@ function buildLolLiveGameContext({ guild, activeGame }) {
 }
 
 async function pollLolAccountState({ riotLimiter, account, guild, lolTracking, guildId, channel, channelIdForGuild, announceQueueLookup = null, liveAnnouncementRegistry = null }) {
-    const areLolAnnouncementsEnabledForAccount = account?.notifications?.lolAnnouncements !== false;
+    const areLolAnnouncementsEnabledForAccount = areMatchAnnouncementsEnabledForGame(account, GAME_TYPES.LOL);
     const lolSpectatorState = await probeSpectatorState({ riotLimiter, account, tracking: lolTracking, game: GAME_TYPES.LOL });
     const liveTransitionDecision = reduceLolLiveState({
         previousTracking: lolTracking,
@@ -389,8 +390,12 @@ async function processUnseenLolMatches({
                 assists: me.assists,
             });
         }
-        const shouldAnnounce = account?.notifications?.lolAnnouncements !== false
-            && (!announceQueueLookup || announceQueueLookup.has(queueType));
+        const shouldAnnounce = shouldAnnounceAccountMatch({
+            account,
+            game: GAME_TYPES.LOL,
+            queueType,
+            announceQueueLookup,
+        });
         if (!shouldAnnounce) {
             if (account?.notifications?.lolAnnouncements === false) {
                 logger.info(`[match-poller] skipping LoL announcement for guild=${guildId} account=${account.key} match=${matchId} queue=${queueType} (announcements disabled)`);
