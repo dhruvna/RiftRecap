@@ -12,7 +12,8 @@
     "knip": "knip --config knip.config.js",
     "knip:strict": "knip --config knip.config.js --include files,exports,duplicates",
     "test:lineups": "node src/tests/lineup-test-setup.js",
-    "test:sql-reg": "node src/tests/storage-live-tracking-test.js"
+    "test:sql-reg": "node src/tests/storage-live-tracking-test.js",
+    "test:riot-api": "node src/tests/riot-api-retry.assert.js"
   },
   "repository": {
     "type": "git",

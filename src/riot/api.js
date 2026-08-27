@@ -59,7 +59,26 @@ async function riotFetchJson(url, gameType = GAME_TYPES.TFT, limiter = null) {
 
     const maxAttempts = 4;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        const res = await fetch(url, { headers: { 'X-Riot-Token': apiKey } });
+        let res;
+        try {
+            res = await fetch(url, { headers: { 'X-Riot-Token': apiKey } });
+        } catch (error) {
+            // fetch rejects before returning a response for transient transport failures such as
+            // DNS lookup errors, dropped connections, and TLS handshake failures. Treat those the
+            // same way as retryable gateway responses instead of failing the entire polling tick.
+            if (attempt < maxAttempts) {
+                const retryDelayMs = getTransientRetryDelayMs(attempt);
+                effectiveLimiter?.penalize?.(retryDelayMs);
+                await sleep(retryDelayMs);
+                if (effectiveLimiter) await effectiveLimiter.acquire();
+                continue;
+            }
+
+            const err = new Error(`Riot API network request failed on ${url}`, { cause: error });
+            err.endpoint = url;
+            err.attempts = attempt;
+            throw err;
+        }
         if (res.ok) return res.json();
 
         const shouldRetry = attempt < maxAttempts && isRetryableRiotStatus(res.status);
