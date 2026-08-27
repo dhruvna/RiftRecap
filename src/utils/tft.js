@@ -118,8 +118,8 @@ export async function buildMatchResultEmbed({
      
     // Start with a URL + timestamp so the embed is linkable and time-stamped
     const embed = new EmbedBuilder()
-        .setURL(matchUrl);
-        // .setTimestamp(normalizeEmbedTimestamp(gameMs));
+        .setURL(matchUrl)
+        .setTimestamp(normalizeEmbedTimestamp(gameMs));
 
     if (isRanked) {
         try {

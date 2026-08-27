@@ -43,18 +43,12 @@ test('SQLite current schema persists live announcement tracking state', async ()
         trackedGames: {
             [TRACKED_GAMES.LOL]: liveTracking,
         },
-        notifications: {
-            lolAnnouncements: false,
-            tftAnnouncements: false,
-        },
     });
 
     assert.ok(account);
     const persistedTracking = account.trackedGames[TRACKED_GAMES.LOL];
 
     assert.equal(account.key, accountKey);
-    assert.equal(account.notifications.lolAnnouncements, false);
-    assert.equal(account.notifications.tftAnnouncements, false);
     assert.equal(persistedTracking.enabled, true);
     assert.equal(persistedTracking.lastMatchId, 'NA1_5574686617');
     assert.equal(persistedTracking.lastMatchAt, 1791098800000);
