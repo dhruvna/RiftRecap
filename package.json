@@ -36,5 +36,8 @@
     "eslint": "^9.39.1",
     "eslint-plugin-unused-imports": "^4.4.1",
     "knip": "^6.11.0"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.10.0": true
   }
 }

@@ -1,16 +1,24 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
+const DDRAGON_CACHE_DIR = join('debug', 'ddragon');
+
 function toTitleCaseTier(tier) {
     if (!tier) return null;
     const lower = tier.toLowerCase();
     return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-async function fetchJsonOrThrow(url, label) {
+async function fetchJsonOrThrow(url, label, cacheFile) {
     const res = await fetch(url);
     if (!res.ok) {
         const body = await res.text();
         throw new Error(`${label} fetch failed: ${res.status}: ${body}`);
     }
-    return res.json();
+    const data = await res.json();
+    await mkdir(DDRAGON_CACHE_DIR, { recursive: true });
+    await writeFile(join(DDRAGON_CACHE_DIR, cacheFile), JSON.stringify(data, null, 2));
+    return data;
 }
 
 const DDRAGON_VERSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -29,7 +37,8 @@ export async function getLatestDDragonVersion() {
 
     const versions = await fetchJsonOrThrow(
         'https://ddragon.leagueoflegends.com/api/versions.json',
-        'Data Dragon versions'
+        'Data Dragon versions',
+        'versions.json'
     );
 
     ddragonVersionCache = {
@@ -52,7 +61,7 @@ function createDatasetLoader({ cacheKey, path }) {
         const url = `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/${path}`;
         cache = {
             version,
-            value: await fetchJsonOrThrow(url, `Data Dragon ${cacheKey}`),
+            value: await fetchJsonOrThrow(url, `Data Dragon ${cacheKey}`, path),
         };
 
         return cache.value;
