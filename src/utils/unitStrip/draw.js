@@ -6,11 +6,11 @@ function getUnitTierColor(unit) {
     // tier means star level
     // rarity seems to be a binary version of cost? 0, 1, 2, 4, 6, 7
     const rarity = Number(unit?.rarity ?? 0);
-    if (rarity >= 6) return '#f18b2f';
-    if (rarity === 4) return '#9a4de0';
-    if (rarity === 2) return '#2f97e8';
-    if (rarity === 1) return '#3ca56a';
-    return '#656a74';
+    if (rarity >= 4) return '#f18b2f'; // 5 cost
+    if (rarity === 3) return '#9a4de0'; // 4 cost
+    if (rarity === 2) return '#2f97e8'; // 3 cost
+    if (rarity === 1) return '#3ca56a'; // 2 cost
+    return '#656a74'; // 1 cost
 }
 
 function getTraitTierColor(trait) {
