@@ -39,5 +39,6 @@ export default {
         await interaction.editReply(
             `Successfully unregistered **${removed.gameName}#${removed.tagLine}** from this server.`
         );
+        console.log(`[unregister] Unregistered ${removed.gameName}#${removed.tagLine} in guild ${guildId}`);
     }, { defer: true, ephemeral: true, commandName: 'unregister' }),
 };

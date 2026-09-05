@@ -1,7 +1,7 @@
 import { loadImage } from '@napi-rs/canvas';
 import { fileURLToPath } from 'node:url';
 import { getTftChampionImageById, getTftItemImageById, getTftTraitImageById } from '../../riot.js';
-import { normalizeUnitCost } from './model.js';
+import { getUnitCost } from './model.js';
 
 const IMAGE_CACHE_MAX_SIZE = 512;
 
@@ -60,7 +60,7 @@ async function fetchImageFromUrl(url) {
 }
 
 function getCostStarAssetPath(unit) {
-    const cost = normalizeUnitCost(unit?.rarity);
+    const cost = getUnitCost(unit);
     return COST_STAR_PATHS[cost >= 5 ? 5 : cost];
 }
 

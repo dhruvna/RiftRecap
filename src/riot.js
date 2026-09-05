@@ -20,6 +20,7 @@ export {
 
 export {
     getTftChampionImageById,
+    getTftChampionDataById,
     getTftItemImageById,
     getTftTraitImageById,
     getLolChampionImagesByIds,

@@ -10,26 +10,31 @@ import {
 
 function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
     let imageById = null;
+    let entryById = null;
     let cachedVersion = null;
 
     async function loadIndexes() {
         const latestVersion = await getLatestDDragonVersion();
         if (imageById && cachedVersion === latestVersion) {
-            return { imageById, version: cachedVersion };
+            return { imageById, entryById, version: cachedVersion };
         }
 
         const dataset = await loadDataset();
         const entries = Object.values(dataset?.data ?? {});
         const nextImageById = new Map();
+        const nextEntryById = new Map();
 
         for (const entry of entries) {
-            if (!entry?.id || !entry?.image?.full) continue;
-            nextImageById.set(normalizeEntryId(entry.id), entry.image.full);
+            if (!entry?.id) continue;
+            const key = normalizeEntryId(entry.id);
+            nextEntryById.set(key, entry);
+            if (entry?.image?.full) nextImageById.set(key, entry.image.full);
         }
 
         imageById = nextImageById;
+        entryById = nextEntryById;
         cachedVersion = latestVersion;
-        return { imageById, version: cachedVersion };
+        return { imageById, entryById, version: cachedVersion };
     }
 
     return {
@@ -40,6 +45,12 @@ function createLookupIndex({ loadDataset, normalizeEntryId = (id) => id }) {
             const file = map.get(key);
             if (!file) return null;
             return `https://ddragon.leagueoflegends.com/cdn/${version}/img/${imageFolder}/${file}`;
+        },
+        async getEntryById(id) {
+            const key = normalizeEntryId(id);
+            if (!key) return null;
+            const { entryById: map } = await loadIndexes();
+            return map.get(key) ?? null;
         },
     };
 }
@@ -227,6 +238,10 @@ async function resolveImageMap(ids, lookup) {
 
 export function getTftChampionImageById(characterId) {
     return championLookup.getImageById(characterId, 'tft-champion');
+}
+
+export function getTftChampionDataById(characterId) {
+    return championLookup.getEntryById(characterId);
 }
 
 export function getTftItemImageById(itemId) {

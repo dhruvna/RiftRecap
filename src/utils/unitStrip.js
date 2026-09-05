@@ -3,6 +3,7 @@ import { drawBackground, drawTraitSection, drawUnitCard } from './unitStrip/draw
 import { calculateUnitStripLayout, getUnitCardPosition } from './unitStrip/layout.js';
 import { normalizeTraits, normalizeUnits } from './unitStrip/model.js';
 import { createHighResolutionCanvas } from './highResolutionCanvas.js';
+import { getTftChampionDataById } from '../riot.js';
 
 const DEFAULT_TILE_SIZE = 76;
 const DEFAULT_PADDING = 10;
@@ -34,7 +35,13 @@ export async function buildUnitStripImage(units, options = {}) {
         traitIconSize: options.traitIconSize ?? DEFAULT_TRAIT_ICON_SIZE,
     };
 
-    const normalized = normalizeUnits(units, renderOptions.maxUnits);
+    const unitsWithStaticData = await Promise.all(
+        (Array.isArray(units) ? units : []).map(async (unit) => {
+            const champion = await getTftChampionDataById(unit?.character_id);
+            return champion?.cost == null ? unit : { ...unit, cost: champion.cost };
+        }),
+    );
+    const normalized = normalizeUnits(unitsWithStaticData, renderOptions.maxUnits);
     const normalizedTraits = normalizeTraits(renderOptions.traits);
     if (normalized.length === 0) return null;
 

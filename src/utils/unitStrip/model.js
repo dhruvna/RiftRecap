@@ -1,19 +1,22 @@
 export function normalizeUnitCost(rarity) {
     const value = Number(rarity ?? 0);
     if (!Number.isFinite(value)) return 1;
+    return Math.min(5, Math.max(1, Math.floor(value) + 1));
+}
 
-    if (value >= 6) return 5;  // 6 and 7 both mean 5 cost
-    if (value === 4) return 4; // 4 means 4 cost
-    if (value === 2) return 3; // 2 means 3 cost
-    if (value === 1) return 2; // 1 means 2 cost
-    return 1; // 0 means 1 cost
+export function getUnitCost(unit) {
+    const dataDragonCost = Number(unit?.cost);
+    if (Number.isFinite(dataDragonCost) && dataDragonCost > 0) {
+        return Math.min(5, Math.floor(dataDragonCost));
+    }
+    return normalizeUnitCost(unit?.rarity);
 }
 
 export function normalizeUnits(units, maxUnits) {
     if (!Array.isArray(units)) return [];
     const sortedUnits = [...units].sort((a, b) => {
-        const costA = Number(a?.rarity ?? 0);
-        const costB = Number(b?.rarity ?? 0);
+        const costA = getUnitCost(a);
+        const costB = getUnitCost(b);
         if (costB !== costA) return costB - costA; // highest cost first
 
         const tierA = Number(a?.tier ?? 0);
